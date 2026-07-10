@@ -1,0 +1,181 @@
+/* Terms & Conditions page (tm-) — Pencil: desktop UIe2C / mobile DfneY */
+
+/* Header */
+.tm-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 52px 72px;
+  background: var(--vl-surface);
+}
+.tm-title {
+  font-family: var(--font-heading);
+  font-size: 44px;
+  font-weight: 400;
+  color: var(--vl-ink);
+  margin: 0;
+}
+.tm-sub {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--vl-muted);
+  width: 680px;
+  max-width: 100%;
+  margin: 0;
+}
+.tm-tabs {
+  display: flex;
+  gap: 10px;
+  padding-top: 6px;
+}
+.tm-tab {
+  padding: 10px 18px;
+  border-radius: 9999px;
+  border: 1px solid var(--vl-hair);
+  background: var(--vl-white);
+  color: var(--vl-ink);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.tm-tab.active {
+  border-color: var(--vl-forest);
+  background: var(--vl-forest);
+  color: var(--vl-white);
+}
+.tm-updated {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--vl-muted);
+}
+
+/* Body: TOC + content */
+.tm-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+  padding: 52px 72px 72px 72px;
+}
+.tm-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 260px;
+  flex-shrink: 0;
+}
+.tm-toc-h {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vl-muted);
+}
+.tm-toc-link {
+  font-size: 14px;
+  color: var(--vl-muted);
+  text-decoration: none;
+}
+.tm-toc-link:hover,
+.tm-toc-link.tm-toc-active {
+  color: var(--vl-forest);
+}
+.tm-content {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.tm-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tm-sec-h {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--vl-ink);
+  margin: 0;
+}
+.tm-sec-p {
+  font-size: 15px;
+  line-height: 25px;
+  color: var(--vl-muted);
+  margin: 0;
+}
+
+/* Help card */
+.tm-help {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 14px;
+  background: var(--vl-mint);
+}
+.tm-help-t {
+  flex: 1 1 0;
+  font-size: 15px;
+  color: var(--vl-ink);
+  margin: 0;
+}
+.tm-help-btn {
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: var(--vl-forest);
+  color: var(--vl-white);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* Mobile — по мотивам фрейма DfneY */
+@media (max-width: 860px) {
+  .tm-header {
+    padding: 32px 20px;
+  }
+  .tm-title {
+    font-size: 32px;
+  }
+  .tm-sub {
+    width: 100%;
+  }
+  .tm-tabs {
+    gap: 9px;
+    padding-top: 0;
+  }
+  .tm-tab {
+    padding: 9px 16px;
+  }
+  .tm-updated {
+    font-size: 12px;
+  }
+  .tm-body {
+    padding: 24px 20px 28px 20px;
+  }
+  .tm-toc {
+    display: none;
+  }
+  .tm-content {
+    gap: 22px;
+  }
+  .tm-sec {
+    gap: 8px;
+  }
+  .tm-sec-h {
+    font-size: 19px;
+  }
+  .tm-sec-p {
+    font-size: 14px;
+    line-height: 23px;
+  }
+  .tm-help {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px;
+  }
+}

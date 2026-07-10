@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rv-preview",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\work\\web_sites\\rv_rental\\viktor_rv_front && dx serve --port 8090 --session-cache-dir target/dx/dev-session-8090"
+      ],
+      "port": 8090,
+      "autoPort": false
+    }
+  ]
+}

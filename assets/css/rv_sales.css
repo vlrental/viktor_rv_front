@@ -1,0 +1,205 @@
+/* RV Sales page (sale-) — Pencil: desktop j7H8cE / mobile updYS */
+
+/* Header */
+.sale-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 52px 72px;
+  background: var(--vl-surface);
+}
+.sale-soon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background: var(--vl-coral);
+  color: var(--vl-white);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sale-title {
+  font-family: var(--font-heading);
+  font-size: 44px;
+  font-weight: 400;
+  color: var(--vl-ink);
+  margin: 0;
+}
+.sale-sub {
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--vl-muted);
+  width: 640px;
+  max-width: 100%;
+  margin: 0;
+}
+
+/* Grid of sale cards */
+.sale-grid {
+  display: flex;
+  gap: 22px;
+  padding: 48px 72px;
+}
+.sale-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--vl-white);
+  border: 1px solid var(--vl-hair);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.sale-img {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  height: 210px;
+  padding: 14px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.sale-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: var(--vl-white);
+  color: var(--vl-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sale-heart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  background: #FFFFFFF0;
+}
+.sale-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+.sale-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+  height: 44px;
+  color: var(--vl-ink);
+}
+.sale-meta {
+  font-size: 14px;
+  color: var(--vl-muted);
+}
+.sale-price-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  padding-top: 6px;
+}
+.sale-price {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  color: var(--vl-ink);
+}
+.sale-per {
+  font-size: 14px;
+  color: var(--vl-muted);
+}
+
+/* CTA band */
+.sale-cta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 44px 72px;
+  background: var(--vl-forest);
+}
+.sale-cta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 0;
+}
+.sale-cta-title {
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--vl-white);
+}
+.sale-cta-sub {
+  font-size: 16px;
+  line-height: 24px;
+  color: #CFDDD1;
+  width: 640px;
+  max-width: 100%;
+  margin: 0;
+}
+.sale-cta-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 15px 26px;
+  border-radius: 11px;
+  background: var(--vl-accent);
+  color: var(--vl-forest-2);
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* Mobile — по мотивам фрейма updYS */
+@media (max-width: 860px) {
+  .sale-header {
+    padding: 32px 20px;
+    gap: 14px;
+  }
+  .sale-soon {
+    padding: 7px 14px;
+    font-size: 12px;
+  }
+  .sale-title {
+    font-size: 34px;
+  }
+  .sale-sub {
+    font-size: 15px;
+    line-height: 24px;
+    width: 100%;
+  }
+  .sale-grid {
+    flex-direction: column;
+    gap: 18px;
+    padding: 24px 20px;
+  }
+  .sale-cta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 22px;
+    margin: 0 20px 24px;
+    border-radius: 16px;
+  }
+  .sale-cta-title {
+    font-size: 22px;
+  }
+  .sale-cta-sub {
+    font-size: 14px;
+    line-height: 21px;
+    width: 100%;
+  }
+  .sale-cta-btn {
+    padding: 13px 20px;
+    gap: 8px;
+    font-size: 15px;
+  }
+}

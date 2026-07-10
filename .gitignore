@@ -1,0 +1,8 @@
+/target
+/dist
+/target-test
+.DS_Store
+*.log
+
+# Claude local overrides (локальные разрешения не коммитить)
+.claude/settings.local.json

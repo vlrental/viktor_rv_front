@@ -1,0 +1,245 @@
+/* ── Checkout (co-) ─────────────────────────────────────────── */
+
+.co-body {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px 72px 64px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.co-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.co-breadcrumb-a { color: var(--vl-muted); }
+.co-breadcrumb-b { color: var(--vl-ink); font-weight: 600; }
+
+.co-title {
+  font-family: var(--font-heading);
+  font-size: 36px;
+  font-weight: 400;
+  color: var(--vl-ink);
+}
+
+.co-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 56px;
+  padding-top: 8px;
+}
+
+.co-left {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+/* карточка-секция слева */
+.co-card {
+  border: 1px solid var(--vl-hair);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+.co-card-h {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--vl-ink);
+}
+
+/* Your trip: строка label/value + Edit */
+.co-trip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.co-trip-col { display: flex; flex-direction: column; gap: 2px; }
+.co-trip-label { font-size: 14px; color: var(--vl-muted); }
+.co-trip-value { font-size: 15px; font-weight: 600; color: var(--vl-ink); }
+.co-trip-edit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vl-forest);
+  cursor: pointer;
+}
+
+/* Add-ons */
+.co-addon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  cursor: pointer;
+}
+.co-addon-l { display: flex; align-items: center; gap: 12px; }
+.co-addon-box {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--vl-hair);
+  background-color: var(--vl-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.co-addon-box.checked {
+  background-color: var(--vl-forest);
+  border-color: var(--vl-forest);
+}
+.co-addon-t { font-size: 15px; color: var(--vl-ink); }
+.co-addon-p { font-size: 15px; font-weight: 600; color: var(--vl-ink); }
+
+/* поля форм */
+.co-field { display: flex; flex-direction: column; gap: 7px; width: 100%; }
+.co-field.grow { flex: 1 1 0; width: auto; }
+.co-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vl-ink);
+}
+.co-input {
+  width: 100%;
+  background-color: var(--vl-white);
+  border: 1px solid var(--vl-hair);
+  border-radius: 10px;
+  padding: 13px 15px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--vl-ink);
+  outline: none;
+}
+.co-input::placeholder { color: var(--vl-muted); }
+.co-field-row { display: flex; gap: 16px; width: 100%; }
+
+.co-secure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--vl-muted);
+}
+
+/* ── Summary справа ── */
+.co-summary {
+  width: 390px;
+  flex-shrink: 0;
+  border: 1px solid var(--vl-hair);
+  border-radius: 18px;
+  box-shadow: 0px 12px 32px 0px #10231708;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.co-sum-item { display: flex; align-items: center; gap: 14px; width: 100%; }
+.co-sum-img {
+  width: 88px;
+  height: 70px;
+  border-radius: 10px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.co-sum-c { flex: 1 1 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.co-sum-t { font-size: 15px; font-weight: 600; color: var(--vl-ink); }
+.co-sum-r { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--vl-muted); }
+
+.co-divider { height: 1px; width: 100%; background-color: var(--vl-hair); }
+
+.co-breakdown { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.co-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.co-line-label { font-size: 15px; color: var(--vl-muted); }
+.co-line-value { font-size: 15px; color: var(--vl-ink); }
+.co-line-value.bold { font-weight: 600; }
+.co-line-lc { display: flex; flex-direction: column; gap: 1px; }
+.co-line-sub { font-size: 12px; color: var(--vl-muted); }
+
+.co-total-label {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--vl-ink);
+}
+.co-total-value {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--vl-forest);
+}
+
+.co-pay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  background-color: var(--vl-forest);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--vl-white);
+  text-decoration: none;
+  cursor: pointer;
+}
+.co-pay5 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 13px;
+  color: var(--vl-muted);
+}
+
+/* ── Mobile (по мотивам фрейма QyGrm) ── */
+@media (max-width: 860px) {
+  .co-body { padding: 22px 18px 28px 18px; gap: 20px; }
+  .co-breadcrumb { display: none; }
+  .co-title { font-size: 28px; }
+  .co-row { flex-direction: column; gap: 20px; padding-top: 0; }
+  .co-left { gap: 20px; width: 100%; }
+  .co-card { border-radius: 14px; padding: 18px; gap: 14px; }
+  .co-card-h { font-size: 18px; }
+  .co-field { gap: 6px; }
+  .co-field-label { font-size: 12px; }
+  .co-input { padding: 12px 14px; font-size: 14px; }
+  .co-field-row.stack { flex-direction: column; gap: 14px; }
+  .co-field-row { gap: 12px; }
+  .co-secure { font-size: 12px; align-items: flex-start; }
+  .co-summary {
+    width: 100%;
+    border-radius: 14px;
+    padding: 18px;
+    gap: 14px;
+    box-shadow: none;
+  }
+  .co-line-label, .co-line-value { font-size: 14px; }
+  .co-line-sub { font-size: 11px; }
+  .co-total-label {
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .co-total-value { font-size: 20px; }
+  .co-pay { font-size: 16px; }
+}

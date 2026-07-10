@@ -1,0 +1,17 @@
+[package]
+name = "viktor_rv_front"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dioxus = { version = "0.7.9", features = ["router"] }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.build-override]
+opt-level = 3

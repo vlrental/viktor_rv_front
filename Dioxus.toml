@@ -1,0 +1,9 @@
+[application]
+name = "viktor_rv_front"
+
+[web.app]
+title = "VL Rental — RV Rentals"
+
+[web.watcher]
+watch_path = ["src", "assets"]
+reload_html = true

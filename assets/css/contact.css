@@ -1,0 +1,180 @@
+/* ============================================================
+   VL Rental — Contact (Pencil: desktop v1lkS, mobile Kzp7R)
+   ============================================================ */
+
+/* --- Header (тёмная шапка страницы) --- */
+.ct-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 56px 72px;
+  background: var(--vl-forest);
+}
+.ct-title {
+  font-family: var(--font-heading);
+  font-size: 46px;
+  font-weight: 400;
+  color: var(--vl-white);
+}
+.ct-sub {
+  font-size: 17px;
+  line-height: 26px;
+  color: #CFDDD1;
+  max-width: 620px;
+}
+
+/* --- Body: форма + инфо-карточки --- */
+.ct-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+  padding: 56px 72px 72px 72px;
+}
+
+.ct-form {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 32px;
+  border: 1px solid var(--vl-hair);
+  border-radius: 18px;
+}
+.ct-form-title {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--vl-ink);
+}
+.ct-row { display: flex; gap: 16px; width: 100%; }
+.ct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.ct-field.ct-field-full { flex: none; width: 100%; }
+.ct-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vl-ink);
+}
+.ct-input,
+.ct-select,
+.ct-textarea {
+  width: 100%;
+  background: var(--vl-white);
+  border: 1px solid var(--vl-hair);
+  border-radius: 10px;
+  padding: 13px 15px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--vl-ink);
+  outline: none;
+}
+.ct-input::placeholder,
+.ct-textarea::placeholder { color: var(--vl-muted); }
+.ct-input:focus,
+.ct-select:focus,
+.ct-textarea:focus { border-color: var(--vl-sage); }
+.ct-textarea { height: 110px; resize: vertical; }
+
+.ct-select-wrap { position: relative; width: 100%; }
+.ct-select {
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--vl-muted);
+  padding-right: 40px;
+}
+.ct-select-chevron {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  display: flex;
+}
+
+.ct-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
+  padding: 15px 28px;
+  border-radius: 11px;
+  background-color: var(--vl-forest);
+  color: var(--vl-white);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* --- Инфо-колонка --- */
+.ct-info {
+  width: 400px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ct-info-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--vl-surface);
+}
+.ct-ib {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--vl-forest);
+}
+.ct-info-c { display: flex; flex-direction: column; gap: 3px; }
+.ct-info-c.ct-info-grow { flex: 1 1 0; min-width: 0; }
+.ct-info-l { font-size: 13px; color: var(--vl-muted); }
+.ct-info-v { font-size: 16px; font-weight: 600; color: var(--vl-ink); }
+.ct-social-btns { display: flex; gap: 10px; }
+.ct-social-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--vl-forest);
+}
+
+/* --- Mobile (по фрейму Kzp7R) --- */
+@media (max-width: 860px) {
+  .ct-header { padding: 36px 20px; gap: 8px; }
+  .ct-title { font-size: 34px; }
+  .ct-sub { font-size: 15px; line-height: 23px; }
+
+  .ct-body {
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px 20px 28px 20px;
+  }
+  /* На мобиле инфо-карточки идут перед формой */
+  .ct-info { order: -1; width: 100%; }
+  .ct-info-card { padding: 16px; gap: 14px; }
+  .ct-ib { width: 44px; height: 44px; border-radius: 11px; }
+  .ct-info-l { font-size: 12px; }
+  .ct-info-v { font-size: 15px; }
+
+  .ct-form { width: 100%; padding: 20px; border-radius: 16px; gap: 14px; }
+  .ct-form-title { font-size: 20px; }
+  .ct-row { flex-direction: column; gap: 14px; }
+  .ct-field { gap: 6px; }
+  .ct-label { font-size: 12px; }
+  .ct-input, .ct-select, .ct-textarea { padding: 12px 14px; font-size: 14px; }
+  .ct-textarea { height: 90px; }
+  .ct-send { width: 100%; justify-content: center; padding: 14px; gap: 8px; }
+}

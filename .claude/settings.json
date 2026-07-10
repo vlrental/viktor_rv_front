@@ -1,0 +1,11 @@
+{
+  "enabledMcpjsonServers": [
+    "supabase"
+  ],
+  "_comment_reference_project": "idyll_v2 - проект-донор: образец правил, Dioxus-паттернов, скриптов и Makefile.",
+  "referenceProject": {
+    "name": "idyll_v2",
+    "path": "C:\\code\\idyll\\idyll_v2",
+    "description": "Проект-донор. Смотреть реализацию Dioxus-фич и полную версию правил (.claude/CLAUDE.md)."
+  }
+}

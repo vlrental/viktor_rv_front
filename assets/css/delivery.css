@@ -1,0 +1,93 @@
+/* ============================================================
+   Delivery Services page (dv-)
+   Геометрия — из Pencil CWSCF (desktop) / PHnuS (mobile)
+   ============================================================ */
+
+.dv-hero {
+  display: flex; align-items: center; gap: 48px;
+  padding: 64px 72px;
+  background: var(--vl-surface);
+}
+.dv-hero-img {
+  flex: 1 1 0; min-width: 0; height: 430px;
+  border-radius: 18px;
+  background-position: center; background-size: cover; background-repeat: no-repeat;
+}
+.dv-hero-copy { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.dv-title {
+  font-family: var(--font-heading); font-weight: 400;
+  font-size: 50px; line-height: 52px;
+  color: var(--vl-ink);
+}
+.dv-sub { font-size: 17px; line-height: 27px; color: var(--vl-muted); }
+.dv-btn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 15px 26px; border-radius: 11px;
+  background-color: var(--vl-forest);
+  color: var(--vl-white);
+  font-size: 16px; font-weight: 600;
+  width: fit-content;
+}
+
+.dv-steps { display: flex; gap: 22px; padding: 16px 72px 56px 72px; }
+.dv-step {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; gap: 14px;
+  border: 1px solid var(--vl-hair);
+  border-radius: 16px;
+  padding: 26px;
+}
+.dv-step-top { display: flex; align-items: center; justify-content: space-between; }
+.dv-ib {
+  width: 50px; height: 50px; border-radius: 13px;
+  background: var(--vl-forest);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.dv-step-num { font-family: var(--font-heading); font-size: 34px; color: var(--vl-hair); }
+.dv-step-title { font-family: var(--font-heading); font-weight: 400; font-size: 22px; color: var(--vl-ink); }
+.dv-step-desc { font-size: 15px; line-height: 23px; color: var(--vl-muted); }
+
+.dv-coverage {
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  padding: 44px 72px;
+  background: var(--vl-forest);
+}
+.dv-coverage-copy { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.dv-coverage-loc { display: flex; align-items: center; gap: 9px; }
+.dv-coverage-title { font-family: var(--font-heading); font-weight: 400; font-size: 28px; color: var(--vl-white); }
+.dv-coverage-sub { font-size: 16px; line-height: 24px; color: var(--vl-line); max-width: 640px; }
+.dv-phone-btn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 15px 26px; border-radius: 11px;
+  background-color: var(--vl-accent);
+  color: var(--vl-forest-2);
+  font-size: 16px; font-weight: 600;
+  width: fit-content; flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ---------- Mobile (по мотивам PHnuS) ---------- */
+@media (max-width: 860px) {
+  .dv-hero { flex-direction: column; align-items: flex-start; gap: 12px; padding: 32px 18px; }
+  .dv-hero-img { display: none; }
+  .dv-title { font-size: 34px; line-height: 36px; }
+  .dv-sub { font-size: 15px; line-height: 24px; }
+  .dv-btn { width: 100%; justify-content: center; padding: 15px; border-radius: 12px; }
+
+  .dv-steps { flex-direction: column; gap: 14px; padding: 24px 18px; }
+  .dv-step { padding: 18px; border-radius: 14px; gap: 12px; }
+  .dv-ib { width: 46px; height: 46px; border-radius: 12px; }
+  .dv-step-num { font-size: 30px; }
+  .dv-step-title { font-size: 20px; }
+  .dv-step-desc { font-size: 14px; line-height: 21px; }
+
+  .dv-coverage {
+    flex-direction: column; align-items: flex-start; gap: 12px;
+    margin: 0 18px 28px 18px;
+    padding: 20px; border-radius: 16px;
+  }
+  .dv-coverage-title { font-size: 20px; }
+  .dv-coverage-sub { font-size: 14px; line-height: 22px; }
+  .dv-phone-btn { width: 100%; justify-content: center; }
+}

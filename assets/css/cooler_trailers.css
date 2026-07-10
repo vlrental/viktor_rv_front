@@ -1,0 +1,75 @@
+/* ============================================================
+   Cooler Trailers page (clt-)
+   Геометрия — из Pencil L2sP6M (desktop) / WXJBN (mobile)
+   ============================================================ */
+
+.clt-hero {
+  display: flex; align-items: center; gap: 48px;
+  padding: 64px 72px;
+  background: var(--vl-surface);
+}
+.clt-hero-copy { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.clt-soon {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 9999px;
+  background-color: var(--vl-coral);
+  color: var(--vl-white);
+  font-size: 13px; font-weight: 600;
+  width: fit-content;
+}
+.clt-title {
+  font-family: var(--font-heading); font-weight: 400;
+  font-size: 50px; line-height: 52px;
+  color: var(--vl-ink);
+}
+.clt-sub { font-size: 17px; line-height: 27px; color: var(--vl-muted); }
+.clt-bullets { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.clt-bullet { display: flex; align-items: center; gap: 10px; font-size: 16px; color: var(--vl-ink); }
+.clt-btn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 15px 26px; border-radius: 11px;
+  background-color: var(--vl-forest);
+  color: var(--vl-white);
+  font-size: 16px; font-weight: 600;
+  width: fit-content;
+}
+.clt-hero-img {
+  flex: 1 1 0; min-width: 0; height: 420px;
+  border-radius: 18px;
+  background-position: center; background-size: cover; background-repeat: no-repeat;
+}
+
+.clt-features { display: flex; gap: 22px; padding: 16px 72px 64px 72px; }
+.clt-card {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--vl-surface);
+  border-radius: 16px;
+  padding: 24px;
+}
+.clt-ib {
+  width: 48px; height: 48px; border-radius: 12px;
+  background: var(--vl-forest);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.clt-card-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.clt-card-title { font-size: 17px; font-weight: 600; color: var(--vl-ink); }
+.clt-card-desc { font-size: 14px; line-height: 21px; color: var(--vl-muted); }
+
+/* ---------- Mobile (по мотивам WXJBN) ---------- */
+@media (max-width: 860px) {
+  .clt-hero { flex-direction: column; align-items: flex-start; gap: 14px; padding: 32px 18px; }
+  .clt-soon { padding: 7px 14px; font-size: 12px; }
+  .clt-title { font-size: 34px; line-height: 36px; }
+  .clt-sub { font-size: 15px; line-height: 24px; }
+  .clt-hero-img { display: none; }
+  .clt-btn { width: 100%; justify-content: center; padding: 15px; border-radius: 12px; }
+
+  .clt-features { flex-direction: column; gap: 14px; padding: 24px 18px 28px 18px; }
+  .clt-card { flex-direction: row; gap: 14px; padding: 16px; border-radius: 14px; }
+  .clt-ib { width: 46px; height: 46px; }
+  .clt-card-body { gap: 3px; }
+  .clt-card-title { font-size: 16px; }
+  .clt-card-desc { font-size: 13px; line-height: 20px; }
+}
