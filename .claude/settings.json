@@ -7,5 +7,10 @@
     "name": "idyll_v2",
     "path": "C:\\code\\idyll\\idyll_v2",
     "description": "Проект-донор. Смотреть реализацию Dioxus-фич и полную версию правил (.claude/CLAUDE.md)."
+  },
+  "backend": {
+    "name": "viktor_rv_back",
+    "path": "C:\\work\\web_sites\\rv_rental\\viktor_rv_back",
+    "description": "API-бэкенд этого фронта: Rust + Axum + SQLx + PostgreSQL. Карта — .claude/CLAUDE.md §12; свои правила — viktor_rv_back/AGENTS.md."
   }
 }

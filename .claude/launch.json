@@ -6,9 +6,9 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
-        "cd /d C:\\work\\web_sites\\rv_rental\\viktor_rv_front && dx serve --port 8090 --session-cache-dir target/dx/dev-session-8090"
+        "cd /d C:\\work\\web_sites\\rv_rental\\viktor_rv_front && dx serve --port 8081 --session-cache-dir target/dx/dev-session-8081"
       ],
-      "port": 8090,
+      "port": 8081,
       "autoPort": false
     }
   ]

@@ -3,7 +3,7 @@
 > Rust + Dioxus 0.7.9 → Web. Сайт аренды RV/лодок под клиента (UI на английском, рынок — Канада).
 > Правила курированы из проекта-донора **idyll_v2** (`C:\code\idyll\idyll_v2\.claude\CLAUDE.md`) —
 > там полная версия с idyll-специфичными разделами (social, offline-sync, notes, android, desktop, deploy).
-> Бэкенд планируется на **Supabase**.
+> Бэкенд этого фронта — отдельный проект **viktor_rv_back** (Rust + Axum + SQLx + PostgreSQL), карта в §12.
 
 ---
 
@@ -25,9 +25,9 @@
 ### 0.2 Серверы и браузер (000.SERVER / 000.BROWSER)
 - Локальный dev-сервер запускает ВЛАДЕЛЕЦ (`make c`, порт 8080). Ассистент НЕ запускает
   `dx serve`/`cargo run` сам; перезапуск — только по прямой команде. Никогда не отключать hot-reload.
-- Только ОДИН `dx serve` за раз (общий `target/`-лок). Второй сервер (превью, порт 8090 из
+- Только ОДИН `dx serve` за раз (общий `target/`-лок). Второй сервер (превью, порт 8081 из
   `.claude/launch.json`) поднимать только когда нужен независимый превью — у него свой
-  `--session-cache-dir`, чтобы не драться с `make c`.
+  `--session-cache-dir`, чтобы не драться с `make c`. (Порт :8090 занят бэком — превью не на нём.)
 - Живой браузер-автомат (agent-browser, computer-use, claude-in-chrome) — только по прямой команде.
 - Preview-MCP (инспектор превью) — использовать свободно для проверки своих правок; подцепляться к
   уже запущенному серверу, не поднимать конкурента вслепую.
@@ -38,13 +38,14 @@
 - Цвета — через CSS-переменные (единый источник), а не хардкод-хексы вразнобой. Не использовать чистый
   `#FFFFFF` для крупных поверхностей (Chrome местами инвертирует) — брать `#F5F5F5` / токен.
 
-### 0.4 Supabase / SQL (000.SQL.SUPABASE)
-- Изменение схемы БД ассистент выполняет САМ через Supabase MCP (когда он авторизован), не оставляет юзеру.
-- Порядок: идемпотентный DDL в коде/миграции → тот же DDL в Supabase через MCP → проверить `select`
-  из `information_schema`.
-- DDL — только идемпотентный (`IF NOT EXISTS`). Деструктив (DROP, массовый UPDATE/DELETE) — только по команде.
-- MCP не авторизован — сказать явно (нужен `/mcp` в интерактиве), SQL продублировать блоком в ответе.
-- Секреты/ключи Supabase — только в бэкенд/env, НИКОГДА в фронт-WASM и не выводить в чат.
+### 0.4 Бэкенд и БД (000.BACKEND.DB)
+- API-бэкенд этого фронта — отдельный проект `viktor_rv_back` (Rust + Axum + SQLx + PostgreSQL). Полная карта — §12.
+- Схему БД держит БЭК: `viktor_rv_back/sql/schema.sql` (идемпотентный DDL) + сиды. Менять схему — правкой в бэк-репо
+  и прогоном против Postgres, НЕ ad-hoc-командами мимо репозитория. SQL в бэке живёт только в `src/routers/base/*`.
+- Если Postgres хостится на Supabase — MCP (`.mcp.json`) можно использовать для инспекции/прогона того же DDL;
+  только идемпотентный, деструктив (DROP, массовый UPDATE/DELETE) — по команде. MCP не авторизован → сказать
+  (нужен `/mcp`), SQL продублировать блоком.
+- Секреты/`DATABASE_URL`/`ADMIN_API_TOKEN` — только в `.env` бэка, НИКОГДА в фронт-WASM и не выводить в чат.
 
 ### 0.5 Вопросы — спрашивать СРАЗУ (000.ASK.IMMEDIATE)
 - Развилка, которую решает ВЛАДЕЛЕЦ (продуктовые критерии, трактовка, объём/риск) — спросить СРАЗУ
@@ -406,4 +407,72 @@ src/pages/example/         (или один файл src/pages/example.rs для
 | `make k` | убить зависший dev-сервер на :8080 (`scripts/kill-dev.ps1`) |
 | `make cc` | запустить Claude Code |
 
-Превью-инспектор (второй сервер, :8090) — из `.claude/launch.json` (`rv-preview`), поднимать только когда нужен независимый превью.
+Превью-инспектор (второй сервер, :8081) — из `.claude/launch.json` (`rv-preview`), поднимать только когда нужен независимый превью.
+
+---
+
+## 12. БЭКЕНД (viktor_rv_back) — КАРТА
+
+> Путь: `C:\work\web_sites\rv_rental\viktor_rv_back`. Отдельный git-репозиторий и отдельный процесс —
+> это API-бэкенд ИМЕННО этого фронта. Свои правила — `viktor_rv_back/AGENTS.md` (читать при работе по бэку).
+
+**Стек:** Rust + Axum 0.8 + SQLx 0.8 (Postgres; НЕ compile-time-checked — обычные `query`/`query_as`) +
+PostgreSQL 16. Деньги — `rust_decimal`. Время — всегда UTC. Токены брони — только хеш (sha2).
+
+**Архитектура (канон бэка):** `web handler → BMC (src/routers) → src/routers/base (SQL)`.
+Web-хендлер только парсит транспорт и зовёт BMC. Бизнес-правила — в `src/routers/*`. SQL — ТОЛЬКО в
+`src/routers/base/*`. Public catalog/content НЕ отдают данные клиентов. Admin/owner — серверная авторизация (Bearer).
+
+**Где что лежит:**
+
+| Путь | Что там |
+|---|---|
+| `src/main.rs` | Точка входа: tokio, `Config::from_env`, `ModelManager`, `web::routes`, `axum::serve`. |
+| `src/config.rs` | ENV → `Config`: `APP_HOST`/`APP_PORT`(8090)/`DATABASE_URL`/`PUBLIC_BASE_URL`/`ADMIN_API_TOKEN`(≥24 симв.)/`ALLOWED_ORIGINS`. |
+| `src/model_manager.rs` | `PgPool` (max 12 conn) + `Config`. Это axum `State` всех хендлеров. |
+| `src/error.rs` | `Error` → HTTP+JSON `{ok:false, error:{code,message}}`. Коды: `validation_error/not_found/conflict/unauthorized/internal_error`. |
+| `src/web/mod.rs` | `Router`: все маршруты + CORS + лимит тела 1 МБ + trace. |
+| `src/web/rest.rs` | REST-хендлеры (парс транспорта → BMC); `require_admin`/`bearer_token`, заголовок `x-booking-token`. |
+| `src/web/rpc.rs` | `/api/rpc` — Idyll-стиль диспетчер `vl_*` методов → BMC. |
+| `src/domain/models.rs` | **КОНТРАКТ ДАННЫХ** (что фронт получит): `RentalUnit/Media/Feature/Addon`, `RentalPricing`, `DeliveryRule`, `Quote/QuoteLineItem`, `Booking`, `ContentPage` + `Create*Request`/`Return*` DTO. |
+| `src/routers/{catalog,quote,booking}.rs` | BMC — бизнес-логика (проверка пересечений дат, расчёт котировки, создание брони с immutable-снапшотом). |
+| `src/routers/base/{catalog,quote,booking,content}_base.rs` | ТОЛЬКО SQL. |
+| `src/integrations/{payments,calendars}.rs` | Адаптеры Stripe + iCal. **ОТКЛЮЧЕНЫ** (`#[allow(dead_code)]`) до прод-кредов — внешние вызовы не дёргать. |
+| `sql/schema.sql` | DDL (идемпотентный). `sql/seed_vlrental.sql` — сид rentals; `sql/seed_content.sql` — сид контент-страниц (генерится). |
+| `scripts/export_vlrental.py`, `build_content_seed.py` | Регенерация контента с текущего сайта → `data/export/public_site.json` → `sql/seed_content.sql`. Экспорт — только public, без клиентских данных. |
+| `docker-compose.yml` | `postgres:16` (порт **5442**, БД `viktor_rv`) + `rustapp` (порт **8090**). Схема+сиды грузятся при init. |
+| `.env` | gitignored. Секреты/`DATABASE_URL`/`ADMIN_API_TOKEN` — НИКОГДА в git и не в ответ. |
+
+**Таблицы БД (`sql/schema.sql`):** `rental_units`, `rental_media`, `rental_features`, `rental_rate_plans`,
+`rental_addons`, `delivery_rules`, `availability_blocks`, `external_calendars`, `customers`,
+`rental_owners`, `owner_rentals`, `quotes`, `quote_items`, `bookings`, `booking_events`, `payments`,
+`agreements`, `content_pages`.
+
+**API — что зовёт фронт** (база `http://127.0.0.1:8090`):
+- REST `/api/v1`:
+  - `GET /health`
+  - `GET /catalog` → `{rentals:[RentalUnit]}`
+  - `GET /rentals/{slug}` → `{rental, media, features, addons}`
+  - `GET /content/{slug}` → `{page}`
+  - `POST /quotes` (`CreateQuoteRequest`) → `{quote, items}` — **сервер сам считает цену/налоги/депозит**
+  - `POST /bookings` (`CreateBookingRequest{quote_id, first_name, last_name, email, phone, notes}`) → `{booking, access_token}` (токен приходит ОДИН раз)
+  - `GET /bookings/{booking_id}` + заголовок `x-booking-token`
+  - `GET /admin/bookings` + `Authorization: Bearer <ADMIN_API_TOKEN>`; `PATCH /admin/bookings/{id}/status`
+  - `GET /owner/bookings` + `Bearer <owner token>`
+- RPC `/api/rpc` (POST `{id, method, params}`): `vl_get_catalog`, `vl_get_rental{slug}`, `vl_get_content_page{slug}`, `vl_create_quote`, `vl_create_booking`, `vl_get_booking{booking_id, access_token}`.
+
+**Запуск бэка (локально):** `docker compose up --build` в `viktor_rv_back` (нужен `.env` с `ADMIN_API_TOKEN`≥24). Бэк → `:8090`, Postgres → `:5442`.
+
+**Деплой (прод):** GitHub Actions по схеме drako — образ → Docker Hub → SSH на сервер → `.env` из
+GitHub Secrets → `docker compose up` → healthcheck `/health`. Файлы: `.github/workflows/prod.yml`
+(деплой на push в `main`) + `db-init.yml` (разовый накат `sql/schema.sql` в Supabase), `docker-compose.prod.yml`.
+Полная инструкция и список секретов — `viktor_rv_back/DEPLOY.md`.
+
+**Интеграция фронт ↔ бэк (важно):**
+- Фронт СЕЙЧАС на статик-моках (`src/data.rs`). Перевод на бэк: добавить слой HTTP-клиента (по §4: UI → слой
+  данных → транспорт), дёргать REST `/api/v1` или RPC `/api/rpc`; формы моделей — из `domain/models.rs`.
+- **Деньги считает сервер** (`POST /quotes`): фронт НЕ пересчитывает цены/налоги, показывает серверные `subtotal/tax_total/total/refundable_deposit`.
+- **CORS:** бэк пускает только origin'ы из `ALLOWED_ORIGINS` (дефолт `:3000`). Для локальной связки добавить в
+  `.env` бэка origin `make c` фронта — `http://127.0.0.1:8080,http://localhost:8080`.
+- **Порты:** бэк = **:8090**, Postgres = **:5442**, `make c` фронта = **:8080**, превью фронта = **:8081**.
+- **Booking token:** приходит один раз при создании брони — сохранить на клиенте (для `GET /bookings/{id}`); на сервере хранится только хеш.
