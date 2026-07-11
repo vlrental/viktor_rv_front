@@ -8,6 +8,7 @@ fn AuthForm(register: bool) -> Element {
     let mut error = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let nav = use_navigator();
+    let google_href = api::google_login_url();
     let submit = move |_| {
         let email_value = email.read().clone();
         let password_value = password.read().clone();
@@ -43,7 +44,7 @@ fn AuthForm(register: bool) -> Element {
                 div { class: "auth-form",
                     h2 { if register { "Create your account" } else { "Sign in" } }
                     p { class: "auth-intro", if register { "Use Google or create a password." } else { "Continue to your booking or dashboard." } }
-                    a { class: "auth-google", href: "{api::API_BASE}/api/v1/auth/google",
+                    a { class: "auth-google", href: google_href,
                         span { class: "auth-google-mark", "G" }
                         "Continue with Google"
                     }
@@ -106,7 +107,11 @@ pub fn AuthCallback() -> Element {
                     },
                 };
                 let _ = api::save_session(&tokens);
-                nav.replace(Route::Account {});
+                if api::take_auth_return().as_deref() == Some("/checkout") {
+                    nav.replace(Route::Checkout {});
+                } else {
+                    nav.replace(Route::Account {});
+                }
             }
         }
     });

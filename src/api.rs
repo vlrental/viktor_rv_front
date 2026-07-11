@@ -6,6 +6,32 @@ pub const API_BASE: &str = match option_env!("VL_API_BASE_URL") {
     None => "https://api.vlrental.ca",
 };
 
+pub fn google_login_url() -> String {
+    let frontend_origin = web_sys::window()
+        .and_then(|window| window.location().origin().ok())
+        .unwrap_or_else(|| "https://vlrental.ca".to_string());
+    format!(
+        "{API_BASE}/api/v1/auth/google?return_to={}",
+        urlencoding::encode(&frontend_origin)
+    )
+}
+
+pub fn remember_auth_return(path: &str) {
+    if let Some(storage) = web_sys::window()
+        .and_then(|window| window.session_storage().ok())
+        .flatten()
+    {
+        let _ = storage.set_item("vl_auth_return", path);
+    }
+}
+
+pub fn take_auth_return() -> Option<String> {
+    let storage = web_sys::window()?.session_storage().ok().flatten()?;
+    let path = storage.get_item("vl_auth_return").ok().flatten();
+    let _ = storage.remove_item("vl_auth_return");
+    path
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AuthUser {
     pub user_id: String,

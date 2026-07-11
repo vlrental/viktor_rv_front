@@ -10,9 +10,7 @@ const CSS: Asset = asset!("/assets/css/checkout.css");
 /// Страница оформления брони — Pencil-фреймы Q6oqIF (desktop) / QyGrm (mobile).
 #[component]
 pub fn Checkout() -> Element {
-    if api::current_user().is_none() {
-        return rsx! { section { class: "account-page", div { class: "account-empty", h1 { "Sign in to book" } p { "Create an account or sign in before confirming your rental." } Link { class: "btn-forest", to: Route::Login {}, "Sign in to continue" } } } };
-    }
+    let signed_in = api::current_user().is_some();
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "co-body",
@@ -29,7 +27,7 @@ pub fn Checkout() -> Element {
                     GuestDetailsCard {}
                     PaymentCard {}
                 }
-                SummaryCard {}
+                SummaryCard { signed_in }
             }
         }
     }
@@ -145,7 +143,8 @@ fn PaymentCard() -> Element {
 }
 
 #[component]
-fn SummaryCard() -> Element {
+fn SummaryCard(signed_in: bool) -> Element {
+    let google_href = api::google_login_url();
     rsx! {
         div { class: "co-summary",
             div { class: "co-sum-item",
@@ -181,7 +180,22 @@ fn SummaryCard() -> Element {
                     span { class: "co-total-value", "CA$879.20" }
                 }
             }
-            Link { class: "co-pay", to: Route::Confirmed {}, "Confirm and pay" }
+            if signed_in {
+                Link { class: "co-pay", to: Route::Confirmed {}, "Confirm and pay" }
+            } else {
+                div { class: "co-auth-choice",
+                    h2 { "Sign in to confirm" }
+                    p { "Your trip details stay here while you sign in." }
+                    a {
+                        class: "co-google",
+                        href: google_href,
+                        onclick: move |_| api::remember_auth_return("/checkout"),
+                        span { class: "co-google-mark", "G" }
+                        "Continue with Google"
+                    }
+                    Link { class: "co-email-login", to: Route::Login {}, "Use email and password" }
+                }
+            }
             div { class: "co-pay5",
                 Icon { name: "calendar-clock", size: 14, color: "var(--vl-muted)" }
                 span { "Full payment due 5 days before your rental" }

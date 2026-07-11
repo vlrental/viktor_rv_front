@@ -201,6 +201,63 @@
   text-decoration: none;
   cursor: pointer;
 }
+.co-auth-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+}
+.co-auth-choice h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--vl-ink);
+}
+.co-auth-choice p {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--vl-muted);
+}
+.co-google,
+.co-email-login {
+  min-height: 48px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.co-google {
+  gap: 10px;
+  border: 1px solid var(--vl-hair);
+  color: var(--vl-ink);
+  background: var(--vl-white);
+}
+.co-google:hover { border-color: var(--vl-forest); }
+.co-email-login {
+  color: var(--vl-forest);
+  background: transparent;
+}
+.co-google:focus-visible,
+.co-email-login:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--vl-accent) 45%, transparent);
+  outline-offset: 2px;
+}
+.co-google-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #4285f4;
+  background: var(--vl-white);
+}
 .co-pay5 {
   display: flex;
   align-items: center;
