@@ -11,7 +11,11 @@ const LOGO: Asset = asset!("/assets/img/logo.png");
 pub fn Header() -> Element {
     let route = use_route::<Route>();
     let overlay = matches!(route, Route::Home {});
-    let class = if overlay { "site-header overlay" } else { "site-header" };
+    let class = if overlay {
+        "site-header overlay"
+    } else {
+        "site-header"
+    };
 
     rsx! {
         header { class: "{class}",
@@ -31,6 +35,9 @@ pub fn Header() -> Element {
                     span { "{PHONE}" }
                 }
                 Link { class: "nav-link", to: Route::Contact {}, "Contact" }
+                Link { class: "nav-account", to: Route::Account {}, aria_label: "Account",
+                    Icon { name: "circle-user-round", size: 20, color: "currentColor" }
+                }
                 Link { class: "nav-cta", to: Route::Catalog {}, "Book now" }
             }
         }

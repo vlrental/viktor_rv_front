@@ -1,4 +1,5 @@
 mod components;
+mod api;
 mod data;
 mod pages;
 
@@ -46,6 +47,14 @@ pub enum Route {
         RvSales {},
         #[route("/terms")]
         Terms {},
+        #[route("/login")]
+        Login {},
+        #[route("/register")]
+        Register {},
+        #[route("/auth/callback")]
+        AuthCallback {},
+        #[route("/account")]
+        Account {},
 }
 
 #[component]

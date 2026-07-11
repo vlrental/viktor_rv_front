@@ -11,6 +11,7 @@ mod restaurants;
 mod rv_detail;
 mod rv_sales;
 mod terms;
+mod auth;
 
 pub use about::About;
 pub use attractions::Attractions;
@@ -25,3 +26,4 @@ pub use restaurants::Restaurants;
 pub use rv_detail::RvDetail;
 pub use rv_sales::RvSales;
 pub use terms::Terms;
+pub use auth::{Account, AuthCallback, Login, Register};

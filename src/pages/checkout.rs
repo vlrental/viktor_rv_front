@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::api;
 use crate::components::Icon;
 use crate::data::IMG_JAYCO;
 use crate::Route;
@@ -9,6 +10,9 @@ const CSS: Asset = asset!("/assets/css/checkout.css");
 /// Страница оформления брони — Pencil-фреймы Q6oqIF (desktop) / QyGrm (mobile).
 #[component]
 pub fn Checkout() -> Element {
+    if api::current_user().is_none() {
+        return rsx! { section { class: "account-page", div { class: "account-empty", h1 { "Sign in to book" } p { "Create an account or sign in before confirming your rental." } Link { class: "btn-forest", to: Route::Login {}, "Sign in to continue" } } } };
+    }
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "co-body",
