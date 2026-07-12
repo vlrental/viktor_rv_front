@@ -1,6 +1,8 @@
 //! Страница RV Detail / Booking — Pencil-фреймы `l3JikE` (desktop) и `wjWTt` (mobile).
 
 use dioxus::prelude::*;
+use chrono::{DateTime, Datelike, Duration, LocalResult, Months, NaiveDate, TimeZone, Timelike, Utc};
+use chrono_tz::America::Vancouver;
 
 use crate::{api, components::Icon};
 use crate::data::{
@@ -12,6 +14,9 @@ const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 
 #[component]
 pub fn RvDetail(slug: String) -> Element {
+    let starts_on = use_signal(String::new);
+    let ends_on = use_signal(String::new);
+    let availability_version = use_signal(|| 0_u32);
     let api_slug = slug.clone();
     let details = use_resource(move || {
         let value = api_slug.clone();
@@ -50,9 +55,9 @@ pub fn RvDetail(slug: String) -> Element {
                     Amenities {}
                     GoodToKnow {}
                 }
-                BookingCard { listing: l }
+                BookingCard { listing: l, starts_on, ends_on, availability_version }
             }
-            Availability { price: l.price }
+            Availability { slug: l.slug, price: l.price, starts_on, ends_on, availability_version }
             AddOns {}
         }
     }
@@ -274,9 +279,12 @@ fn GtkCard(icon: &'static str, title: &'static str, desc: &'static str) -> Eleme
 }
 
 #[component]
-fn BookingCard(listing: Listing) -> Element {
-    let mut starts_on = use_signal(|| "2026-08-12".to_string());
-    let mut ends_on = use_signal(|| "2026-08-15".to_string());
+fn BookingCard(
+    listing: Listing,
+    mut starts_on: Signal<String>,
+    mut ends_on: Signal<String>,
+    mut availability_version: Signal<u32>,
+) -> Element {
     let mut guests = use_signal(|| 2_i32);
     let mut delivery = use_signal(|| true);
     let mut busy = use_signal(|| false);
@@ -292,6 +300,10 @@ fn BookingCard(listing: Listing) -> Element {
             delivery_km: (*delivery.read()).then(|| "25".to_string()),
         };
         async move {
+            if draft.starts_on.is_empty() || draft.ends_on.is_empty() {
+                error.set("Choose pickup and return dates first.".into());
+                return;
+            }
             busy.set(true);
             error.set(String::new());
             match api::create_quote(&draft).await {
@@ -304,7 +316,15 @@ fn BookingCard(listing: Listing) -> Element {
                         error.set("Could not save your booking progress.".into());
                     }
                 }
-                Err(message) => error.set(message),
+                Err(message) => {
+                    if message.contains("unavailable") || message.contains("conflict") {
+                        let next_version = *availability_version.read() + 1;
+                        availability_version.set(next_version);
+                        error.set("Those dates were just booked. The calendar has been refreshed — please choose another period.".into());
+                    } else {
+                        error.set(message);
+                    }
+                },
             }
             busy.set(false);
         }
@@ -329,12 +349,12 @@ fn BookingCard(listing: Listing) -> Element {
             div { class: "rvd-fields",
                 div { class: "rvd-fields-dates",
                     div { class: "rvd-field",
-                        div { class: "rvd-field-l", "CHECK-IN" }
+                        div { class: "rvd-field-l", "PICKUP · 2:00 PM" }
                         input { class: "rvd-field-v", r#type: "date", value: "{starts_on}", oninput: move |e| starts_on.set(e.value()) }
                     }
                     div { class: "rvd-field-vd" }
                     div { class: "rvd-field",
-                        div { class: "rvd-field-l", "CHECK-OUT" }
+                        div { class: "rvd-field-l", "RETURN · 11:00 AM" }
                         input { class: "rvd-field-v", r#type: "date", value: "{ends_on}", oninput: move |e| ends_on.set(e.value()) }
                     }
                 }
@@ -358,7 +378,7 @@ fn BookingCard(listing: Listing) -> Element {
             button { class: "rvd-reserve", disabled: *busy.read(), onclick: reserve,
                 if *busy.read() { "Checking availability…" } else { "Reserve" }
             }
-            div { class: "rvd-note", "Full payment due 5 days before your rental" }
+            div { class: "rvd-note", "Test booking · no card charged · 3-night minimum" }
             div { class: "rvd-breakdown",
                 div { class: "rvd-bd-row",
                     span { class: "rvd-bd-l", "{listing.price} × 3 nights" }
@@ -397,95 +417,136 @@ fn BookingCard(listing: Listing) -> Element {
     }
 }
 
-// ===== Календарь доступности =====
+// ===== Live availability calendar =====
 
-/// Состояние дня в календаре.
-#[derive(Clone, Copy, PartialEq)]
-enum Day {
-    Blank,
-    Avail(u8),
-    Booked(u8),
-    /// Check-in / check-out — тёмная плашка.
-    Edge(u8),
-    /// Ночи внутри брони — мятная заливка.
-    Stay(u8),
+fn month_start(date: NaiveDate) -> NaiveDate {
+    date.with_day(1).expect("valid first day of month")
 }
 
-fn push(v: &mut Vec<Day>, from: u8, to: u8, f: fn(u8) -> Day) {
-    for d in from..=to {
-        v.push(f(d));
+fn add_months(date: NaiveDate, count: u32) -> NaiveDate {
+    date.checked_add_months(Months::new(count)).expect("calendar range is valid")
+}
+
+fn calendar_cells(month: NaiveDate) -> Vec<Option<NaiveDate>> {
+    let mut cells = vec![None; month.weekday().num_days_from_sunday() as usize];
+    let next = add_months(month, 1);
+    let mut day = month;
+    while day < next {
+        cells.push(Some(day));
+        day += Duration::days(1);
+    }
+    while cells.len() % 7 != 0 { cells.push(None); }
+    cells
+}
+
+type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
+
+fn unavailable_ranges(value: &api::AvailabilityResponse) -> Vec<UnavailableRange> {
+    let mut ranges = Vec::new();
+    for interval in &value.unavailable {
+        let Ok(start) = chrono::DateTime::parse_from_rfc3339(&interval.starts_at) else { continue };
+        let Ok(end) = chrono::DateTime::parse_from_rfc3339(&interval.ends_at) else { continue };
+        ranges.push((start.with_timezone(&Utc), end.with_timezone(&Utc)));
+    }
+    ranges
+}
+
+fn local_moment(day: NaiveDate, hour: u32) -> Option<DateTime<Utc>> {
+    let naive = day.and_hms_opt(hour, 0, 0)?;
+    match Vancouver.from_local_datetime(&naive) {
+        LocalResult::Single(value) => Some(value.with_timezone(&Utc)),
+        _ => None,
     }
 }
 
-fn july_cells() -> Vec<Day> {
-    let mut v = vec![Day::Blank; 3];
-    push(&mut v, 1, 3, Day::Booked);
-    push(&mut v, 4, 7, Day::Avail);
-    push(&mut v, 8, 9, Day::Booked);
-    push(&mut v, 10, 11, Day::Avail);
-    v.push(Day::Edge(12));
-    push(&mut v, 13, 14, Day::Stay);
-    v.push(Day::Edge(15));
-    push(&mut v, 16, 18, Day::Avail);
-    push(&mut v, 19, 20, Day::Booked);
-    push(&mut v, 21, 25, Day::Avail);
-    push(&mut v, 26, 27, Day::Booked);
-    push(&mut v, 28, 30, Day::Avail);
-    v.push(Day::Booked(31));
-    v.push(Day::Blank);
-    v
+fn range_is_available(start: DateTime<Utc>, end: DateTime<Utc>, unavailable: &[UnavailableRange]) -> bool {
+    unavailable.iter().all(|(blocked_start, blocked_end)| *blocked_start >= end || *blocked_end <= start)
 }
 
-fn august_cells() -> Vec<Day> {
-    let mut v = vec![Day::Blank; 6];
-    push(&mut v, 1, 2, Day::Booked);
-    push(&mut v, 3, 6, Day::Avail);
-    push(&mut v, 7, 9, Day::Booked);
-    push(&mut v, 10, 14, Day::Avail);
-    push(&mut v, 15, 16, Day::Booked);
-    push(&mut v, 17, 21, Day::Avail);
-    push(&mut v, 22, 23, Day::Booked);
-    push(&mut v, 24, 28, Day::Avail);
-    push(&mut v, 29, 30, Day::Booked);
-    v.push(Day::Avail(31));
-    v.extend([Day::Blank; 5]);
-    v
+fn stay_is_available(starts_on: NaiveDate, ends_on: NaiveDate, unavailable: &[UnavailableRange]) -> bool {
+    match (local_moment(starts_on, 14), local_moment(ends_on, 11)) {
+        (Some(start), Some(end)) => range_is_available(start, end, unavailable),
+        _ => false,
+    }
 }
 
-fn september_cells() -> Vec<Day> {
-    let mut v = vec![Day::Blank; 2];
-    push(&mut v, 1, 9, Day::Avail);
-    push(&mut v, 10, 12, Day::Booked);
-    push(&mut v, 13, 17, Day::Avail);
-    push(&mut v, 18, 19, Day::Booked);
-    push(&mut v, 20, 24, Day::Avail);
-    push(&mut v, 25, 30, Day::Booked);
-    v.extend([Day::Blank; 3]);
-    v
+fn minimum_stay_can_start(day: NaiveDate, minimum_nights: i64, unavailable: &[UnavailableRange]) -> bool {
+    stay_is_available(day, day + Duration::days(minimum_nights), unavailable)
+}
+
+#[cfg(test)]
+mod availability_tests {
+    use super::*;
+
+    fn day(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    #[test]
+    fn previous_return_day_is_available_for_pickup() {
+        let return_day = day(2030, 8, 10);
+        let blocked = vec![(local_moment(day(2030, 8, 1), 14).unwrap(), local_moment(return_day, 11).unwrap())];
+        assert!(minimum_stay_can_start(return_day, 3, &blocked));
+    }
+
+    #[test]
+    fn next_pickup_day_is_available_for_return() {
+        let turnover_day = day(2030, 8, 10);
+        let blocked = vec![(local_moment(turnover_day, 14).unwrap(), local_moment(day(2030, 8, 13), 11).unwrap())];
+        assert!(stay_is_available(day(2030, 8, 7), turnover_day, &blocked));
+    }
+
+    #[test]
+    fn partial_afternoon_block_prevents_pickup() {
+        let blocked_day = day(2030, 8, 10);
+        let blocked = vec![(local_moment(blocked_day, 15).unwrap(), local_moment(blocked_day, 16).unwrap())];
+        assert!(!minimum_stay_can_start(blocked_day, 3, &blocked));
+    }
+}
+
+fn selected_date(value: &Signal<String>) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(&value.read(), "%Y-%m-%d").ok()
 }
 
 #[component]
-fn Availability(price: &'static str) -> Element {
+fn Availability(
+    slug: &'static str,
+    price: &'static str,
+    mut starts_on: Signal<String>,
+    mut ends_on: Signal<String>,
+    availability_version: Signal<u32>,
+) -> Element {
+    let initial_month = month_start(Utc::now().with_timezone(&Vancouver).date_naive());
+    let mut visible_month = use_signal(|| initial_month);
+    let availability = use_resource(move || {
+        let _version = *availability_version.read();
+        async move {
+            api::availability(slug, &initial_month.to_string(), &add_months(initial_month, 18).to_string()).await
+        }
+    });
+    let response = availability.read().as_ref().and_then(|result| result.as_ref().ok()).cloned();
+    let availability_loaded = response.is_some();
+    let unavailable = response.as_ref().map(unavailable_ranges).unwrap_or_default();
+    let minimum_nights = response.as_ref().map(|value| value.minimum_nights).unwrap_or(3);
+    let start = selected_date(&starts_on);
+    let end = selected_date(&ends_on);
+    let nights = start.zip(end).map(|(a, b)| (b - a).num_days()).unwrap_or(0);
+    let calendar_error = availability.read().as_ref().and_then(|result| result.as_ref().err()).cloned();
+
     rsx! {
         div { class: "rvd-avail",
             div { class: "rvd-avail-head",
                 div {
                     h2 { class: "rvd-avail-t", "Availability & instant quote" }
-                    div { class: "rvd-avail-s",
-                        "Select your check-in and check-out dates to get an instant quote for your stay."
-                    }
+                    div { class: "rvd-avail-s", "Choose pickup at 2:00 PM and return at 11:00 AM · 3-night minimum." }
                 }
                 div { class: "rvd-legend",
                     for (bg , label) in [
-                        ("background-color: var(--vl-forest);", "Check-in / out"),
+                        ("background-color: var(--vl-forest);", "Pickup / return"),
                         ("background-color: var(--vl-mint);", "Your stay"),
-                        (
-                            "background-color: var(--vl-white); border: 1px solid var(--vl-hair);",
-                            "Available",
-                        ),
+                        ("background-color: var(--vl-white); border: 1px solid var(--vl-hair);", "Available"),
                         ("background-color: var(--vl-hair);", "Booked"),
-                    ]
-                    {
+                    ] {
                         div { key: "lg-{label}", class: "rvd-legend-item",
                             div { class: "rvd-legend-dot", style: bg }
                             span { "{label}" }
@@ -493,43 +554,47 @@ fn Availability(price: &'static str) -> Element {
                     }
                 }
             }
+            if let Some(message) = calendar_error {
+                p { class: "auth-error", role: "alert", "Could not load availability: {message}" }
+            }
             div { class: "rvd-cal",
                 div { class: "rvd-cal-months",
-                    CalendarMonth {
-                        title: "July 2026",
-                        nav_prev: true,
-                        nav_next: false,
-                        price,
-                        cells: july_cells(),
-                    }
-                    CalendarMonth {
-                        title: "August 2026",
-                        nav_prev: false,
-                        nav_next: false,
-                        price,
-                        cells: august_cells(),
-                    }
-                    CalendarMonth {
-                        title: "September 2026",
-                        nav_prev: false,
-                        nav_next: true,
-                        price,
-                        cells: september_cells(),
+                    for offset in 0..3_u32 {
+                        CalendarMonth {
+                            month: add_months(*visible_month.read(), offset),
+                            show_prev: offset == 0,
+                            show_next: offset == 2,
+                            price,
+                            availability_loaded,
+                            unavailable: unavailable.clone(),
+                            minimum_nights,
+                            starts_on,
+                            ends_on,
+                            on_prev: move |_| {
+                                if *visible_month.read() > initial_month {
+                                    let previous = visible_month.read().checked_sub_months(Months::new(1)).unwrap();
+                                    visible_month.set(previous);
+                                }
+                            },
+                            on_next: move |_| {
+                                let next = add_months(*visible_month.read(), 1);
+                                if next <= add_months(initial_month, 15) { visible_month.set(next); }
+                            },
+                        }
                     }
                 }
                 div { class: "rvd-quote",
                     div { class: "rvd-quote-l",
-                        div { class: "rvd-quote-ic",
-                            Icon { name: "zap", size: 18, color: "var(--vl-white)" }
-                        }
+                        div { class: "rvd-quote-ic", Icon { name: "zap", size: 18, color: "var(--vl-white)" } }
                         div {
-                            div { class: "rvd-quote-t", "Jul 12 → Jul 15 · 3 nights" }
-                            div { class: "rvd-quote-s", "Instant quote · taxes added at checkout" }
+                            div { class: "rvd-quote-t",
+                                if nights >= 3 { "{starts_on} → {ends_on} · {nights} nights" } else { "Select at least 3 nights" }
+                            }
+                            div { class: "rvd-quote-s", "Live availability · final taxes calculated at checkout" }
                         }
                     }
-                    div { class: "rvd-quote-r",
-                        span { class: "rvd-quote-m", "{price} × 3 =" }
-                        span { class: "rvd-quote-p", "$555" }
+                    if nights >= 3 {
+                        div { class: "rvd-quote-r", span { class: "rvd-quote-m", "{price} × {nights}" } }
                     }
                 }
             }
@@ -539,57 +604,71 @@ fn Availability(price: &'static str) -> Element {
 
 #[component]
 fn CalendarMonth(
-    title: &'static str,
-    nav_prev: bool,
-    nav_next: bool,
+    month: NaiveDate,
+    show_prev: bool,
+    show_next: bool,
     price: &'static str,
-    cells: Vec<Day>,
+    availability_loaded: bool,
+    unavailable: Vec<UnavailableRange>,
+    minimum_nights: i64,
+    mut starts_on: Signal<String>,
+    mut ends_on: Signal<String>,
+    on_prev: EventHandler<MouseEvent>,
+    on_next: EventHandler<MouseEvent>,
 ) -> Element {
-    // Плоские дисплей-данные ячеек: (класс, номер, цена).
-    let display: Vec<(String, String, &'static str)> = cells
-        .iter()
-        .map(|d| match *d {
-            Day::Blank => (String::new(), String::new(), ""),
-            Day::Avail(n) => (String::new(), n.to_string(), price),
-            Day::Booked(n) => ("booked".to_string(), n.to_string(), ""),
-            Day::Edge(n) => ("edge".to_string(), n.to_string(), price),
-            Day::Stay(n) => ("stay".to_string(), n.to_string(), price),
-        })
-        .collect();
-
+    let start = selected_date(&starts_on);
+    let end = selected_date(&ends_on);
+    let title = month.format("%B %Y").to_string();
     rsx! {
         div { class: "rvd-month",
             div { class: "rvd-month-head",
-                if nav_prev {
-                    button { class: "rvd-month-nav",
-                        Icon { name: "chevron-left", size: 16, color: "var(--vl-ink)" }
-                    }
-                } else {
-                    div { class: "rvd-month-sp" }
-                }
+                if show_prev { button { class: "rvd-month-nav", onclick: move |e| on_prev.call(e), Icon { name: "chevron-left", size: 16, color: "var(--vl-ink)" } } }
+                else { div { class: "rvd-month-sp" } }
                 div { class: "rvd-month-t", "{title}" }
-                if nav_next {
-                    button { class: "rvd-month-nav",
-                        Icon { name: "chevron-right", size: 16, color: "var(--vl-ink)" }
-                    }
-                } else {
-                    div { class: "rvd-month-sp" }
-                }
+                if show_next { button { class: "rvd-month-nav", onclick: move |e| on_next.call(e), Icon { name: "chevron-right", size: 16, color: "var(--vl-ink)" } } }
+                else { div { class: "rvd-month-sp" } }
             }
             div { class: "rvd-wd",
-                for (i , w) in ["S", "M", "T", "W", "T", "F", "S"].iter().enumerate() {
-                    div { key: "w-{i}", "{w}" }
-                }
+                for (i, w) in ["S", "M", "T", "W", "T", "F", "S"].iter().enumerate() { div { key: "w-{i}", "{w}" } }
             }
             div { class: "rvd-days",
-                for (i , (class , num , p)) in display.into_iter().enumerate() {
-                    div { key: "c-{i}", class: "rvd-day {class}",
-                        if !num.is_empty() {
-                            div { class: "rvd-day-n", "{num}" }
+                for (i, cell) in calendar_cells(month).into_iter().enumerate() {
+                    if let Some(day) = cell {
+                        {
+                            let now = Utc::now().with_timezone(&Vancouver);
+                            let today = now.date_naive();
+                            let selecting_return = start.is_some() && end.is_none();
+                            let valid_choice = if selecting_return {
+                                let selected_start = start.unwrap();
+                                day > selected_start
+                                    && (day - selected_start).num_days() >= minimum_nights
+                                    && stay_is_available(selected_start, day, &unavailable)
+                            } else {
+                                minimum_stay_can_start(day, minimum_nights, &unavailable)
+                            };
+                            let pickup_has_passed = day == today && now.hour() >= 14;
+                            let unavailable_day = !availability_loaded || day < today || pickup_has_passed || !valid_choice;
+                            let edge = start == Some(day) || end == Some(day);
+                            let stay = start.zip(end).map(|(a, b)| day > a && day < b).unwrap_or(false);
+                            let class = if edge { "edge" } else if stay { "stay" } else if unavailable_day { "booked" } else { "" };
+                            rsx! { button {
+                                key: "d-{day}", class: "rvd-day {class}", disabled: unavailable_day,
+                                onclick: move |_| {
+                                    let current_start = selected_date(&starts_on);
+                                    let current_end = selected_date(&ends_on);
+                                    if current_start.is_none() || current_end.is_some() || day <= current_start.unwrap() {
+                                        starts_on.set(day.to_string());
+                                        ends_on.set(String::new());
+                                    } else {
+                                        ends_on.set(day.to_string());
+                                    }
+                                },
+                                div { class: "rvd-day-n", "{day.day()}" }
+                                if !unavailable_day { div { class: "rvd-day-p", "{price}" } }
+                            } }
                         }
-                        if !p.is_empty() {
-                            div { class: "rvd-day-p", "{p}" }
-                        }
+                    } else {
+                        div { key: "blank-{i}", class: "rvd-day" }
                     }
                 }
             }

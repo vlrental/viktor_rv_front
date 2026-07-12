@@ -116,8 +116,10 @@ img { display: block; max-width: 100%; }
    Hero (Home)
    ============================================================ */
 .hero { position: relative; height: 660px; background: var(--vl-forest); overflow: hidden; }
-.hero-img { position: absolute; inset: 0; background-position: center; background-size: cover; }
-.hero-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, #06120BE0 0%, #0912094D 55%, #06120BC2 100%); }
+.hero-media { position: absolute; inset: 0; overflow: hidden; background-position: center; background-size: cover; }
+.hero-video { position: absolute; top: 50%; left: 50%; width: 100vw; height: 56.25vw; min-width: 177.78vh; min-height: 100%; border: 0; opacity: 0; transform: translate(-50%, -50%); pointer-events: none; transition: opacity 400ms ease; }
+.hero-video.is-playing { opacity: 1; }
+.hero-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, #06120BB8 0%, #06120B42 42%, #06120B0F 75%, #06120B24 100%); }
 .hero-copy { position: absolute; left: 64px; top: 150px; width: 820px; max-width: calc(100% - 128px); display: flex; flex-direction: column; gap: 20px; z-index: 3; }
 .eyebrow-pill {
   display: flex; align-items: center; gap: 8px;

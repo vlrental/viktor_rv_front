@@ -17,6 +17,7 @@ pub fn Checkout() -> Element {
     let mut accepted = use_signal(|| false);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(String::new);
+    let mut availability_conflict = use_signal(|| false);
     let nav = use_navigator();
     let quote_for_confirm = quote.clone();
     let confirm = move |_| {
@@ -40,12 +41,20 @@ pub fn Checkout() -> Element {
             }
             busy.set(true);
             error.set(String::new());
+            availability_conflict.set(false);
             match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &values.4).await {
                 Ok(created) => {
                     let _ = api::save_json("vl_last_booking", &created);
                     nav.push(Route::Confirmed {});
                 }
-                Err(message) => error.set(message),
+                Err(message) => {
+                    if message.contains("no longer available") || message.contains("conflict") {
+                        availability_conflict.set(true);
+                        error.set("Those dates are no longer available. Return to the rental calendar and choose a new period.".into());
+                    } else {
+                        error.set(message);
+                    }
+                },
             }
             busy.set(false);
         }
@@ -66,7 +75,8 @@ pub fn Checkout() -> Element {
                         div { class: "co-card",
                             div { class: "co-card-h", "Your trip" }
                             TripRow { label: "Rental", value: quote.quote.rental_slug.clone() }
-                            TripRow { label: "Dates", value: format!("{} – {} · {} units", draft.starts_on, draft.ends_on, quote.quote.units) }
+                            TripRow { label: "Pickup", value: format!("{} at 2:00 PM", draft.starts_on) }
+                            TripRow { label: "Return", value: format!("{} at 11:00 AM · {} nights", draft.ends_on, quote.quote.units) }
                             TripRow { label: "Guests", value: format!("{} guests", draft.guests) }
                             TripRow { label: "Delivery", value: if draft.delivery_km.is_some() { "Delivery and setup".to_string() } else { "Pickup".to_string() } }
                         }
@@ -112,7 +122,10 @@ pub fn Checkout() -> Element {
                             }
                         } else {
                             if !error.read().is_empty() { p { class: "auth-error", role: "alert", "{error}" } }
-                            button { class: "co-pay", disabled: *busy.read(), onclick: confirm,
+                            if *availability_conflict.read() {
+                                Link { class: "co-email-login", to: Route::RvDetail { slug: draft.rental_slug.clone() }, onclick: move |_| api::remove_saved("vl_active_quote"), "Choose new dates" }
+                            }
+                            button { class: "co-pay", disabled: *busy.read() || *availability_conflict.read(), onclick: confirm,
                                 if *busy.read() { "Creating booking…" } else { "Confirm test booking" }
                             }
                         }

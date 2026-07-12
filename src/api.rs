@@ -164,11 +164,29 @@ pub struct TripDraft {
 #[derive(Serialize)]
 struct CreateQuotePayload<'a> {
     rental_slug: &'a str,
-    starts_at: String,
-    ends_at: String,
+    starts_on: &'a str,
+    ends_on: &'a str,
     guests: i32,
     addon_keys: &'a [String],
     delivery_km: Option<&'a str>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct UnavailableInterval {
+    pub starts_at: String,
+    pub ends_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AvailabilityResponse {
+    pub rental_slug: String,
+    pub starts_on: String,
+    pub ends_on: String,
+    pub unavailable: Vec<UnavailableInterval>,
+    pub pickup_time: String,
+    pub return_time: String,
+    pub timezone: String,
+    pub minimum_nights: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -220,6 +238,8 @@ pub struct Booking {
 pub struct CreatedBooking {
     pub booking: Booking,
     pub access_token: String,
+    #[serde(default)]
+    pub notification_email_sent: bool,
 }
 
 #[derive(Deserialize)]
@@ -238,7 +258,15 @@ struct CreateBookingPayload<'a> {
 }
 
 async fn response_error(response: gloo_net::http::Response) -> String {
-    response.text().await.unwrap_or_else(|_| "Request failed".into())
+    #[derive(Deserialize)]
+    struct ErrorDetails { message: String }
+    #[derive(Deserialize)]
+    struct ErrorResponse { error: ErrorDetails }
+
+    let text = response.text().await.unwrap_or_else(|_| "Request failed".into());
+    serde_json::from_str::<ErrorResponse>(&text)
+        .map(|value| value.error.message)
+        .unwrap_or(text)
 }
 
 pub async fn catalog() -> Result<Vec<Rental>, String> {
@@ -255,13 +283,22 @@ pub async fn rental(slug: &str) -> Result<RentalResponse, String> {
     response.json().await.map_err(|e| e.to_string())
 }
 
+pub async fn availability(slug: &str, starts_on: &str, ends_on: &str) -> Result<AvailabilityResponse, String> {
+    let response = Request::get(&format!(
+        "{API_BASE}/api/v1/rentals/{}/availability?starts_on={}&ends_on={}",
+        urlencoding::encode(slug), urlencoding::encode(starts_on), urlencoding::encode(ends_on)
+    )).send().await.map_err(|e| e.to_string())?;
+    if !response.ok() { return Err(response_error(response).await); }
+    response.json().await.map_err(|e| e.to_string())
+}
+
 pub async fn create_quote(draft: &TripDraft) -> Result<QuoteResponse, String> {
     let response = Request::post(&format!("{API_BASE}/api/v1/quotes"))
         .header("Content-Type", "application/json")
         .json(&CreateQuotePayload {
             rental_slug: &draft.rental_slug,
-            starts_at: format!("{}T15:00:00Z", draft.starts_on),
-            ends_at: format!("{}T11:00:00Z", draft.ends_on),
+            starts_on: &draft.starts_on,
+            ends_on: &draft.ends_on,
             guests: draft.guests,
             addon_keys: &draft.addon_keys,
             delivery_km: draft.delivery_km.as_deref(),
@@ -297,6 +334,10 @@ pub fn save_json<T: Serialize>(key: &str, value: &T) -> Result<(), String> {
 
 pub fn load_json<T: for<'de> Deserialize<'de>>(key: &str) -> Option<T> {
     serde_json::from_str(&storage()?.get_item(key).ok()??).ok()
+}
+
+pub fn remove_saved(key: &str) {
+    if let Some(storage) = storage() { let _ = storage.remove_item(key); }
 }
 
 #[derive(Serialize)]

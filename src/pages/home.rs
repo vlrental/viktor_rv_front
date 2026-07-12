@@ -17,9 +17,71 @@ pub fn Home() -> Element {
 
 #[component]
 fn Hero() -> Element {
+    use_effect(|| {
+        document::eval(
+            r#"
+                const iframe = document.getElementById('hero-youtube-player');
+                if (!iframe || iframe.dataset.initialized === 'true') return;
+                iframe.dataset.initialized = 'true';
+
+                const createPlayer = () => {
+                    const playerIframe = document.getElementById('hero-youtube-player');
+                    if (!playerIframe || !window.YT?.Player) return;
+
+                    new window.YT.Player('hero-youtube-player', {
+                        events: {
+                            onReady: (event) => {
+                                event.target.mute();
+                                event.target.loadVideoById({
+                                    videoId: 'HEgbRefLY_A',
+                                    startSeconds: 0
+                                });
+                            },
+                            onStateChange: (event) => {
+                                if (event.data === window.YT.PlayerState.PLAYING) {
+                                    event.target.getIframe().classList.add('is-playing');
+                                }
+                                if (event.data === window.YT.PlayerState.ENDED) {
+                                    event.target.seekTo(0);
+                                    event.target.playVideo();
+                                }
+                            }
+                        }
+                    });
+                };
+
+                if (window.YT?.Player) {
+                    createPlayer();
+                } else {
+                    const previousReady = window.onYouTubeIframeAPIReady;
+                    window.onYouTubeIframeAPIReady = () => {
+                        if (typeof previousReady === 'function') previousReady();
+                        createPlayer();
+                    };
+
+                    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+                        const script = document.createElement('script');
+                        script.src = 'https://www.youtube.com/iframe_api';
+                        document.head.appendChild(script);
+                    }
+                }
+            "#,
+        );
+    });
+
     rsx! {
         section { class: "hero",
-            div { class: "hero-img", style: "background-image: url('{IMG_HERO_RV}');" }
+            div { class: "hero-media", style: "background-image: url('{IMG_HERO_RV}');",
+                iframe {
+                    id: "hero-youtube-player",
+                    class: "hero-video",
+                    src: "https://www.youtube.com/embed/?autoplay=0&controls=0&disablekb=1&enablejsapi=1&iv_load_policy=3&modestbranding=1&mute=1&playsinline=1&rel=0",
+                    title: "Kelowna, British Columbia - Drone 4K",
+                    allow: "autoplay; encrypted-media; picture-in-picture",
+                    tabindex: "-1",
+                    "aria-hidden": "true",
+                }
+            }
             div { class: "hero-overlay" }
             div { class: "hero-copy",
                 div { class: "eyebrow-pill",

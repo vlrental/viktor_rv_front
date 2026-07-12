@@ -20,11 +20,20 @@
 - Application roles are stored in the backend `app_users.role` column and are limited to `default` and `admin`.
 - New email/password and Google users receive the `default` role. Administrative access is granted only by changing the database role to `admin`; there is no standalone admin API token.
 
+## Booking notifications
+
+- Booking confirmation email is sent by the backend through Amazon SES SMTP in `ca-central-1` from `no-reply@vlrental.ca`; the administrator recipient is `Vlrental.ca@gmail.com`.
+- A successful booking remains valid if email delivery fails; the confirmation page must report the email result returned by the backend.
+
 ## Git branches and deployment
 
 - Develop only on the `dev` branch. Push ordinary work to `origin/dev`; do not develop directly on `main`.
 - `main` is the production branch. Promote `dev` to `main` only through `make dm` after relevant checks pass and the user directly requests deployment.
 - `make d` pushes `dev` without deploying production. `make dm` pushes `dev`, promotes the same commit to `main`, and triggers the production GitHub Pages workflow.
+- Do not connect, repoint, publish, or otherwise modify `vlrental.ca` until the complete booking flow, availability calendar, authentication, email delivery, and deployment have been configured and verified end to end, and the user explicitly approves the domain launch.
+- Before that approval, preserve the current `vlrental.ca` DNS and live site so existing users are not disrupted. Do not change Wix DNS, SES domain records, the production custom-domain configuration, or the live domain routing.
+- The maximum permitted deployment before domain-launch approval is a test frontend deployment to the repository's GitHub Pages URL. A GitHub Pages test deployment must not attach or redirect `vlrental.ca` and still requires a direct user request.
+- Do not deploy or restart the production backend, change production API routing, or promote a test build onto the live domain as part of a GitHub Pages-only request.
 
 ## SSH access
 
@@ -39,3 +48,10 @@
 
 - Do not commit, push, deploy, or modify production without a direct user request.
 - Check every changed text file for UTF-8/mojibake before completion.
+
+## Booking schedule and test payments
+
+- RV pickup is at 2:00 PM and return is at 11:00 AM in `America/Vancouver`.
+- A following customer may pick up the same RV at 2:00 PM on the previous customer's return date; the 11:00 AM–2:00 PM gap is reserved for cleaning and transport.
+- RV rentals require at least three nights. Backend code is the source of truth for converting selected dates into timestamps and enforcing availability.
+- Until Stripe is explicitly enabled, bookings are test bookings stored as `confirmed` / `test_paid`; no card is collected and no real payment row is created.

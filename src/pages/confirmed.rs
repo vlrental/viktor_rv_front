@@ -20,7 +20,13 @@ pub fn Confirmed() -> Element {
                     Icon { name: "check", size: 44, color: "var(--vl-white)" }
                 }
                 h1 { class: "cf-title", "Booking confirmed!" }
-                p { class: "cf-sub", "Your test booking is stored. No payment was charged." }
+                p { class: "cf-sub",
+                    if created.as_ref().map(|value| value.notification_email_sent).unwrap_or(false) {
+                        "Your booking is stored and a confirmation email has been sent."
+                    } else {
+                        "Your booking is stored. We could not send the email, but your confirmation is valid."
+                    }
+                }
                 div { class: "cf-ref",
                     Icon { name: "ticket", size: 16, color: "var(--vl-ink)" }
                     span { class: "cf-ref-t", "Confirmation #{booking_number}" }
@@ -56,8 +62,8 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
             }
             div { class: "cf-divider" }
             div { class: "cf-grid",
-                GridCell { label: "Check-in", value: draft.as_ref().map(|value| value.starts_on.clone()).unwrap_or_default() }
-                GridCell { label: "Check-out", value: draft.as_ref().map(|value| value.ends_on.clone()).unwrap_or_default() }
+                GridCell { label: "Pickup", value: draft.as_ref().map(|value| format!("{} at 2:00 PM", value.starts_on)).unwrap_or_default() }
+                GridCell { label: "Return", value: draft.as_ref().map(|value| format!("{} at 11:00 AM", value.ends_on)).unwrap_or_default() }
                 GridCell { label: "Guests", value: format!("{} guests", draft.as_ref().map(|value| value.guests).unwrap_or_default()) }
                 GridCell { label: "Test total", value: format!("CA${}", booking.map(|value| value.total.as_str()).unwrap_or("0.00")) }
             }

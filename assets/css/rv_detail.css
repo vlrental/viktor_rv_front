@@ -113,7 +113,8 @@
 .rvd-wd { display: grid; grid-template-columns: repeat(7, 1fr); width: 100%; }
 .rvd-wd div { font-size: 12px; font-weight: 600; color: var(--vl-muted); text-align: center; }
 .rvd-days { display: grid; grid-template-columns: repeat(7, 1fr); width: 100%; }
-.rvd-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; height: 48px; }
+.rvd-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; height: 48px; border: 0; background: transparent; font: inherit; cursor: pointer; }
+.rvd-day:disabled { cursor: not-allowed; background-color: var(--vl-hair); }
 .rvd-day-n { font-size: 14px; font-weight: 600; color: var(--vl-ink); }
 .rvd-day-p { font-size: 10px; color: var(--vl-muted); }
 .rvd-day.booked .rvd-day-n { color: var(--vl-muted); }
