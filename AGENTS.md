@@ -15,6 +15,11 @@
 - Design Node IDs: `IUHnT`, `x8t0A0`, `I6W2Es`, `raX6S`, `rmfa4`, `ODW3r`, `f1GuCf`, `ns0xG`, `LaBip`, `iKgTN`, `Oijpd`, `MEsd0`, `XgqBg`, `w19Mf`, `jr5XP`, `CdnCR`, `X9ejnB`, `g9upP`, `qaZRF`, `yTWGi`, `Al6fI`, `lsQAl`, `eb6Ck`, `cOu0u`, `YuNUS`, `TDhXo`, `M4DJcJ`, `e8z6o4`, `K7A9o`.
 - Use these nodes as the visual source of truth when implementing or reviewing the corresponding frontend UI.
 
+## Application roles
+
+- Application roles are stored in the backend `app_users.role` column and are limited to `default` and `admin`.
+- New email/password and Google users receive the `default` role. Administrative access is granted only by changing the database role to `admin`; there is no standalone admin API token.
+
 ## SSH access
 
 - Connect to the VL Rental server with `ssh vlrental`.
