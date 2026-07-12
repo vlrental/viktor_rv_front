@@ -20,6 +20,12 @@
 - Application roles are stored in the backend `app_users.role` column and are limited to `default` and `admin`.
 - New email/password and Google users receive the `default` role. Administrative access is granted only by changing the database role to `admin`; there is no standalone admin API token.
 
+## Git branches and deployment
+
+- Develop only on the `dev` branch. Push ordinary work to `origin/dev`; do not develop directly on `main`.
+- `main` is the production branch. Promote `dev` to `main` only through `make dm` after relevant checks pass and the user directly requests deployment.
+- `make d` pushes `dev` without deploying production. `make dm` pushes `dev`, promotes the same commit to `main`, and triggers the production GitHub Pages workflow.
+
 ## SSH access
 
 - Connect to the VL Rental server with `ssh vlrental`.

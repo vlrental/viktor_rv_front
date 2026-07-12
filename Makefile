@@ -23,14 +23,18 @@ devo:
 build:
 	dx build --release
 
-# CI deploy: push the current commit to main. GitHub Actions builds and
-# publishes the site to GitHub Pages. The frontend has no database migration,
-# so d and dm intentionally do the same thing.
+# Push development work. All normal work happens on dev.
 deploy:
-	git fetch origin && git push origin HEAD:refs/heads/main
+	@test "$$(git branch --show-current)" = "dev" || (echo "Run this command from the dev branch" && exit 1)
+	git push origin dev
 
-deploy-migrate: deploy
-	@echo "Frontend has no database migrations; deploy triggered."
+# Promote the tested dev commit to production main. Pushing main triggers Pages.
+deploy-migrate:
+	@test "$$(git branch --show-current)" = "dev" || (echo "Run this command from the dev branch" && exit 1)
+	git fetch origin
+	git push origin dev
+	git push origin dev:main
+	@echo "Frontend dev promoted to main; production deploy triggered."
 
 # Убить зависший dev-сервер на порту 8080 (dx на других портах не трогает).
 k:
