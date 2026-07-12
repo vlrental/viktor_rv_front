@@ -1,11 +1,11 @@
 use dioxus::prelude::*;
 
-use crate::components::{Icon, ListingCard};
-use crate::data::catalog_listings;
+use crate::{api, components::Icon, Route};
+use crate::data::{IMG_BULLET, IMG_JAYCO, IMG_OPENRANGE, IMG_OPENRANGE2, IMG_OUTBACK, IMG_ROCKWOOD};
 
 #[component]
 pub fn Catalog() -> Element {
-    let listings = catalog_listings();
+    let listings = use_resource(api::catalog);
     rsx! {
         section { class: "cat-header",
             h1 { class: "sec-title", "Explore the fleet" }
@@ -52,10 +52,42 @@ pub fn Catalog() -> Element {
                     }
                 }
                 div { class: "cat-grid",
-                    for l in listings {
-                        ListingCard { key: "{l.title}", listing: l }
+                    if let Some(result) = listings.read().as_ref() {
+                        match result {
+                            Ok(values) => rsx! { for rental in values.iter().filter(|value| value.category == "rv") {
+                                ApiListingCard { key: "{rental.slug}", rental: rental.clone() }
+                            } },
+                            Err(message) => rsx! { div { class: "co-card", role: "alert", "Could not load rentals: {message}" } },
+                        }
+                    } else {
+                        div { class: "co-card", "Loading rentals…" }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn ApiListingCard(rental: api::Rental) -> Element {
+    let image = rental.hero_image_url.clone().unwrap_or_else(|| match rental.slug.as_str() {
+        "jayco26" => IMG_JAYCO.to_string(),
+        "2015-keystone-bullet" => IMG_BULLET.to_string(),
+        "2014-forest-river-rockwood" => IMG_ROCKWOOD.to_string(),
+        "2025-open-range-1" => IMG_OPENRANGE.to_string(),
+        "2025-highland-ridge-2" => IMG_OPENRANGE2.to_string(),
+        "2017-keystone-outback-ultra" => IMG_OUTBACK.to_string(),
+        _ => String::new(),
+    });
+    rsx! {
+        Link { class: "listing-card", to: Route::RvDetail { slug: rental.slug.clone() },
+            div { class: "lc-image", style: "background-image: url('{image}');",
+                div { class: "lc-badge", "Sleeps {rental.capacity}" }
+            }
+            div { class: "lc-body",
+                div { class: "lc-title-row", div { class: "lc-title", "{rental.name}" } }
+                div { class: "lc-meta", "{rental.summary}" }
+                div { class: "lc-price-row", span { class: "lc-price", "${rental.base_rate}" } span { class: "lc-per", " / {rental.price_unit}" } }
             }
         }
     }

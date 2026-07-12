@@ -122,10 +122,34 @@ pub fn AuthCallback() -> Element {
 pub fn Account() -> Element {
     let nav = use_navigator();
     let user = api::current_user();
+    let mut bookings = use_signal(Vec::<api::Booking>::new);
+    let mut load_error = use_signal(String::new);
+    use_effect(move || {
+        spawn(async move {
+            match api::my_bookings().await {
+                Ok(values) => bookings.set(values),
+                Err(message) => load_error.set(message),
+            }
+        });
+    });
     rsx! { section { class: "account-page",
         if let Some(user) = user {
             div { class: "account-head", p { class: "auth-kicker", "Your account" } h1 { "Bookings and account" } p { "{user.email}" } span { class: "account-role", "{user.role}" } }
-            div { class: "account-empty", h2 { "No bookings yet" } p { "Your confirmed rentals will appear here." } Link { class: "btn-forest", to: Route::Catalog {}, "Browse rentals" } }
+            if !load_error.read().is_empty() { p { class: "auth-error", role: "alert", "{load_error}" } }
+            if bookings.read().is_empty() {
+                div { class: "account-empty", h2 { "No bookings yet" } p { "Your confirmed rentals will appear here." } Link { class: "btn-forest", to: Route::Catalog {}, "Browse rentals" } }
+            } else {
+                div { class: "account-bookings",
+                    for booking in bookings.read().iter() {
+                        article { class: "co-card", key: "{booking.booking_id}",
+                            p { class: "auth-kicker", "{booking.status} · {booking.payment_status}" }
+                            h2 { "#{booking.booking_number}" }
+                            p { "{booking.starts_at} – {booking.ends_at}" }
+                            p { "Total: {booking.currency} {booking.total}" }
+                        }
+                    }
+                }
+            }
             button { class: "account-signout", onclick: move |_| { api::clear_session(); nav.push(Route::Login {}); }, "Sign out" }
         } else {
             div { class: "account-empty", h1 { "Sign in required" } Link { class: "btn-forest", to: Route::Login {}, "Sign in" } }

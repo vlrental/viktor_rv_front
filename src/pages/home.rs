@@ -127,7 +127,7 @@ fn FeaturedRv() -> Element {
                         span { class: "fc-price", "$148" }
                         span { class: "lc-per", "/ night" }
                     }
-                    Link { class: "btn-forest", to: Route::RvDetail { id: 5 },
+                    Link { class: "btn-forest", to: Route::RvDetail { slug: "2017-keystone-outback-ultra".to_string() },
                         span { "Reserve" }
                         Icon { name: "arrow-right", size: 16, color: "var(--vl-white)" }
                     }

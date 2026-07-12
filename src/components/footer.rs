@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::components::Icon;
+use crate::{api, components::Icon};
 use crate::data::PHONE;
 use crate::Route;
 
@@ -8,6 +8,17 @@ const LOGO: Asset = asset!("/assets/img/logo.png");
 
 #[component]
 pub fn Footer() -> Element {
+    let mut email = use_signal(String::new);
+    let mut status = use_signal(String::new);
+    let subscribe = move |_| {
+        let value = email.read().clone();
+        async move {
+            match api::subscribe(&value).await {
+                Ok(()) => { status.set("Subscribed".into()); email.set(String::new()); }
+                Err(error) => status.set(error),
+            }
+        }
+    };
     rsx! {
         footer { class: "site-footer",
             div { class: "footer-top",
@@ -30,14 +41,14 @@ pub fn Footer() -> Element {
                     div { class: "f-social",
                         a {
                             class: "f-social-btn",
-                            href: "https://facebook.com",
+                            href: "https://www.facebook.com/people/VL-Pro-Trailer-Care/61576201770508/",
                             target: "_blank",
                             aria_label: "Facebook",
                             Icon { name: "facebook", size: 19, color: "var(--vl-white)" }
                         }
                         a {
                             class: "f-social-btn",
-                            href: "https://instagram.com",
+                            href: "https://www.instagram.com/lairichviktor/",
                             target: "_blank",
                             aria_label: "Instagram",
                             Icon { name: "instagram", size: 19, color: "var(--vl-white)" }
@@ -67,14 +78,15 @@ pub fn Footer() -> Element {
                     div { class: "f-news-title", "Plan your trip" }
                     div { class: "f-news-desc", "Get seasonal deals and availability straight to your inbox." }
                     div { class: "f-news-input",
-                        input { r#type: "email", placeholder: "you@email.com" }
-                        button { class: "f-news-go", "Subscribe" }
+                        input { r#type: "email", placeholder: "you@email.com", value: "{email}", oninput: move |e| email.set(e.value()) }
+                        button { class: "f-news-go", onclick: subscribe, "Subscribe" }
                     }
+                    if !status.read().is_empty() { div { class: "f-news-desc", role: "status", "{status}" } }
                 }
             }
             div { class: "footer-divider" }
             div { class: "footer-bottom",
-                div { "© 2025 VL Rental. All rights reserved." }
+                div { "© 2026 VL Rental. All rights reserved." }
                 div { class: "footer-handles",
                     span { "facebook.com/VL-Pro-Trailer-Care" }
                     span { "@lairichviktor" }

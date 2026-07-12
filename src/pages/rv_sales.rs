@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
-use crate::components::Icon;
-use crate::data::{IMG_BULLET, IMG_OPENRANGE, IMG_ROCKWOOD, PHONE};
+use crate::{api, components::Icon};
+use crate::data::{IMG_BULLET, IMG_OPENRANGE, IMG_ROCKWOOD};
 
 const CSS: Asset = asset!("/assets/css/rv_sales.css");
 
@@ -35,6 +35,19 @@ fn sale_items() -> Vec<SaleItem> {
 #[component]
 pub fn RvSales() -> Element {
     let items = sale_items();
+    let mut full_name = use_signal(String::new);
+    let mut email = use_signal(String::new);
+    let mut requested = use_signal(String::new);
+    let mut status = use_signal(String::new);
+    let send = move |_| {
+        let values = (full_name.read().clone(), email.read().clone(), requested.read().clone());
+        async move {
+            match api::send_sales_inquiry(&values.0, &values.1, "", &values.2, "Interested in an RV purchase").await {
+                Ok(()) => status.set("Thanks — your sales request has been saved.".into()),
+                Err(error) => status.set(error),
+            }
+        }
+    };
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
 
@@ -85,10 +98,16 @@ pub fn RvSales() -> Element {
                 p { class: "sale-cta-sub",
                     "Tell us your budget and how you like to travel — we'll help you find the perfect rig."
                 }
+                div { class: "ct-row",
+                    input { class: "ct-input", placeholder: "Your name", value: "{full_name}", oninput: move |e| full_name.set(e.value()) }
+                    input { class: "ct-input", r#type: "email", placeholder: "you@email.com", value: "{email}", oninput: move |e| email.set(e.value()) }
+                    input { class: "ct-input", placeholder: "RV or budget", value: "{requested}", oninput: move |e| requested.set(e.value()) }
+                }
+                if !status.read().is_empty() { p { role: "status", "{status}" } }
             }
-            a { class: "sale-cta-btn", href: "tel:+12508785874",
-                Icon { name: "phone", size: 16, color: "var(--vl-forest-2)" }
-                span { "{PHONE}" }
+            button { class: "sale-cta-btn", onclick: send,
+                Icon { name: "send", size: 16, color: "var(--vl-forest-2)" }
+                span { "Send inquiry" }
             }
         }
     }

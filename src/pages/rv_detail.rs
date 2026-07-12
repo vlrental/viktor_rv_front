@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::Icon;
+use crate::{api, components::Icon};
 use crate::data::{
     rv_listings, Listing, IMG_BULLET, IMG_OPENRANGE, IMG_OUTBACK, IMG_ROCKWOOD, PHONE,
 };
@@ -11,12 +11,17 @@ const CSS: Asset = asset!("/assets/css/rv_detail.css");
 const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 
 #[component]
-pub fn RvDetail(id: u32) -> Element {
+pub fn RvDetail(slug: String) -> Element {
+    let api_slug = slug.clone();
+    let details = use_resource(move || {
+        let value = api_slug.clone();
+        async move { api::rental(&value).await }
+    });
     let listings = rv_listings();
     let l = listings
         .iter()
         .copied()
-        .find(|l| l.id == id)
+        .find(|l| l.slug == slug)
         .unwrap_or(listings[0]);
 
     rsx! {
@@ -27,6 +32,12 @@ pub fn RvDetail(id: u32) -> Element {
                 Link { to: crate::Route::Catalog {}, "RV Rentals" }
                 Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" }
                 b { "{l.title}" }
+            }
+            if let Some(result) = details.read().as_ref() {
+                match result {
+                    Ok(value) => rsx! { div { class: "rvd-min-pill", "Live availability and pricing loaded for {value.rental.name}: {value.features.len()} features, {value.addons.len()} add-ons, {value.media.len()} photos." } },
+                    Err(message) => rsx! { p { class: "auth-error", role: "alert", "Could not refresh rental data: {message}" } },
+                }
             }
             TitleHead { listing: l }
             Gallery { listing: l }
@@ -264,6 +275,40 @@ fn GtkCard(icon: &'static str, title: &'static str, desc: &'static str) -> Eleme
 
 #[component]
 fn BookingCard(listing: Listing) -> Element {
+    let mut starts_on = use_signal(|| "2026-08-12".to_string());
+    let mut ends_on = use_signal(|| "2026-08-15".to_string());
+    let mut guests = use_signal(|| 2_i32);
+    let mut delivery = use_signal(|| true);
+    let mut busy = use_signal(|| false);
+    let mut error = use_signal(String::new);
+    let nav = use_navigator();
+    let reserve = move |_| {
+        let draft = api::TripDraft {
+            rental_slug: listing.slug.to_string(),
+            starts_on: starts_on.read().clone(),
+            ends_on: ends_on.read().clone(),
+            guests: *guests.read(),
+            addon_keys: Vec::new(),
+            delivery_km: (*delivery.read()).then(|| "25".to_string()),
+        };
+        async move {
+            busy.set(true);
+            error.set(String::new());
+            match api::create_quote(&draft).await {
+                Ok(quote) => {
+                    if api::save_json("vl_trip_draft", &draft).is_ok()
+                        && api::save_json("vl_active_quote", &quote).is_ok()
+                    {
+                        nav.push(crate::Route::Checkout {});
+                    } else {
+                        error.set("Could not save your booking progress.".into());
+                    }
+                }
+                Err(message) => error.set(message),
+            }
+            busy.set(false);
+        }
+    };
     rsx! {
         div { class: "rvd-booking",
             div { class: "rvd-price-row",
@@ -285,24 +330,34 @@ fn BookingCard(listing: Listing) -> Element {
                 div { class: "rvd-fields-dates",
                     div { class: "rvd-field",
                         div { class: "rvd-field-l", "CHECK-IN" }
-                        div { class: "rvd-field-v", "Jul 12" }
+                        input { class: "rvd-field-v", r#type: "date", value: "{starts_on}", oninput: move |e| starts_on.set(e.value()) }
                     }
                     div { class: "rvd-field-vd" }
                     div { class: "rvd-field",
                         div { class: "rvd-field-l", "CHECK-OUT" }
-                        div { class: "rvd-field-v", "Jul 15" }
+                        input { class: "rvd-field-v", r#type: "date", value: "{ends_on}", oninput: move |e| ends_on.set(e.value()) }
                     }
                 }
                 div { class: "rvd-field-hd" }
                 div { class: "rvd-field-guests",
                     div {
                         div { class: "rvd-field-l", "GUESTS" }
-                        div { class: "rvd-field-v", "4 guests" }
+                        select { class: "rvd-field-v", value: "{guests}", onchange: move |e| guests.set(e.value().parse().unwrap_or(1)),
+                            for count in 1..=listing.meta.split("Sleeps ").nth(1).and_then(|v| v.parse::<i32>().ok()).unwrap_or(4) {
+                                option { value: "{count}", "{count} guests" }
+                            }
+                        }
                     }
-                    Icon { name: "chevron-down", size: 16, color: "var(--vl-muted)" }
                 }
             }
-            Link { to: crate::Route::Checkout {}, class: "rvd-reserve", "Reserve" }
+            label { class: "rvd-min-pill",
+                input { r#type: "checkbox", checked: *delivery.read(), onchange: move |e| delivery.set(e.checked()) }
+                span { "Delivery and setup (test distance: 25 km)" }
+            }
+            if !error.read().is_empty() { p { class: "auth-error", role: "alert", "{error}" } }
+            button { class: "rvd-reserve", disabled: *busy.read(), onclick: reserve,
+                if *busy.read() { "Checking availability…" } else { "Reserve" }
+            }
             div { class: "rvd-note", "Full payment due 5 days before your rental" }
             div { class: "rvd-breakdown",
                 div { class: "rvd-bd-row",

@@ -16,6 +16,7 @@ pub const IMG_HERO_RV: Asset = asset!("/assets/img/hero-rv.webp");
 #[derive(Clone, Copy, PartialEq)]
 pub struct Listing {
     pub id: u32,
+    pub slug: &'static str,
     pub title: &'static str,
     pub meta: &'static str,
     pub badge: &'static str,
@@ -27,15 +28,11 @@ pub struct Listing {
 
 pub fn rv_listings() -> Vec<Listing> {
     vec![
-        Listing { id: 1, title: "Jayco 26' 5th Wheel", meta: "5th wheel · Sleeps 4", badge: "Pet friendly", rating: "4.9", price: "$185", per: "/ night", image: IMG_JAYCO },
-        Listing { id: 2, title: "Keystone Bullet 272BHS", meta: "Travel trailer · Sleeps 10", badge: "Sleeps 10", rating: "4.8", price: "$155", per: "/ night", image: IMG_BULLET },
-        Listing { id: 3, title: "Forest River Rockwood", meta: "Travel trailer · Sleeps 4", badge: "Great value", rating: "4.7", price: "$125", per: "/ night", image: IMG_ROCKWOOD },
-        Listing { id: 4, title: "Open Range 26BHS", meta: "Travel trailer · Sleeps 8", badge: "New 2025", rating: "5.0", price: "$160", per: "/ night", image: IMG_OPENRANGE },
-        Listing { id: 5, title: "Keystone Outback Ultra-Lite", meta: "Ultra-lite · Sleeps 8", badge: "Delivery", rating: "4.9", price: "$148", per: "/ night", image: IMG_OUTBACK },
-        Listing { id: 6, title: "Open Range 26BHS — Bunk Beds", meta: "Travel trailer · Sleeps 10", badge: "Bunk beds", rating: "5.0", price: "$160", per: "/ night", image: IMG_OPENRANGE2 },
+        Listing { id: 1, slug: "jayco26", title: "Jayco 26' 5th Wheel", meta: "5th wheel · Sleeps 4", badge: "Pet friendly", rating: "4.9", price: "$185", per: "/ night", image: IMG_JAYCO },
+        Listing { id: 2, slug: "2015-keystone-bullet", title: "Keystone Bullet 272BHS", meta: "Travel trailer · Sleeps 10", badge: "Sleeps 10", rating: "4.8", price: "$155", per: "/ night", image: IMG_BULLET },
+        Listing { id: 3, slug: "2014-forest-river-rockwood", title: "Forest River Rockwood", meta: "Travel trailer · Sleeps 4", badge: "Great value", rating: "4.7", price: "$125", per: "/ night", image: IMG_ROCKWOOD },
+        Listing { id: 4, slug: "2025-open-range-1", title: "Open Range 26BHS", meta: "Travel trailer · Sleeps 8", badge: "New 2025", rating: "5.0", price: "$160", per: "/ night", image: IMG_OPENRANGE },
+        Listing { id: 5, slug: "2017-keystone-outback-ultra", title: "Keystone Outback Ultra-Lite", meta: "Ultra-lite · Sleeps 8", badge: "Delivery", rating: "4.9", price: "$148", per: "/ night", image: IMG_OUTBACK },
+        Listing { id: 6, slug: "2025-highland-ridge-2", title: "Open Range 26BHS — Bunk Beds", meta: "Travel trailer · Sleeps 10", badge: "Bunk beds", rating: "5.0", price: "$160", per: "/ night", image: IMG_OPENRANGE2 },
     ]
-}
-
-pub fn catalog_listings() -> Vec<Listing> {
-    rv_listings()
 }

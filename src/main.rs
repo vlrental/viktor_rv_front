@@ -25,8 +25,8 @@ pub enum Route {
         Home {},
         #[route("/catalog")]
         Catalog {},
-        #[route("/rv/:id")]
-        RvDetail { id: u32 },
+        #[route("/rv/:slug")]
+        RvDetail { slug: String },
         #[route("/checkout")]
         Checkout {},
         #[route("/confirmed")]

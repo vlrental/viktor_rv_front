@@ -1,218 +1,148 @@
 use dioxus::prelude::*;
 
-use crate::api;
-use crate::components::Icon;
-use crate::data::IMG_JAYCO;
-use crate::Route;
+use crate::{api, components::Icon, Route};
 
 const CSS: Asset = asset!("/assets/css/checkout.css");
 
-/// Страница оформления брони — Pencil-фреймы Q6oqIF (desktop) / QyGrm (mobile).
 #[component]
 pub fn Checkout() -> Element {
-    let signed_in = api::current_user().is_some();
+    let quote = api::load_json::<api::QuoteResponse>("vl_active_quote");
+    let draft = api::load_json::<api::TripDraft>("vl_trip_draft");
+    let user = api::current_user();
+    let first_name = use_signal(String::new);
+    let last_name = use_signal(String::new);
+    let email = use_signal(|| user.as_ref().map(|value| value.email.clone()).unwrap_or_default());
+    let phone = use_signal(String::new);
+    let mut notes = use_signal(String::new);
+    let mut accepted = use_signal(|| false);
+    let mut busy = use_signal(|| false);
+    let mut error = use_signal(String::new);
+    let nav = use_navigator();
+    let quote_for_confirm = quote.clone();
+    let confirm = move |_| {
+        let active_quote = quote_for_confirm.clone();
+        let values = (
+            first_name.read().clone(), last_name.read().clone(), email.read().clone(),
+            phone.read().clone(), notes.read().clone(), *accepted.read(),
+        );
+        async move {
+            let Some(active_quote) = active_quote else {
+                error.set("Your quote is missing. Please calculate it again.".to_string());
+                return;
+            };
+            if !values.5 {
+                error.set("Please accept the rental terms.".to_string());
+                return;
+            }
+            if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 {
+                error.set("Enter your full name, email, and phone number.".to_string());
+                return;
+            }
+            busy.set(true);
+            error.set(String::new());
+            match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &values.4).await {
+                Ok(created) => {
+                    let _ = api::save_json("vl_last_booking", &created);
+                    nav.push(Route::Confirmed {});
+                }
+                Err(message) => error.set(message),
+            }
+            busy.set(false);
+        }
+    };
+
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "co-body",
             div { class: "co-breadcrumb",
-                span { class: "co-breadcrumb-a", "Jayco 26' 5th Wheel" }
+                Link { class: "co-breadcrumb-a", to: Route::Catalog {}, "RV Rentals" }
                 Icon { name: "chevron-right", size: 15, color: "var(--vl-muted)" }
-                span { class: "co-breadcrumb-b", "Confirm and pay" }
+                span { class: "co-breadcrumb-b", "Confirm booking" }
             }
-            h1 { class: "co-title", "Confirm and pay" }
-            div { class: "co-row",
-                div { class: "co-left",
-                    YourTripCard {}
-                    AddOnsCard {}
-                    GuestDetailsCard {}
-                    PaymentCard {}
-                }
-                SummaryCard { signed_in }
-            }
-        }
-    }
-}
-
-#[component]
-fn YourTripCard() -> Element {
-    rsx! {
-        div { class: "co-card",
-            div { class: "co-card-h", "Your trip" }
-            TripRow { label: "Dates", value: "Jul 12 – 15, 2026 · 3 nights" }
-            TripRow { label: "Guests", value: "4 guests" }
-            TripRow { label: "Delivery", value: "Deliver & set up at campsite" }
-        }
-    }
-}
-
-#[component]
-fn TripRow(label: &'static str, value: &'static str) -> Element {
-    rsx! {
-        div { class: "co-trip-row",
-            div { class: "co-trip-col",
-                div { class: "co-trip-label", "{label}" }
-                div { class: "co-trip-value", "{value}" }
-            }
-            span { class: "co-trip-edit", "Edit" }
-        }
-    }
-}
-
-#[component]
-fn AddOnsCard() -> Element {
-    rsx! {
-        div { class: "co-card",
-            div { class: "co-card-h", "Add-ons" }
-            AddOnRow { title: "Bedding and Linens", price: "$80", checked: true }
-            AddOnRow { title: "Portable BBQ", price: "$50 + Refill", checked: false }
-            AddOnRow { title: "Pet Deposit (non refundable)", price: "$100", checked: false }
-        }
-    }
-}
-
-#[component]
-fn AddOnRow(title: &'static str, price: &'static str, checked: bool) -> Element {
-    rsx! {
-        div { class: "co-addon",
-            div { class: "co-addon-l",
-                div {
-                    class: if checked { "co-addon-box checked" } else { "co-addon-box" },
-                    if checked {
-                        Icon { name: "check", size: 14, color: "var(--vl-white)" }
+            h1 { class: "co-title", "Confirm your test booking" }
+            if let (Some(quote), Some(draft)) = (quote, draft) {
+                div { class: "co-row",
+                    div { class: "co-left",
+                        div { class: "co-card",
+                            div { class: "co-card-h", "Your trip" }
+                            TripRow { label: "Rental", value: quote.quote.rental_slug.clone() }
+                            TripRow { label: "Dates", value: format!("{} – {} · {} units", draft.starts_on, draft.ends_on, quote.quote.units) }
+                            TripRow { label: "Guests", value: format!("{} guests", draft.guests) }
+                            TripRow { label: "Delivery", value: if draft.delivery_km.is_some() { "Delivery and setup".to_string() } else { "Pickup".to_string() } }
+                        }
+                        div { class: "co-card",
+                            div { class: "co-card-h", "Guest details" }
+                            div { class: "co-field-row stack",
+                                Field { label: "First name", value: first_name, kind: "text" }
+                                Field { label: "Last name", value: last_name, kind: "text" }
+                            }
+                            div { class: "co-field-row stack",
+                                Field { label: "Email", value: email, kind: "email" }
+                                Field { label: "Phone", value: phone, kind: "tel" }
+                            }
+                            label { class: "co-field",
+                                span { class: "co-field-label", "Notes (optional)" }
+                                textarea { class: "co-input", value: "{notes}", oninput: move |e| notes.set(e.value()) }
+                            }
+                        }
+                        div { class: "co-card",
+                            div { class: "co-card-h", "Test payment" }
+                            p { "Stripe is intentionally disabled. No card details are collected and no charge is made." }
+                            label { class: "co-secure",
+                                input { r#type: "checkbox", checked: *accepted.read(), onchange: move |e| accepted.set(e.checked()) }
+                                span { "I accept the rental terms and understand this is a test booking." }
+                            }
+                        }
+                    }
+                    div { class: "co-summary",
+                        h2 { class: "co-card-h", "Price details" }
+                        for item in quote.items.iter() {
+                            PriceLine { label: item.label.clone(), value: format!("CA${}", item.amount) }
+                        }
+                        div { class: "co-divider" }
+                        div { class: "co-line",
+                            span { class: "co-total-label", "Total (CAD)" }
+                            span { class: "co-total-value", "CA${quote.quote.total}" }
+                        }
+                        if user.is_none() {
+                            div { class: "co-auth-choice",
+                                h2 { "Sign in to confirm" }
+                                p { "Your quote is saved while you sign in." }
+                                Link { class: "co-email-login", to: Route::Login {}, onclick: move |_| api::remember_auth_return("/checkout"), "Sign in or create an account" }
+                            }
+                        } else {
+                            if !error.read().is_empty() { p { class: "auth-error", role: "alert", "{error}" } }
+                            button { class: "co-pay", disabled: *busy.read(), onclick: confirm,
+                                if *busy.read() { "Creating booking…" } else { "Confirm test booking" }
+                            }
+                        }
                     }
                 }
-                span { class: "co-addon-t", "{title}" }
-            }
-            span { class: "co-addon-p", "{price}" }
-        }
-    }
-}
-
-#[component]
-fn GuestDetailsCard() -> Element {
-    rsx! {
-        div { class: "co-card",
-            div { class: "co-card-h", "Guest details" }
-            div { class: "co-field",
-                label { class: "co-field-label", "Full name" }
-                input { class: "co-input", r#type: "text", placeholder: "Alex Johnson" }
-            }
-            div { class: "co-field-row stack",
-                div { class: "co-field grow",
-                    label { class: "co-field-label", "Email" }
-                    input { class: "co-input", r#type: "text", placeholder: "alex@email.com" }
-                }
-                div { class: "co-field grow",
-                    label { class: "co-field-label", "Phone" }
-                    input { class: "co-input", r#type: "text", placeholder: "+1 (250) 000 0000" }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn PaymentCard() -> Element {
-    rsx! {
-        div { class: "co-card",
-            div { class: "co-card-h", "Payment" }
-            div { class: "co-field",
-                label { class: "co-field-label", "Card number" }
-                input { class: "co-input", r#type: "text", placeholder: "1234 5678 9012 3456" }
-            }
-            div { class: "co-field-row",
-                div { class: "co-field grow",
-                    label { class: "co-field-label", "Expiry" }
-                    input { class: "co-input", r#type: "text", placeholder: "MM / YY" }
-                }
-                div { class: "co-field grow",
-                    label { class: "co-field-label", "CVC" }
-                    input { class: "co-input", r#type: "text", placeholder: "123" }
-                }
-                div { class: "co-field grow",
-                    label { class: "co-field-label", "ZIP / Postal" }
-                    input { class: "co-input", r#type: "text", placeholder: "V1Y 0A0" }
-                }
-            }
-            div { class: "co-secure",
-                Icon { name: "lock", size: 15, color: "var(--vl-muted)" }
-                span { "Payments are secure and encrypted. You won't be charged until confirmed." }
-            }
-        }
-    }
-}
-
-#[component]
-fn SummaryCard(signed_in: bool) -> Element {
-    let google_href = api::google_login_url();
-    rsx! {
-        div { class: "co-summary",
-            div { class: "co-sum-item",
-                div {
-                    class: "co-sum-img",
-                    style: "background-image: url('{IMG_JAYCO}');",
-                }
-                div { class: "co-sum-c",
-                    div { class: "co-sum-t", "Jayco 26' 5th Wheel" }
-                    div { class: "co-sum-r",
-                        Icon { name: "star", size: 14, color: "var(--vl-accent)" }
-                        span { "4.9 · 38 reviews" }
-                    }
-                }
-            }
-            div { class: "co-divider" }
-            div { class: "co-breakdown",
-                PriceLine { label: "$185 × 3 nights", value: "$555", bold: false }
-                PriceLine { label: "Delivery & setup", value: "$150", bold: false }
-                PriceLine { label: "Bedding and linens", value: "$80", bold: false }
-                PriceLine { label: "GST (5%)", value: "CA$39.25", bold: true }
-                PriceLine { label: "PST (7%)", value: "CA$54.95", bold: true }
-                div { class: "co-line",
-                    div { class: "co-line-lc",
-                        span { class: "co-line-label", "Damage deposit" }
-                        span { class: "co-line-sub", "Refundable · collected before trip" }
-                    }
-                    span { class: "co-line-value bold", "CA$1,000.00" }
-                }
-                div { class: "co-divider" }
-                div { class: "co-line",
-                    span { class: "co-total-label", "Total (CAD)" }
-                    span { class: "co-total-value", "CA$879.20" }
-                }
-            }
-            if signed_in {
-                Link { class: "co-pay", to: Route::Confirmed {}, "Confirm and pay" }
             } else {
-                div { class: "co-auth-choice",
-                    h2 { "Sign in to confirm" }
-                    p { "Your trip details stay here while you sign in." }
-                    a {
-                        class: "co-google",
-                        href: google_href,
-                        onclick: move |_| api::remember_auth_return("/checkout"),
-                        span { class: "co-google-mark", "G" }
-                        "Continue with Google"
-                    }
-                    Link { class: "co-email-login", to: Route::Login {}, "Use email and password" }
+                div { class: "co-card",
+                    h2 { "Your quote is missing or expired" }
+                    p { "Choose a rental and dates to calculate a new quote." }
+                    Link { class: "co-pay", to: Route::Catalog {}, "Return to catalog" }
                 }
-            }
-            div { class: "co-pay5",
-                Icon { name: "calendar-clock", size: 14, color: "var(--vl-muted)" }
-                span { "Full payment due 5 days before your rental" }
             }
         }
     }
 }
 
 #[component]
-fn PriceLine(label: &'static str, value: &'static str, bold: bool) -> Element {
-    rsx! {
-        div { class: "co-line",
-            span { class: "co-line-label", "{label}" }
-            span {
-                class: if bold { "co-line-value bold" } else { "co-line-value" },
-                "{value}"
-            }
-        }
-    }
+fn Field(label: &'static str, value: Signal<String>, kind: &'static str) -> Element {
+    rsx! { label { class: "co-field grow",
+        span { class: "co-field-label", "{label}" }
+        input { class: "co-input", r#type: kind, value: "{value}", oninput: move |e| value.set(e.value()) }
+    } }
+}
+
+#[component]
+fn TripRow(label: &'static str, value: String) -> Element {
+    rsx! { div { class: "co-trip-row", div { class: "co-trip-col", div { class: "co-trip-label", "{label}" } div { class: "co-trip-value", "{value}" } } } }
+}
+
+#[component]
+fn PriceLine(label: String, value: String) -> Element {
+    rsx! { div { class: "co-line", span { class: "co-line-label", "{label}" } span { class: "co-line-value", "{value}" } } }
 }

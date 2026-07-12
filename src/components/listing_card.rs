@@ -7,7 +7,7 @@ use crate::Route;
 /// Карточка листинга из дизайна «Listing Card» (bnVxN) — RV.
 #[component]
 pub fn ListingCard(listing: Listing) -> Element {
-    let to = Route::RvDetail { id: listing.id };
+    let to = Route::RvDetail { slug: listing.slug.to_string() };
     rsx! {
         Link { class: "listing-card", to,
             div {

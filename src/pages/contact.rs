@@ -1,4 +1,4 @@
-use crate::components::Icon;
+use crate::{api, components::Icon};
 use crate::data::PHONE;
 use dioxus::prelude::*;
 
@@ -7,6 +7,24 @@ const CSS: Asset = asset!("/assets/css/contact.css");
 /// Страница «Contact» — Pencil: desktop `v1lkS`, mobile `Kzp7R`.
 #[component]
 pub fn Contact() -> Element {
+    let mut full_name = use_signal(String::new);
+    let mut email = use_signal(String::new);
+    let mut phone = use_signal(String::new);
+    let mut interest = use_signal(|| "rv".to_string());
+    let mut message = use_signal(String::new);
+    let mut status = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let submit = move |_| {
+        let values = (full_name.read().clone(), email.read().clone(), phone.read().clone(), interest.read().clone(), message.read().clone());
+        async move {
+            busy.set(true); status.set(String::new());
+            match api::send_contact(&values.0, &values.1, &values.2, &values.3, &values.4).await {
+                Ok(()) => { status.set("Thanks — your message has been saved. We'll get back to you soon.".into()); message.set(String::new()); }
+                Err(error) => status.set(error),
+            }
+            busy.set(false);
+        }
+    };
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
 
@@ -26,23 +44,22 @@ pub fn Contact() -> Element {
                 div { class: "ct-row",
                     label { class: "ct-field",
                         span { class: "ct-label", "Full name" }
-                        input { class: "ct-input", r#type: "text", placeholder: "Your name" }
+                        input { class: "ct-input", r#type: "text", placeholder: "Your name", value: "{full_name}", oninput: move |e| full_name.set(e.value()) }
                     }
                     label { class: "ct-field",
                         span { class: "ct-label", "Email" }
-                        input { class: "ct-input", r#type: "email", placeholder: "you@email.com" }
+                        input { class: "ct-input", r#type: "email", placeholder: "you@email.com", value: "{email}", oninput: move |e| email.set(e.value()) }
                     }
                 }
                 div { class: "ct-row",
                     label { class: "ct-field",
                         span { class: "ct-label", "Phone" }
-                        input { class: "ct-input", r#type: "tel", placeholder: "+1 (250) 000 0000" }
+                        input { class: "ct-input", r#type: "tel", placeholder: "+1 (250) 000 0000", value: "{phone}", oninput: move |e| phone.set(e.value()) }
                     }
                     label { class: "ct-field",
                         span { class: "ct-label", "Interested in" }
                         div { class: "ct-select-wrap",
-                            select { class: "ct-select",
-                                option { disabled: true, selected: true, value: "", "Select a rental…" }
+                            select { class: "ct-select", value: "{interest}", onchange: move |e| interest.set(e.value()),
                                 option { value: "rv", "RV Rental" }
                                 option { value: "cooler", "Cooler Trailer" }
                                 option { value: "other", "Something else" }
@@ -58,10 +75,13 @@ pub fn Contact() -> Element {
                     textarea {
                         class: "ct-textarea",
                         placeholder: "Tell us your dates and what you're looking for…",
+                        value: "{message}",
+                        oninput: move |e| message.set(e.value()),
                     }
                 }
-                button { class: "ct-send",
-                    "Send message"
+                if !status.read().is_empty() { p { role: "status", "{status}" } }
+                button { class: "ct-send", disabled: *busy.read(), onclick: submit,
+                    if *busy.read() { "Sending…" } else { "Send message" }
                     Icon { name: "send", size: 16, color: "var(--vl-white)" }
                 }
             }
