@@ -20,8 +20,10 @@ pub fn Checkout() -> Element {
     let mut availability_conflict = use_signal(|| false);
     let nav = use_navigator();
     let quote_for_confirm = quote.clone();
+    let draft_for_confirm = draft.clone();
     let confirm = move |_| {
         let active_quote = quote_for_confirm.clone();
+        let selected_draft = draft_for_confirm.clone();
         let values = (
             first_name.read().clone(), last_name.read().clone(), email.read().clone(),
             phone.read().clone(), notes.read().clone(), *accepted.read(),
@@ -42,7 +44,16 @@ pub fn Checkout() -> Element {
             busy.set(true);
             error.set(String::new());
             availability_conflict.set(false);
-            match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &values.4).await {
+            let booking_notes = if let Some(draft) = selected_draft.as_ref() {
+                let mut parts = Vec::new();
+                if !values.4.trim().is_empty() { parts.push(values.4.trim().to_string()); }
+                if let Some(address) = draft.delivery_address.as_ref().filter(|value| !value.is_empty()) { parts.push(format!("Delivery address: {address}")); }
+                if let Some(distance) = draft.delivery_km.as_ref() { parts.push(format!("Delivery distance: {distance} km one way")); }
+                parts.push(format!("Festival/event: {}", if draft.attending_event { "yes" } else { "no" }));
+                parts.push(format!("Towing after delivery: {}", if draft.towing_after_delivery { "yes" } else { "no" }));
+                parts.join("\n")
+            } else { values.4.clone() };
+            match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await {
                 Ok(created) => {
                     let _ = api::save_json("vl_last_booking", &created);
                     nav.push(Route::Confirmed {});
@@ -78,7 +89,16 @@ pub fn Checkout() -> Element {
                             TripRow { label: "Pickup", value: format!("{} at 2:00 PM", draft.starts_on) }
                             TripRow { label: "Return", value: format!("{} at 11:00 AM · {} nights", draft.ends_on, quote.quote.units) }
                             TripRow { label: "Guests", value: format!("{} guests", draft.guests) }
-                            TripRow { label: "Delivery", value: if draft.delivery_km.is_some() { "Delivery and setup".to_string() } else { "Pickup".to_string() } }
+                            TripRow { label: "Delivery", value: if let Some(distance) = draft.delivery_km.as_ref() {
+                                format!("Delivery and setup · {distance} km one way")
+                            } else { "Customer pickup".to_string() } }
+                            if let Some(address) = draft.delivery_address.as_ref().filter(|value| !value.is_empty()) {
+                                TripRow { label: "Address", value: address.clone() }
+                            }
+                            TripRow { label: "Festival or event", value: if draft.attending_event { "Yes".to_string() } else { "No".to_string() } }
+                            if draft.delivery_km.is_some() {
+                                TripRow { label: "Moving after setup", value: if draft.towing_after_delivery { "Yes".to_string() } else { "No, stationary stay".to_string() } }
+                            }
                         }
                         div { class: "co-card",
                             div { class: "co-card-h", "Guest details" }

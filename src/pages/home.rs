@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::components::{Icon, ListingCard};
-use crate::data::{rv_listings, IMG_HERO_RV, IMG_OUTBACK};
+use crate::data::{rv_listings, IMG_BULLET_VINEYARD, IMG_HERO_RV, IMG_OUTBACK};
 use crate::Route;
 
 #[component]
@@ -94,15 +94,15 @@ fn Hero() -> Element {
                 }
             }
             div { class: "searchbar",
-                div { class: "search-field",
-                    div { class: "search-label", "LOCATION" }
+                Link { class: "search-field", to: Route::Delivery {},
+                    div { class: "search-label", "DELIVERY RADIUS" }
                     div { class: "search-value",
                         Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" }
-                        span { "Kelowna, BC" }
+                        span { "Up to 250 km" }
                     }
                 }
                 div { class: "search-divider" }
-                div { class: "search-field",
+                Link { class: "search-field", to: Route::Catalog {},
                     div { class: "search-label", "WHAT" }
                     div { class: "search-value",
                         Icon { name: "compass", size: 17, color: "var(--vl-forest)" }
@@ -110,7 +110,7 @@ fn Hero() -> Element {
                     }
                 }
                 div { class: "search-divider" }
-                div { class: "search-field",
+                Link { class: "search-field", to: Route::Catalog {},
                     div { class: "search-label", "DATES" }
                     div { class: "search-value",
                         Icon { name: "calendar", size: 17, color: "var(--vl-forest)" }
@@ -118,7 +118,7 @@ fn Hero() -> Element {
                     }
                 }
                 div { class: "search-divider" }
-                div { class: "search-field",
+                Link { class: "search-field", to: Route::Catalog {},
                     div { class: "search-label", "GUESTS" }
                     div { class: "search-value",
                         Icon { name: "users", size: 17, color: "var(--vl-forest)" }
@@ -269,7 +269,7 @@ fn MoreServices() -> Element {
 fn CtaBand() -> Element {
     rsx! {
         section { class: "cta-band",
-            div { class: "cta-img", style: "background-image: url('{IMG_HERO_RV}');" }
+            div { class: "cta-img", style: "background-image: url('{IMG_BULLET_VINEYARD}');" }
             div { class: "cta-overlay" }
             div { class: "cta-copy",
                 div { class: "eyebrow gold", "TRAVEL WITH US" }

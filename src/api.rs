@@ -159,6 +159,31 @@ pub struct TripDraft {
     pub guests: i32,
     pub addon_keys: Vec<String>,
     pub delivery_km: Option<String>,
+    #[serde(default)]
+    pub delivery_address: Option<String>,
+    #[serde(default)]
+    pub attending_event: bool,
+    #[serde(default)]
+    pub towing_after_delivery: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CatalogSearchDraft {
+    pub location: String,
+    pub radius_km: i32,
+    pub starts_on: Option<String>,
+    pub ends_on: Option<String>,
+    pub guests: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct DeliveryEstimate {
+    pub resolved_address: String,
+    pub one_way_km: String,
+    pub round_trip_km: String,
+    pub delivery_fee: String,
+    pub maximum_km: String,
+    pub within_range: bool,
 }
 
 #[derive(Serialize)]
@@ -288,6 +313,17 @@ pub async fn availability(slug: &str, starts_on: &str, ends_on: &str) -> Result<
         "{API_BASE}/api/v1/rentals/{}/availability?starts_on={}&ends_on={}",
         urlencoding::encode(slug), urlencoding::encode(starts_on), urlencoding::encode(ends_on)
     )).send().await.map_err(|e| e.to_string())?;
+    if !response.ok() { return Err(response_error(response).await); }
+    response.json().await.map_err(|e| e.to_string())
+}
+
+pub async fn delivery_estimate(slug: &str, address: &str) -> Result<DeliveryEstimate, String> {
+    #[derive(Serialize)]
+    struct Payload<'a> { address: &'a str }
+    let response = Request::post(&format!("{API_BASE}/api/v1/rentals/{}/delivery-estimate", urlencoding::encode(slug)))
+        .header("Content-Type", "application/json")
+        .json(&Payload { address }).map_err(|e| e.to_string())?
+        .send().await.map_err(|e| e.to_string())?;
     if !response.ok() { return Err(response_error(response).await); }
     response.json().await.map_err(|e| e.to_string())
 }

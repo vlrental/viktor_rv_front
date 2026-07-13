@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::{api, components::Icon};
-use crate::data::IMG_JAYCO;
+use crate::data::{rv_listings, IMG_BULLET};
 use crate::Route;
 
 const CSS: Asset = asset!("/assets/css/confirmed.css");
@@ -45,12 +45,17 @@ pub fn Confirmed() -> Element {
 fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraft>) -> Element {
     let booking = created.as_ref().map(|value| &value.booking);
     let rental_label = draft.as_ref().map(|value| value.rental_slug.clone()).unwrap_or_else(|| "Rental".into());
+    let rental_image = draft
+        .as_ref()
+        .and_then(|value| rv_listings().into_iter().find(|listing| listing.slug == value.rental_slug))
+        .map(|listing| listing.image)
+        .unwrap_or(IMG_BULLET);
     rsx! {
         div { class: "cf-summary",
             div { class: "cf-item",
                 div {
                     class: "cf-item-img",
-                    style: "background-image: url('{IMG_JAYCO}');",
+                    style: "background-image: url('{rental_image}');",
                 }
                 div { class: "cf-item-c",
                     div { class: "cf-item-t", "{rental_label}" }

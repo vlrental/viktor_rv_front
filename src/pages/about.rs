@@ -1,8 +1,8 @@
 use crate::components::Icon;
+use crate::data::IMG_BULLET_OVERLOOK;
 use dioxus::prelude::*;
 
 const CSS: Asset = asset!("/assets/css/about.css");
-const IMG_TEAM: Asset = asset!("/assets/img/team.webp");
 const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 
 /// Ценности компании (правая колонка секции Story).
@@ -36,7 +36,7 @@ pub fn About() -> Element {
 
         // Hero с фото команды и градиентом
         section { class: "ab-hero",
-            div { class: "ab-hero-img", style: "background-image: url('{IMG_TEAM}');" }
+            div { class: "ab-hero-img", style: "background-image: url('{IMG_BULLET_OVERLOOK}');" }
             div { class: "ab-hero-ov" }
             div { class: "ab-hero-copy",
                 div { class: "eyebrow gold", "ABOUT VL RENTAL" }
@@ -52,7 +52,7 @@ pub fn About() -> Element {
             div { class: "ab-story-l",
                 h2 { class: "ab-story-h", "Who we are" }
                 p { class: "ab-story-p",
-                    "At VL Rental we believe the best memories are made outdoors — tracing scenic Okanagan highways and waking up beside the lake behind the wheel of a fully-equipped RV."
+                    "At VL Rental we believe the best memories are made outdoors — tracing scenic Okanagan highways and waking up beside the lake in a fully-equipped travel trailer."
                 }
                 p { class: "ab-story-p",
                     "We're a passionate team of outdoor enthusiasts committed to delivering experiences, not just rentals. Every rig is meticulously maintained and safety-checked before it reaches you."

@@ -107,8 +107,10 @@ pub fn AuthCallback() -> Element {
                     },
                 };
                 let _ = api::save_session(&tokens);
-                if api::take_auth_return().as_deref() == Some("/checkout") {
-                    nav.replace(Route::Checkout {});
+                if let Some(path) = api::take_auth_return().filter(|path| path.starts_with('/') && !path.starts_with("//")) {
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.location().set_href(&path);
+                    }
                 } else {
                     nav.replace(Route::Account {});
                 }
