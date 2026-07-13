@@ -11,10 +11,7 @@ use crate::{api, components::Icon, Route};
 pub fn Catalog() -> Element {
     let listings = use_resource(api::catalog);
     let saved_search = api::load_json::<api::CatalogSearchDraft>("vl_catalog_search");
-    let initial_location = saved_search
-        .as_ref()
-        .map(|value| value.location.clone())
-        .unwrap_or_else(|| "Kelowna, BC".to_string());
+    let initial_location = "Kelowna, BC".to_string();
     let initial_radius = saved_search
         .as_ref()
         .map(|value| value.radius_km.clamp(10, 150))
@@ -222,8 +219,8 @@ fn CatalogSearchOverlay(
                 div { class: "cat-planner-head",
                     div {
                         div { class: "cat-planner-kicker", "OKANAGAN RV SEARCH" }
-                        h2 { "Find the right RV for your trip" }
-                        p { "Set your search area, travel dates and group size in one place." }
+                        h2 { "Plan your delivered RV trip" }
+                        p { "Set the delivery radius, travel dates and group size in one place." }
                     }
                     button { class: "cat-planner-close", r#type: "button", aria_label: "Close search", onclick: move |_| close_overlay(),
                         Icon { name: "x", size: 22, color: "var(--vl-ink)" }
@@ -234,12 +231,12 @@ fn CatalogSearchOverlay(
                     section { class: "cat-planner-location",
                         div { class: "cat-planner-section-head",
                             div { class: "cat-planner-section-icon", Icon { name: "map-pin", size: 18, color: "var(--vl-white)" } }
-                            div { h3 { "Search area" } p { "Choose how far from Kelowna you want to explore." } }
+                            div { h3 { "Delivery area" } p { "Every RV is delivered and set up within 150 km of Kelowna." } }
                         }
                         label { class: "cat-location-input",
-                            span { "SEARCH CENTRE" }
+                            span { "DELIVERY BASE" }
                             div { Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" }
-                                input { value: "{location}", oninput: move |event| location.set(event.value()), aria_label: "Search centre" }
+                                input { value: "{location}", readonly: true, aria_label: "Delivery base" }
                             }
                         }
                         div { class: "cat-radius-map",
@@ -266,7 +263,7 @@ fn CatalogSearchOverlay(
                                 }
                             }
                         }
-                        div { class: "cat-radius-note", Icon { name: "info", size: 15, color: "var(--vl-forest)" } span { "Catalog search is limited to 150 km around Kelowna." } }
+                        div { class: "cat-radius-note", Icon { name: "info", size: 15, color: "var(--vl-forest)" } span { "RV delivery is limited to 150 km one way from the Kelowna base." } }
                     }
 
                     section { class: "cat-planner-trip",
@@ -275,7 +272,7 @@ fn CatalogSearchOverlay(
                             div { h3 { "Travel dates" } p { "All RV stays require at least 3 nights." } }
                         }
                         div { class: "cat-trip-summary",
-                            div { span { "PICKUP · 2:00 PM" } strong { if let Some(date) = *starts_on.read() { "{date}" } else { "Choose date" } } }
+                            div { span { "DELIVERY/SETUP · 2:00 PM" } strong { if let Some(date) = *starts_on.read() { "{date}" } else { "Choose date" } } }
                             Icon { name: "arrow-right", size: 18, color: "var(--vl-muted)" }
                             div { span { "RETURN · 11:00 AM" } strong { if let Some(date) = *ends_on.read() { "{date}" } else { "Choose date" } } }
                         }
@@ -286,7 +283,7 @@ fn CatalogSearchOverlay(
                                     if previous >= initial_month { visible_month.set(previous); }
                                 }
                             }, Icon { name: "chevron-left", size: 18, color: "var(--vl-ink)" } }
-                            span { "Choose pickup and return" }
+                            span { "Choose delivery and return" }
                             button { r#type: "button", aria_label: "Next month", disabled: *visible_month.read() >= add_months(initial_month, 15), onclick: move |_| {
                                 let current = *visible_month.peek();
                                 visible_month.set(add_months(current, 1));

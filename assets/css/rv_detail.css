@@ -195,17 +195,11 @@
     .rvd-calendar-backdrop.is-closing .rvd-calendar-overlay { animation-duration: 1ms; }
 }
 
-/* Availability */
-.rvd-avail { display: flex; flex-direction: column; gap: 20px; padding-top: 40px; width: 100%; }
-.rvd-avail-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; width: 100%; }
+/* Calendar overlay typography */
 .rvd-avail-t { font-family: var(--font-heading); font-size: 28px; font-weight: 400; color: var(--vl-ink); }
 .rvd-avail-s { font-size: 15px; color: var(--vl-muted); margin-top: 6px; }
-.rvd-legend { display: flex; align-items: center; gap: 16px; }
-.rvd-legend-item { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--vl-muted); }
-.rvd-legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 
 /* Calendar */
-.rvd-cal { display: flex; flex-direction: column; gap: 22px; background-color: var(--vl-white); border: 1px solid var(--vl-hair); border-radius: 20px; box-shadow: 0px 14px 34px 0px #1023170A; padding: 28px; width: 100%; }
 .rvd-cal-months { display: flex; gap: 32px; width: 100%; }
 .rvd-month { display: flex; flex-direction: column; gap: 12px; flex: 1 1 0; min-width: 0; }
 .rvd-month-head { display: flex; align-items: center; justify-content: space-between; width: 100%; }
@@ -233,28 +227,6 @@
 .rvd-day.edge .rvd-day-p { color: #D8E4CB; }
 .rvd-day.stay { background-color: var(--vl-mint); }
 .rvd-day.stay .rvd-day-p { color: var(--vl-forest); }
-
-/* Instant quote */
-.rvd-quote { display: flex; align-items: center; justify-content: space-between; gap: 16px; background-color: var(--vl-mint); border-radius: 14px; padding: 16px 20px; width: 100%; }
-.rvd-quote-l { display: flex; align-items: center; gap: 12px; }
-.rvd-quote-ic { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; background-color: var(--vl-forest); border-radius: 9999px; flex-shrink: 0; }
-.rvd-quote-t { font-size: 15px; font-weight: 600; color: var(--vl-ink); }
-.rvd-quote-s { font-size: 13px; color: var(--vl-forest); margin-top: 2px; }
-.rvd-quote-r { display: flex; align-items: flex-end; gap: 6px; }
-.rvd-quote-m { font-size: 14px; color: var(--vl-muted); }
-.rvd-quote-p { font-family: var(--font-heading); font-size: 26px; color: var(--vl-forest); }
-
-/* Add-ons */
-.rvd-addons { display: flex; flex-direction: column; gap: 20px; padding-top: 40px; width: 100%; }
-.rvd-addons-grid { display: flex; gap: 20px; width: 100%; }
-.rvd-addons-col { display: flex; flex-direction: column; flex: 1 1 0; border: 1px solid var(--vl-hair); border-radius: 14px; overflow: hidden; }
-.rvd-addon { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 18px; width: 100%; border-bottom: 1px solid var(--vl-hair); }
-.rvd-addon:last-child { border-bottom: none; }
-.rvd-addon-l { display: flex; align-items: center; gap: 14px; }
-.rvd-addon-ib { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; background-color: var(--vl-mint); border-radius: 10px; flex-shrink: 0; }
-.rvd-addon-t { font-size: 15px; font-weight: 600; color: var(--vl-ink); }
-.rvd-addon-s { font-size: 12px; color: var(--vl-muted); margin-top: 2px; }
-.rvd-addon-p { font-size: 15px; font-weight: 600; color: var(--vl-forest); white-space: nowrap; }
 
 /* ===== Mobile (по мотивам фрейма wjWTt) ===== */
 @media (max-width: 860px) {
@@ -287,11 +259,7 @@
     .rvd-gtk { flex-direction: column; }
     .rvd-booking { width: 100%; padding: 20px; gap: 14px; border-radius: 16px; }
     .rvd-price-v { font-size: 28px; }
-    .rvd-avail { padding-top: 8px; }
-    .rvd-avail-head { flex-direction: column; align-items: flex-start; gap: 12px; }
     .rvd-avail-t { font-size: 22px; }
-    .rvd-legend { flex-wrap: wrap; gap: 10px; }
-    .rvd-cal { padding: 16px; gap: 16px; }
     .rvd-cal-months { flex-direction: column; gap: 24px; }
     .rvd-calendar-backdrop { align-items: flex-start; padding: 12px; }
     .rvd-calendar-overlay { max-height: calc(100vh - 24px); padding: 18px; gap: 18px; }
@@ -306,7 +274,4 @@
     .rvd-choice { flex: 1; }
     .rvd-address-search { flex-direction: column; }
     .rvd-addon-picker-grid { grid-template-columns: 1fr; }
-    .rvd-quote { flex-direction: column; align-items: flex-start; }
-    .rvd-addons { padding-top: 8px; }
-    .rvd-addons-grid { flex-direction: column; }
 }

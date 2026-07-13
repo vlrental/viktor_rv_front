@@ -30,22 +30,53 @@ macro_rules! gallery_assets {
     }};
 }
 
+macro_rules! original_assets {
+    ($prefix:literal; $($index:literal),+ $(,)?) => {
+        vec![
+            $(asset!(concat!("/assets/img/", $prefix, "-original-", $index, ".webp"))),+
+        ]
+    };
+}
+
+fn with_originals(mut gallery: Vec<Asset>, originals: Vec<Asset>) -> Vec<Asset> {
+    gallery.extend(originals);
+    gallery
+}
+
 pub fn rv_gallery(slug: &str) -> Vec<Asset> {
     match slug {
-        "jayco26" => gallery_assets!("jayco", IMG_JAYCO),
-        "2015-keystone-bullet" => vec![
-            IMG_BULLET,
-            IMG_BULLET_LAKESIDE,
-            IMG_BULLET_VINEYARD,
-            IMG_BULLET_MYRA,
-            IMG_BULLET_OVERLOOK,
-            IMG_BULLET_PEACHLAND,
-            IMG_BULLET_ORCHARD,
-        ],
-        "2014-forest-river-rockwood" => gallery_assets!("rockwood", IMG_ROCKWOOD),
-        "2025-open-range-1" => gallery_assets!("openrange", IMG_OPENRANGE),
-        "2017-keystone-outback-ultra" => gallery_assets!("outback", IMG_OUTBACK),
-        "2025-highland-ridge-2" => gallery_assets!("openrange2", IMG_OPENRANGE2),
+        "jayco26" => with_originals(
+            gallery_assets!("jayco", IMG_JAYCO),
+            original_assets!("jayco"; "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13"),
+        ),
+        "2015-keystone-bullet" => with_originals(
+            vec![
+                IMG_BULLET,
+                IMG_BULLET_LAKESIDE,
+                IMG_BULLET_VINEYARD,
+                IMG_BULLET_MYRA,
+                IMG_BULLET_OVERLOOK,
+                IMG_BULLET_PEACHLAND,
+                IMG_BULLET_ORCHARD,
+            ],
+            original_assets!("bullet"; "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15"),
+        ),
+        "2014-forest-river-rockwood" => with_originals(
+            gallery_assets!("rockwood", IMG_ROCKWOOD),
+            original_assets!("rockwood"; "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"),
+        ),
+        "2025-open-range-1" => with_originals(
+            gallery_assets!("openrange", IMG_OPENRANGE),
+            original_assets!("openrange"; "01", "02", "03", "04", "05", "06", "07", "08", "09"),
+        ),
+        "2017-keystone-outback-ultra" => with_originals(
+            gallery_assets!("outback", IMG_OUTBACK),
+            original_assets!("outback"; "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"),
+        ),
+        "2025-highland-ridge-2" => with_originals(
+            gallery_assets!("openrange2", IMG_OPENRANGE2),
+            original_assets!("openrange2"; "01", "02", "03", "04", "05", "06", "07"),
+        ),
         _ => Vec::new(),
     }
 }
@@ -82,12 +113,14 @@ mod gallery_tests {
     use std::collections::HashSet;
 
     #[test]
-    fn every_rv_has_seven_unique_images() {
-        for listing in rv_listings() {
+    fn every_rv_has_at_least_seven_unique_images() {
+        let expected_lengths = [20, 22, 17, 16, 27, 14];
+
+        for (listing, expected_length) in rv_listings().into_iter().zip(expected_lengths) {
             let gallery = rv_gallery(listing.slug);
             let unique = gallery.iter().map(ToString::to_string).collect::<HashSet<_>>();
-            assert_eq!(gallery.len(), 7, "{} gallery length", listing.slug);
-            assert_eq!(unique.len(), 7, "{} gallery uniqueness", listing.slug);
+            assert_eq!(gallery.len(), expected_length, "{} gallery length", listing.slug);
+            assert_eq!(unique.len(), gallery.len(), "{} gallery uniqueness", listing.slug);
         }
     }
 }

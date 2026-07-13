@@ -146,7 +146,7 @@ pub fn Account() -> Element {
                         article { class: "co-card", key: "{booking.booking_id}",
                             p { class: "auth-kicker", "{booking.status} · {booking.payment_status}" }
                             h2 { "#{booking.booking_number}" }
-                            p { "Pickup: {booking.starts_at} · Return: {booking.ends_at}" }
+                            p { "Delivery/setup: {booking.starts_at} · Return: {booking.ends_at}" }
                             p { "Total: {booking.currency} {booking.total}" }
                         }
                     }

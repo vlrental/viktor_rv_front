@@ -98,7 +98,7 @@ fn Hero() -> Element {
                     div { class: "search-label", "DELIVERY RADIUS" }
                     div { class: "search-value",
                         Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" }
-                        span { "Up to 250 km" }
+                        span { "Up to 150 km" }
                     }
                 }
                 div { class: "search-divider" }

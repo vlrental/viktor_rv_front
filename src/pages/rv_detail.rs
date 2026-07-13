@@ -58,8 +58,6 @@ pub fn RvDetail(slug: String) -> Element {
                 }
                 BookingCard { listing: l, starts_on, ends_on, availability_version }
             }
-            Availability { slug: l.slug, price: l.price, starts_on, ends_on, availability_version }
-            AddOns {}
         }
     }
 }
@@ -152,14 +150,17 @@ fn Gallery(listing: Listing) -> Element {
                 onclick: move |_| selected.set(Some(0)),
             }
             div { class: "rvd-gallery-grid",
-                for (index, image) in images.iter().copied().enumerate().skip(1) {
+                for (index, image) in images.iter().copied().enumerate().skip(1).take(6) {
                     button {
                         key: "gallery-{index}",
                         class: "rvd-gallery-tile",
                         r#type: "button",
-                        aria_label: "Open photo {index + 1} of {image_count}",
+                        aria_label: if index == 6 && image_count > 7 { "Show all {image_count} photos" } else { "Open photo {index + 1} of {image_count}" },
                         style: "background-image: url('{image}');",
-                        onclick: move |_| selected.set(Some(index)),
+                        onclick: move |_| selected.set(Some(if index == 6 && image_count > 7 { 7 } else { index })),
+                        if index == 6 && image_count > 7 {
+                            span { class: "rvd-gallery-more", "Show all {image_count} photos" }
+                        }
                     }
                 }
             }
@@ -255,7 +256,7 @@ fn AboutRv() -> Element {
         div { class: "rvd-sec",
             h2 { class: "rvd-h", "About this RV" }
             p { class: "rvd-p",
-                "A comfortable Keystone Bullet 272BHS travel trailer that's perfect for family getaways across the Okanagan. Sleeps up to 10 with a private queen bedroom, double bunks and convertible living areas, plus a full kitchen and bathroom with shower, TV, powered awning, furnace and A/C. Fully equipped and meticulously maintained — pick it up, or let us deliver and set it up at your campsite (up to 250 km)."
+                "A comfortable Keystone Bullet 272BHS travel trailer that's perfect for family getaways across the Okanagan. Sleeps up to 10 with a private queen bedroom, double bunks and convertible living areas, plus a full kitchen and bathroom with shower, TV, powered awning, furnace and A/C. Fully equipped and meticulously maintained, with delivery and setup at your campsite within 150 km of Kelowna."
             }
         }
     }
@@ -301,8 +302,8 @@ fn GoodToKnow() -> Element {
                 div { class: "rvd-gtk-col",
                     GtkCard {
                         icon: "truck",
-                        title: "Delivery up to 250 km",
-                        desc: "CA$150 within 50 km, then CA$1.75/km two-way — calculated automatically at checkout.",
+                        title: "Delivery up to 150 km",
+                        desc: "CA$150 through 50 km, then CA$3.50 per additional one-way kilometre — calculated automatically.",
                     }
                     GtkCard {
                         icon: "shield-check",
@@ -359,22 +360,39 @@ fn BookingCard(
     mut ends_on: Signal<String>,
     mut availability_version: Signal<u32>,
 ) -> Element {
+    let recovery_draft = api::load_json::<api::TripDraft>("vl_trip_draft")
+        .filter(|draft| draft.rental_slug == listing.slug);
+    let initial_delivery_address = recovery_draft
+        .as_ref()
+        .and_then(|draft| draft.delivery_address.clone())
+        .unwrap_or_default();
+    let initial_delivery_km = recovery_draft
+        .as_ref()
+        .and_then(|draft| draft.delivery_km.clone());
+    let needs_delivery_recovery = recovery_draft.as_ref().is_some_and(|draft| {
+        draft
+            .delivery_address
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+            || draft.delivery_km.is_none()
+    });
     let initial_guests = api::load_json::<api::CatalogSearchDraft>("vl_catalog_search").map(|value| value.guests.clamp(1, 10)).unwrap_or(2);
     let mut guests = use_signal(|| initial_guests);
-    let mut delivery = use_signal(|| true);
-    let delivery_address = use_signal(String::new);
-    let delivery_km = use_signal(|| None::<String>);
+    let delivery_address = use_signal(|| initial_delivery_address);
+    let delivery_km = use_signal(|| initial_delivery_km);
     let addon_keys = use_signal(Vec::<String>::new);
     let attending_event = use_signal(|| false);
     let towing_after_delivery = use_signal(|| false);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(String::new);
-    let mut calendar_open = use_signal(|| false);
+    let mut calendar_open = use_signal(|| needs_delivery_recovery);
     let mut guests_open = use_signal(|| false);
     let maximum_guests = listing.meta.split("Sleeps ").nth(1).and_then(|value| value.parse::<i32>().ok()).unwrap_or(4);
     let selected_nights = selected_date(&starts_on).zip(selected_date(&ends_on)).map(|(start, end)| (end - start).num_days()).unwrap_or(0);
     let rental_total = price_amount(listing.price) * selected_nights.max(0) as f64;
-    let delivery_total = if *delivery.read() { 150.0 } else { 0.0 };
+    let delivery_total = 150.0;
     let taxable_subtotal = rental_total + delivery_total;
     let gst = taxable_subtotal * 0.05;
     let pst = taxable_subtotal * 0.07;
@@ -393,17 +411,19 @@ fn BookingCard(
             ends_on: ends_on.read().clone(),
             guests: *guests.read(),
             addon_keys: addon_keys.read().clone(),
-            delivery_km: if *delivery.read() { delivery_km.read().clone() } else { None },
-            delivery_address: if *delivery.read() { Some(delivery_address.read().clone()) } else { None },
+            delivery_km: delivery_km.read().clone(),
+            delivery_address: Some(delivery_address.read().clone()),
             attending_event: *attending_event.read(),
             towing_after_delivery: *towing_after_delivery.read(),
         };
         async move {
             if draft.starts_on.is_empty() || draft.ends_on.is_empty() {
-                error.set("Choose pickup and return dates first.".into());
+                error.set("Choose delivery and return dates first.".into());
                 return;
             }
-            if draft.delivery_address.is_some() && draft.delivery_km.is_none() {
+            if draft.delivery_address.as_deref().unwrap_or_default().trim().is_empty()
+                || draft.delivery_km.is_none()
+            {
                 error.set("Open the date planner and calculate the delivery address first.".into());
                 calendar_open.set(true);
                 return;
@@ -453,7 +473,7 @@ fn BookingCard(
             div { class: "rvd-fields",
                 div { class: "rvd-fields-dates",
                     button { class: "rvd-field rvd-date-trigger", r#type: "button", onclick: move |_| calendar_open.set(true),
-                        div { class: "rvd-field-l", "PICKUP · 2:00 PM" }
+                        div { class: "rvd-field-l", "DELIVERY/SETUP · 2:00 PM" }
                         div { class: "rvd-field-v",
                             if starts_on.read().is_empty() { "Choose date" } else { "{starts_on}" }
                         }
@@ -508,9 +528,9 @@ fn BookingCard(
                     }
                 }
             }
-            label { class: "rvd-min-pill",
-                input { r#type: "checkbox", checked: *delivery.read(), onchange: move |e| delivery.set(e.checked()) }
-                span { "Delivery and setup (test distance: 25 km)" }
+            div { class: "rvd-min-pill",
+                Icon { name: "truck", size: 15, color: "var(--vl-forest)" }
+                span { "Delivery and setup required · maximum 150 km" }
             }
             if !error.read().is_empty() { p { class: "auth-error", role: "alert", "{error}" } }
             button { class: "rvd-reserve", disabled: *busy.read(), onclick: reserve,
@@ -548,7 +568,7 @@ fn BookingCard(
                     }
                 }
             } else {
-                div { class: "rvd-quote-placeholder", "Choose pickup and return dates to see the full total." }
+                div { class: "rvd-quote-placeholder", "Choose delivery and return dates to see the full total." }
             }
             div { class: "rvd-contact",
                 Icon { name: "phone", size: 15, color: "var(--vl-forest)" }
@@ -563,7 +583,6 @@ fn BookingCard(
                 ends_on,
                 availability_version,
                 guests,
-                delivery,
                 delivery_address,
                 delivery_km,
                 addon_keys,
@@ -733,7 +752,6 @@ fn BookingCalendarOverlay(
     slug: &'static str,
     price: &'static str,
     mut guests: Signal<i32>,
-    mut delivery: Signal<bool>,
     mut delivery_address: Signal<String>,
     mut delivery_km: Signal<Option<String>>,
     mut addon_keys: Signal<Vec<String>>,
@@ -774,8 +792,8 @@ fn BookingCalendarOverlay(
             ends_on: ends_on.read().clone(),
             guests: *guests.read(),
             addon_keys: addon_keys.read().clone(),
-            delivery_km: if *delivery.read() { delivery_km.read().clone() } else { None },
-            delivery_address: if *delivery.read() { Some(delivery_address.read().clone()) } else { None },
+            delivery_km: delivery_km.read().clone(),
+            delivery_address: Some(delivery_address.read().clone()),
             attending_event: *attending_event.read(),
             towing_after_delivery: *towing_after_delivery.read(),
         };
@@ -783,7 +801,9 @@ fn BookingCalendarOverlay(
             if draft.starts_on.is_empty() || draft.ends_on.is_empty() {
                 return Err("Choose complete dates".to_string());
             }
-            if draft.delivery_address.is_some() && draft.delivery_km.is_none() {
+            if draft.delivery_address.as_deref().unwrap_or_default().trim().is_empty()
+                || draft.delivery_km.is_none()
+            {
                 return Err("Enter and calculate the delivery address".to_string());
             }
             api::create_quote(&draft).await
@@ -826,11 +846,11 @@ fn BookingCalendarOverlay(
                 let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 220));").await;
                 on_close.call(());
             },
-            div { class: "rvd-calendar-overlay", role: "dialog", aria_modal: "true", aria_label: "Choose pickup and return dates", onclick: move |event| event.stop_propagation(),
+            div { class: "rvd-calendar-overlay", role: "dialog", aria_modal: "true", aria_label: "Choose delivery and return dates", onclick: move |event| event.stop_propagation(),
                 div { class: "rvd-calendar-overlay-head",
                     div {
                         h2 { class: "rvd-avail-t", "Choose your dates" }
-                        p { class: "rvd-avail-s", "Pickup at 2:00 PM · return at 11:00 AM · {minimum_nights}-night minimum" }
+                        p { class: "rvd-avail-s", "Delivery/setup at 2:00 PM · return at 11:00 AM · {minimum_nights}-night minimum" }
                     }
                     button {
                         class: "rvd-calendar-close",
@@ -886,23 +906,9 @@ fn BookingCalendarOverlay(
                                 button { class: if !*attending_event.read() { "rvd-choice active" } else { "rvd-choice" }, r#type: "button", onclick: move |_| attending_event.set(false), "No" }
                             }
                         }
-                        div { class: "rvd-trip-option-row",
-                            div {
-                                div { class: "rvd-trip-option-title", Icon { name: "truck", size: 17, color: "var(--vl-forest)" } "How would you like to get the RV?" }
-                                div { class: "rvd-trip-option-help", "Delivery includes setup at your campsite." }
-                            }
-                            div { class: "rvd-choice-group",
-                                button { class: if *delivery.read() { "rvd-choice active" } else { "rvd-choice" }, r#type: "button", onclick: move |_| delivery.set(true), "Deliver it to me" }
-                                button { class: if !*delivery.read() { "rvd-choice active" } else { "rvd-choice" }, r#type: "button", onclick: move |_| {
-                                    delivery.set(false);
-                                    delivery_km.set(None);
-                                }, "I'll pick it up" }
-                            }
-                        }
-                        if *delivery.read() {
-                            div { class: "rvd-address-card",
+                        div { class: "rvd-address-card",
                                 div { class: "rvd-trip-option-title", Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" } "Delivery address & live distance" }
-                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 up to 50 km, then CA$1.75/km for the round trip · maximum 250 km." }
+                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 50 km, then CA$3.50 per additional one-way kilometre · maximum 150 km." }
                                 div { class: "rvd-address-search",
                                     input { value: "{delivery_address}", placeholder: "Campsite, street address, or location", oninput: move |event| {
                                         delivery_address.set(event.value());
@@ -929,7 +935,6 @@ fn BookingCalendarOverlay(
                                         button { class: if !*towing_after_delivery.read() { "rvd-choice active" } else { "rvd-choice" }, r#type: "button", onclick: move |_| towing_after_delivery.set(false), "No, it stays there" }
                                     }
                                 }
-                            }
                         }
                         div { class: "rvd-trip-option-row",
                             div {
@@ -994,8 +999,8 @@ fn BookingCalendarOverlay(
                                 div { class: "rvd-calendar-total", "CA${quote.quote.total}" }
                                 div { class: "rvd-calendar-total-note", "Server-calculated total · preparation, selected add-ons, delivery, GST, PST and refundable deposit included" }
                             } else {
-                                div { class: "rvd-calendar-total", if *delivery.read() { "Address required" } else { "Calculating…" } }
-                                div { class: "rvd-calendar-total-note", if *delivery.read() { "Calculate the delivery address to receive the exact total" } else { "Calculating exact total…" } }
+                                div { class: "rvd-calendar-total", "Address required" }
+                                div { class: "rvd-calendar-total-note", "Calculate the delivery address to receive the exact total" }
                             }
                             if let Some(message) = quote_error.as_ref() { div { class: "rvd-calendar-quote-status", "{message}" } }
                             div { class: "rvd-calendar-actions",
@@ -1015,8 +1020,8 @@ fn BookingCalendarOverlay(
                                         ends_on: ends_on.read().clone(),
                                         guests: *guests.read(),
                                         addon_keys: addon_keys.read().clone(),
-                                        delivery_km: if *delivery.read() { delivery_km.read().clone() } else { None },
-                                        delivery_address: if *delivery.read() { Some(delivery_address.read().clone()) } else { None },
+                                        delivery_km: delivery_km.read().clone(),
+                                        delivery_address: Some(delivery_address.read().clone()),
                                         attending_event: *attending_event.read(),
                                         towing_after_delivery: *towing_after_delivery.read(),
                                     };
@@ -1041,109 +1046,10 @@ fn BookingCalendarOverlay(
                             div {
                                 div { class: "rvd-calendar-kicker", "PLAN YOUR ESCAPE" }
                                 div { class: "rvd-calendar-prompt-title",
-                                    if starts_on.read().is_empty() { "Choose your pickup date" } else { "Great start — now choose your return date" }
+                                    if starts_on.read().is_empty() { "Choose your delivery date" } else { "Great start — now choose your return date" }
                                 }
                                 div { class: "rvd-calendar-total-note", "Three nights is all it takes to trade routine for the open road." }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn Availability(
-    slug: &'static str,
-    price: &'static str,
-    mut starts_on: Signal<String>,
-    mut ends_on: Signal<String>,
-    availability_version: Signal<u32>,
-) -> Element {
-    let initial_month = month_start(Utc::now().with_timezone(&Vancouver).date_naive());
-    let mut visible_month = use_signal(|| initial_month);
-    let availability = use_resource(move || {
-        let _version = *availability_version.read();
-        async move {
-            api::availability(slug, &initial_month.to_string(), &add_months(initial_month, 18).to_string()).await
-        }
-    });
-    let response = availability.read().as_ref().and_then(|result| result.as_ref().ok()).cloned();
-    let availability_loaded = response.is_some();
-    let unavailable = response.as_ref().map(unavailable_ranges).unwrap_or_default();
-    let minimum_nights = response.as_ref().map(|value| value.minimum_nights).unwrap_or(3);
-    let start = selected_date(&starts_on);
-    let end = selected_date(&ends_on);
-    let nights = start.zip(end).map(|(a, b)| (b - a).num_days()).unwrap_or(0);
-    let rental_total = price_amount(price) * nights.max(0) as f64;
-    let calendar_error = availability.read().as_ref().and_then(|result| result.as_ref().err()).cloned();
-
-    rsx! {
-        div { class: "rvd-avail",
-            div { class: "rvd-avail-head",
-                div {
-                    h2 { class: "rvd-avail-t", "Availability & instant quote" }
-                    div { class: "rvd-avail-s", "Choose pickup at 2:00 PM and return at 11:00 AM · 3-night minimum." }
-                }
-                div { class: "rvd-legend",
-                    for (bg , label) in [
-                        ("background-color: var(--vl-forest);", "Pickup / return"),
-                        ("background-color: var(--vl-mint);", "Your stay"),
-                        ("background-color: var(--vl-white); border: 1px solid var(--vl-hair);", "Available"),
-                        ("background-color: var(--vl-hair);", "Booked"),
-                    ] {
-                        div { key: "lg-{label}", class: "rvd-legend-item",
-                            div { class: "rvd-legend-dot", style: bg }
-                            span { "{label}" }
-                        }
-                    }
-                }
-            }
-            if let Some(message) = calendar_error {
-                p { class: "auth-error", role: "alert", "Could not load availability: {message}" }
-            }
-            div { class: "rvd-cal",
-                div { class: "rvd-cal-months",
-                    for offset in 0..3_u32 {
-                        CalendarMonth {
-                            month: add_months(*visible_month.read(), offset),
-                            show_prev: offset == 0,
-                            show_next: offset == 2,
-                            price,
-                            availability_loaded,
-                            unavailable: unavailable.clone(),
-                            minimum_nights,
-                            starts_on,
-                            ends_on,
-                            on_selected: move |_| {},
-                            on_prev: move |_| {
-                                if *visible_month.read() > initial_month {
-                                    let previous = visible_month.read().checked_sub_months(Months::new(1)).unwrap();
-                                    visible_month.set(previous);
-                                }
-                            },
-                            on_next: move |_| {
-                                let next = add_months(*visible_month.read(), 1);
-                                if next <= add_months(initial_month, 15) { visible_month.set(next); }
-                            },
-                        }
-                    }
-                }
-                div { class: "rvd-quote",
-                    div { class: "rvd-quote-l",
-                        div { class: "rvd-quote-ic", Icon { name: "zap", size: 18, color: "var(--vl-white)" } }
-                        div {
-                            div { class: "rvd-quote-t",
-                                if nights >= 3 { "{starts_on} → {ends_on} · {nights} nights" } else { "Select at least 3 nights" }
-                            }
-                            div { class: "rvd-quote-s", "Live availability · final taxes calculated at checkout" }
-                        }
-                    }
-                    if nights >= 3 {
-                        div { class: "rvd-quote-r",
-                            span { class: "rvd-quote-m", "{price} × {nights}" }
-                            span { class: "rvd-quote-p", "{money(rental_total)}" }
                         }
                     }
                 }
@@ -1221,76 +1127,6 @@ fn CalendarMonth(
                     }
                 }
             }
-        }
-    }
-}
-
-// ===== Add-ons =====
-
-#[component]
-fn AddOns() -> Element {
-    rsx! {
-        div { class: "rvd-addons",
-            h2 { class: "rvd-avail-t", "Add-ons" }
-            div { class: "rvd-addons-grid",
-                div { class: "rvd-addons-col",
-                    AddOnRow { icon: "bed-double", title: "Bedding and Linens", sub: "", price: "$80" }
-                    AddOnRow { icon: "flame", title: "Portable BBQ", sub: "", price: "$50 + Refill" }
-                    AddOnRow {
-                        icon: "paw-print",
-                        title: "Pet Deposit",
-                        sub: "Non refundable",
-                        price: "$100",
-                    }
-                    AddOnRow {
-                        icon: "fuel",
-                        title: "Propane Refill Prepayment",
-                        sub: "",
-                        price: "$40",
-                    }
-                }
-                div { class: "rvd-addons-col",
-                    AddOnRow {
-                        icon: "droplet",
-                        title: "Emptying Septic Prepayment",
-                        sub: "",
-                        price: "$40",
-                    }
-                    AddOnRow {
-                        icon: "zap",
-                        title: "Portable Generator",
-                        sub: "Without fuel",
-                        price: "$50 + Refill",
-                    }
-                    AddOnRow { icon: "spray-can", title: "Excessive Dirt", sub: "", price: "$200" }
-                    AddOnRow { icon: "sparkles", title: "Exterior Cleaning", sub: "", price: "$80" }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn AddOnRow(
-    icon: &'static str,
-    title: &'static str,
-    sub: &'static str,
-    price: &'static str,
-) -> Element {
-    rsx! {
-        div { class: "rvd-addon",
-            div { class: "rvd-addon-l",
-                div { class: "rvd-addon-ib",
-                    Icon { name: icon, size: 18, color: "var(--vl-forest)" }
-                }
-                div {
-                    div { class: "rvd-addon-t", "{title}" }
-                    if !sub.is_empty() {
-                        div { class: "rvd-addon-s", "{sub}" }
-                    }
-                }
-            }
-            div { class: "rvd-addon-p", "{price}" }
         }
     }
 }

@@ -67,7 +67,7 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
             }
             div { class: "cf-divider" }
             div { class: "cf-grid",
-                GridCell { label: "Pickup", value: draft.as_ref().map(|value| format!("{} at 2:00 PM", value.starts_on)).unwrap_or_default() }
+                GridCell { label: "Delivery/setup", value: draft.as_ref().map(|value| format!("{} at 2:00 PM", value.starts_on)).unwrap_or_default() }
                 GridCell { label: "Return", value: draft.as_ref().map(|value| format!("{} at 11:00 AM", value.ends_on)).unwrap_or_default() }
                 GridCell { label: "Guests", value: format!("{} guests", draft.as_ref().map(|value| value.guests).unwrap_or_default()) }
                 GridCell { label: "Test total", value: format!("CA${}", booking.map(|value| value.total.as_str()).unwrap_or("0.00")) }

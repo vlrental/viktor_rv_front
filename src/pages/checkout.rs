@@ -7,7 +7,25 @@ const CSS: Asset = asset!("/assets/css/checkout.css");
 #[component]
 pub fn Checkout() -> Element {
     let quote = api::load_json::<api::QuoteResponse>("vl_active_quote");
-    let draft = api::load_json::<api::TripDraft>("vl_trip_draft");
+    let saved_draft = api::load_json::<api::TripDraft>("vl_trip_draft");
+    let recovery_slug = saved_draft.as_ref().and_then(|draft| {
+        let address_missing = draft
+            .delivery_address
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty();
+        (address_missing || draft.delivery_km.is_none()).then(|| draft.rental_slug.clone())
+    });
+    let draft = saved_draft.filter(|draft| {
+        !draft
+            .delivery_address
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+            && draft.delivery_km.is_some()
+    });
     let user = api::current_user();
     let first_name = use_signal(String::new);
     let last_name = use_signal(String::new);
@@ -86,12 +104,10 @@ pub fn Checkout() -> Element {
                         div { class: "co-card",
                             div { class: "co-card-h", "Your trip" }
                             TripRow { label: "Rental", value: quote.quote.rental_slug.clone() }
-                            TripRow { label: "Pickup", value: format!("{} at 2:00 PM", draft.starts_on) }
+                            TripRow { label: "Delivery/setup", value: format!("{} at 2:00 PM", draft.starts_on) }
                             TripRow { label: "Return", value: format!("{} at 11:00 AM · {} nights", draft.ends_on, quote.quote.units) }
                             TripRow { label: "Guests", value: format!("{} guests", draft.guests) }
-                            TripRow { label: "Delivery", value: if let Some(distance) = draft.delivery_km.as_ref() {
-                                format!("Delivery and setup · {distance} km one way")
-                            } else { "Customer pickup".to_string() } }
+                            TripRow { label: "Delivery", value: format!("Delivery and setup · {} km one way", draft.delivery_km.as_deref().unwrap_or_default()) }
                             if let Some(address) = draft.delivery_address.as_ref().filter(|value| !value.is_empty()) {
                                 TripRow { label: "Address", value: address.clone() }
                             }
@@ -154,8 +170,12 @@ pub fn Checkout() -> Element {
             } else {
                 div { class: "co-card",
                     h2 { "Your quote is missing or expired" }
-                    p { "Choose a rental and dates to calculate a new quote." }
-                    Link { class: "co-pay", to: Route::Catalog {}, "Return to catalog" }
+                    p { if recovery_slug.is_some() { "A delivery address and distance are required. Return to the RV and calculate delivery again." } else { "Choose a rental, delivery address and dates to calculate a new quote." } }
+                    if let Some(slug) = recovery_slug {
+                        Link { class: "co-pay", to: Route::RvDetail { slug }, "Enter delivery address" }
+                    } else {
+                        Link { class: "co-pay", to: Route::Catalog {}, "Return to catalog" }
+                    }
                 }
             }
         }

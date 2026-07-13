@@ -51,7 +51,8 @@
 
 ## Booking schedule and test payments
 
-- RV pickup is at 2:00 PM and return is at 11:00 AM in `America/Vancouver`.
-- A following customer may pick up the same RV at 2:00 PM on the previous customer's return date; the 11:00 AM–2:00 PM gap is reserved for cleaning and transport.
+- RVs are delivery-only; customer pickup is not supported. Delivery/setup is at 2:00 PM and return is at 11:00 AM in `America/Vancouver`.
+- A following customer may receive the same RV at 2:00 PM on the previous customer's return date; the 11:00 AM–2:00 PM gap is reserved for cleaning and transport.
+- RV delivery is limited to 150 km one way from the Kelowna base. The fee is CA$150 through 50 km, then CA$3.50 for each additional one-way kilometre (CA$1.75/km in each direction).
 - RV rentals require at least three nights. Backend code is the source of truth for converting selected dates into timestamps and enforcing availability.
 - Until Stripe is explicitly enabled, bookings are test bookings stored as `confirmed` / `test_paid`; no card is collected and no real payment row is created.

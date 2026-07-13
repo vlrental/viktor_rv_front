@@ -193,7 +193,7 @@ struct CreateQuotePayload<'a> {
     ends_on: &'a str,
     guests: i32,
     addon_keys: &'a [String],
-    delivery_km: Option<&'a str>,
+    delivery_address: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -337,7 +337,7 @@ pub async fn create_quote(draft: &TripDraft) -> Result<QuoteResponse, String> {
             ends_on: &draft.ends_on,
             guests: draft.guests,
             addon_keys: &draft.addon_keys,
-            delivery_km: draft.delivery_km.as_deref(),
+            delivery_address: draft.delivery_address.as_deref(),
         }).map_err(|e| e.to_string())?
         .send().await.map_err(|e| e.to_string())?;
     if !response.ok() { return Err(response_error(response).await); }

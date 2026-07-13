@@ -49,7 +49,7 @@ pub fn Delivery() -> Element {
                 div { class: "eyebrow", "DELIVERY SERVICES" }
                 h1 { class: "dv-title", "We deliver, level & set up" }
                 p { class: "dv-sub",
-                    "No truck? No problem. We deliver your RV up to 250 km, level it and set it up so it's ready the moment you arrive. CA$150 within 50 km, then CA$1.75/km two-way."
+                    "No truck? No problem. Every RV includes required delivery and setup within 150 km of Kelowna. CA$150 through 50 km, then CA$3.50 per additional one-way kilometre."
                 }
                 Link { class: "dv-btn", to: Route::Contact {},
                     span { "Request delivery" }
@@ -78,7 +78,7 @@ pub fn Delivery() -> Element {
                     div { class: "dv-coverage-title", "Delivery and Setup — real rates" }
                 }
                 p { class: "dv-coverage-sub",
-                    "Minimal fee CA$150 within 50 km, then CA$1.75/km (two-way) up to 250 km. Enter your destination at checkout — the delivery fee is calculated automatically."
+                    "Minimum fee CA$150 through 50 km, then CA$3.50 per additional one-way kilometre, up to 150 km. Enter your destination and the server calculates the driving route and exact fee automatically."
                 }
             }
             a { class: "dv-phone-btn", href: "tel:+12508785874",
