@@ -9,23 +9,9 @@ pub fn Checkout() -> Element {
     let quote = api::load_json::<api::QuoteResponse>("vl_active_quote");
     let saved_draft = api::load_json::<api::TripDraft>("vl_trip_draft");
     let recovery_slug = saved_draft.as_ref().and_then(|draft| {
-        let address_missing = draft
-            .delivery_address
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .is_empty();
-        (address_missing || draft.delivery_km.is_none()).then(|| draft.rental_slug.clone())
+        (!api::rv_delivery_ready(draft)).then(|| draft.rental_slug.clone())
     });
-    let draft = saved_draft.filter(|draft| {
-        !draft
-            .delivery_address
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .is_empty()
-            && draft.delivery_km.is_some()
-    });
+    let draft = saved_draft.filter(api::rv_delivery_ready);
     let user = api::current_user();
     let first_name = use_signal(String::new);
     let last_name = use_signal(String::new);
@@ -35,7 +21,6 @@ pub fn Checkout() -> Element {
     let mut accepted = use_signal(|| false);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(String::new);
-    let mut availability_conflict = use_signal(|| false);
     let nav = use_navigator();
     let quote_for_confirm = quote.clone();
     let draft_for_confirm = draft.clone();
@@ -61,7 +46,6 @@ pub fn Checkout() -> Element {
             }
             busy.set(true);
             error.set(String::new());
-            availability_conflict.set(false);
             let booking_notes = if let Some(draft) = selected_draft.as_ref() {
                 let mut parts = Vec::new();
                 if !values.4.trim().is_empty() { parts.push(values.4.trim().to_string()); }
@@ -76,12 +60,16 @@ pub fn Checkout() -> Element {
                     let _ = api::save_json("vl_last_booking", &created);
                     nav.push(Route::Confirmed {});
                 }
-                Err(message) => {
-                    if message.contains("no longer available") || message.contains("conflict") {
-                        availability_conflict.set(true);
-                        error.set("Those dates are no longer available. Return to the rental calendar and choose a new period.".into());
+                Err(api_error) => {
+                    if api_error.is_conflict() {
+                        if let Some(draft) = selected_draft.as_ref() {
+                            api::prepare_catalog_after_conflict(draft);
+                        } else {
+                            api::remove_saved("vl_active_quote");
+                        }
+                        nav.push(Route::Catalog {});
                     } else {
-                        error.set(message);
+                        error.set(api_error.message);
                     }
                 },
             }
@@ -158,10 +146,7 @@ pub fn Checkout() -> Element {
                             }
                         } else {
                             if !error.read().is_empty() { p { class: "auth-error", role: "alert", "{error}" } }
-                            if *availability_conflict.read() {
-                                Link { class: "co-email-login", to: Route::RvDetail { slug: draft.rental_slug.clone() }, onclick: move |_| api::remove_saved("vl_active_quote"), "Choose new dates" }
-                            }
-                            button { class: "co-pay", disabled: *busy.read() || *availability_conflict.read(), onclick: confirm,
+                            button { class: "co-pay", disabled: *busy.read(), onclick: confirm,
                                 if *busy.read() { "Creating booking…" } else { "Confirm test booking" }
                             }
                         }

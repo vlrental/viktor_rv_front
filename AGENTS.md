@@ -1,5 +1,9 @@
 # AGENTS.md - Viktor RV Frontend
 
+## RV-only scope
+
+- Viktor RV is an RV-only project. Do not add, seed, import, document, or expose boats or boat bookings in the new frontend, backend, database, or generated content. The legacy Simvoly site remains unchanged until a separately approved cutover.
+
 ## Local project layout
 
 - Frontend repository: `/Users/viktoriiakarpova/Projects/it_work/viktor_rv_front`.

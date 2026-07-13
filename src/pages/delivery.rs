@@ -32,7 +32,7 @@ const STEPS: [Step; 3] = [
         icon: "tent-tree",
         num: "03",
         title: "You just enjoy",
-        desc: "Arrive to a ready campsite. We handle pickup too.",
+        desc: "Arrive to a ready campsite. We collect the RV after your stay.",
     },
 ];
 

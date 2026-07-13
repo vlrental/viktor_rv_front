@@ -12,9 +12,16 @@ const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 
 #[component]
 pub fn RvDetail(slug: String) -> Element {
-    let catalog_search = api::load_json::<api::CatalogSearchDraft>("vl_catalog_search");
-    let initial_start = catalog_search.as_ref().and_then(|value| value.starts_on.clone()).unwrap_or_default();
-    let initial_end = catalog_search.as_ref().and_then(|value| value.ends_on.clone()).unwrap_or_default();
+    let today = Utc::now().with_timezone(&Vancouver).date_naive();
+    let catalog_search = super::catalog::normalized_catalog_search(
+        api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"),
+        150,
+        today,
+    );
+    let _ = api::save_json("vl_catalog_search", &catalog_search);
+    let initial_start = catalog_search.starts_on.clone().unwrap_or_default();
+    let initial_end = catalog_search.ends_on.clone().unwrap_or_default();
+    let initial_guests = catalog_search.guests;
     let starts_on = use_signal(|| initial_start);
     let ends_on = use_signal(|| initial_end);
     let availability_version = use_signal(|| 0_u32);
@@ -56,7 +63,7 @@ pub fn RvDetail(slug: String) -> Element {
                     Amenities {}
                     GoodToKnow {}
                 }
-                BookingCard { listing: l, starts_on, ends_on, availability_version }
+                BookingCard { listing: l, starts_on, ends_on, availability_version, initial_guests }
             }
         }
     }
@@ -358,7 +365,8 @@ fn BookingCard(
     listing: Listing,
     mut starts_on: Signal<String>,
     mut ends_on: Signal<String>,
-    mut availability_version: Signal<u32>,
+    availability_version: Signal<u32>,
+    initial_guests: i32,
 ) -> Element {
     let recovery_draft = api::load_json::<api::TripDraft>("vl_trip_draft")
         .filter(|draft| draft.rental_slug == listing.slug);
@@ -369,17 +377,10 @@ fn BookingCard(
     let initial_delivery_km = recovery_draft
         .as_ref()
         .and_then(|draft| draft.delivery_km.clone());
-    let needs_delivery_recovery = recovery_draft.as_ref().is_some_and(|draft| {
-        draft
-            .delivery_address
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .is_empty()
-            || draft.delivery_km.is_none()
-    });
-    let initial_guests = api::load_json::<api::CatalogSearchDraft>("vl_catalog_search").map(|value| value.guests.clamp(1, 10)).unwrap_or(2);
-    let mut guests = use_signal(|| initial_guests);
+    let needs_delivery_recovery = recovery_draft
+        .as_ref()
+        .is_some_and(|draft| !api::rv_delivery_ready(draft));
+    let mut guests = use_signal(|| initial_guests.clamp(1, 10));
     let delivery_address = use_signal(|| initial_delivery_address);
     let delivery_km = use_signal(|| initial_delivery_km);
     let addon_keys = use_signal(Vec::<String>::new);
@@ -400,8 +401,8 @@ fn BookingCard(
     let booking_total = taxable_subtotal + gst + pst + refundable_deposit;
     let saved_quote = api::load_json::<api::QuoteResponse>("vl_active_quote").filter(|value|
         value.quote.rental_slug == listing.slug
-            && starts_on.read().contains(&value.quote.starts_at.get(0..10).unwrap_or_default())
-            && ends_on.read().contains(&value.quote.ends_at.get(0..10).unwrap_or_default())
+            && starts_on.read().contains(value.quote.starts_at.get(0..10).unwrap_or_default())
+            && ends_on.read().contains(value.quote.ends_at.get(0..10).unwrap_or_default())
     );
     let nav = use_navigator();
     let reserve = move |_| {
@@ -421,9 +422,7 @@ fn BookingCard(
                 error.set("Choose delivery and return dates first.".into());
                 return;
             }
-            if draft.delivery_address.as_deref().unwrap_or_default().trim().is_empty()
-                || draft.delivery_km.is_none()
-            {
+            if !api::rv_delivery_ready(&draft) {
                 error.set("Open the date planner and calculate the delivery address first.".into());
                 calendar_open.set(true);
                 return;
@@ -440,13 +439,12 @@ fn BookingCard(
                         error.set("Could not save your booking progress.".into());
                     }
                 }
-                Err(message) => {
-                    if message.contains("unavailable") || message.contains("conflict") {
-                        let next_version = *availability_version.read() + 1;
-                        availability_version.set(next_version);
-                        error.set("Those dates were just booked. The calendar has been refreshed — please choose another period.".into());
+                Err(api_error) => {
+                    if api_error.is_conflict() {
+                        api::prepare_catalog_after_conflict(&draft);
+                        nav.push(crate::Route::Catalog {});
                     } else {
-                        error.set(message);
+                        error.set(api_error.message);
                     }
                 },
             }
@@ -695,34 +693,34 @@ mod availability_tests {
     }
 
     #[test]
-    fn previous_return_day_is_available_for_pickup() {
+    fn previous_return_day_is_available_for_delivery() {
         let return_day = day(2030, 8, 10);
         let blocked = vec![(local_moment(day(2030, 8, 1), 14).unwrap(), local_moment(return_day, 11).unwrap())];
         assert!(minimum_stay_can_start(return_day, 3, &blocked));
     }
 
     #[test]
-    fn next_pickup_day_is_available_for_return() {
+    fn next_delivery_day_is_available_for_return() {
         let turnover_day = day(2030, 8, 10);
         let blocked = vec![(local_moment(turnover_day, 14).unwrap(), local_moment(day(2030, 8, 13), 11).unwrap())];
         assert!(stay_is_available(day(2030, 8, 7), turnover_day, &blocked));
     }
 
     #[test]
-    fn partial_afternoon_block_prevents_pickup() {
+    fn partial_afternoon_block_prevents_delivery() {
         let blocked_day = day(2030, 8, 10);
         let blocked = vec![(local_moment(blocked_day, 15).unwrap(), local_moment(blocked_day, 16).unwrap())];
         assert!(!minimum_stay_can_start(blocked_day, 3, &blocked));
     }
 
     #[test]
-    fn earlier_available_day_can_replace_pickup() {
+    fn earlier_available_day_can_replace_delivery() {
         let selected = day(2030, 8, 10);
         assert!(date_is_selectable(day(2030, 8, 8), Some(selected), None, 3, &[]));
     }
 
     #[test]
-    fn clicking_selected_pickup_clears_selection() {
+    fn clicking_selected_delivery_clears_selection() {
         let selected = day(2030, 8, 10);
         assert_eq!(next_date_selection(selected, Some(selected), None), (None, None));
     }
@@ -766,6 +764,11 @@ fn BookingCalendarOverlay(
     let mut address_busy = use_signal(|| false);
     let mut address_error = use_signal(String::new);
     let mut address_result = use_signal(|| None::<api::DeliveryEstimate>);
+    let mut address_suggestions = use_signal(Vec::<api::AddressSuggestion>::new);
+    let mut suggestions_busy = use_signal(|| false);
+    let mut suggestions_error = use_signal(String::new);
+    let mut suggestions_open = use_signal(|| false);
+    let mut suggestion_version = use_signal(|| 0_u32);
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let initial_month = month_start(today);
     let mut visible_month = use_signal(|| selected_date(&starts_on).map(month_start).unwrap_or(initial_month));
@@ -799,12 +802,10 @@ fn BookingCalendarOverlay(
         };
         async move {
             if draft.starts_on.is_empty() || draft.ends_on.is_empty() {
-                return Err("Choose complete dates".to_string());
+                return Err(api::ApiError::client("Choose complete dates"));
             }
-            if draft.delivery_address.as_deref().unwrap_or_default().trim().is_empty()
-                || draft.delivery_km.is_none()
-            {
-                return Err("Enter and calculate the delivery address".to_string());
+            if !api::rv_delivery_ready(&draft) {
+                return Err(api::ApiError::client("Enter and calculate the delivery address"));
             }
             api::create_quote(&draft).await
         }
@@ -812,12 +813,20 @@ fn BookingCalendarOverlay(
     let quote_response = live_quote.read().as_ref().and_then(|result| result.as_ref().ok()).cloned();
     let quote_error = live_quote.read().as_ref().and_then(|result| result.as_ref().err()).cloned();
     let calculate_address = move |_| {
-        let address = delivery_address.read().clone();
+        let address = delivery_address.read().trim().to_string();
         async move {
+            suggestions_open.set(false);
+            if address.chars().count() < 5 {
+                delivery_km.set(None);
+                address_result.set(None);
+                address_error.set("Enter a complete street address or campsite.".into());
+                return;
+            }
             address_busy.set(true);
             address_error.set(String::new());
             match api::delivery_estimate(slug, &address).await {
                 Ok(result) if result.within_range => {
+                    delivery_address.set(result.resolved_address.clone());
                     delivery_km.set(Some(result.one_way_km.clone()));
                     address_result.set(Some(result));
                 }
@@ -835,6 +844,9 @@ fn BookingCalendarOverlay(
             address_busy.set(false);
         }
     };
+    let suggestion_items = address_suggestions.read().clone();
+    let address_has_query = delivery_address.read().trim().chars().count() >= 3;
+    let show_suggestions = *suggestions_open.read() && address_has_query;
 
     rsx! {
         div {
@@ -910,11 +922,94 @@ fn BookingCalendarOverlay(
                                 div { class: "rvd-trip-option-title", Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" } "Delivery address & live distance" }
                                 div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 50 km, then CA$3.50 per additional one-way kilometre · maximum 150 km." }
                                 div { class: "rvd-address-search",
-                                    input { value: "{delivery_address}", placeholder: "Campsite, street address, or location", oninput: move |event| {
-                                        delivery_address.set(event.value());
-                                        delivery_km.set(None);
-                                        address_result.set(None);
-                                    } }
+                                    div { class: "rvd-address-combobox",
+                                        div { class: "rvd-address-input-wrap",
+                                            Icon { name: "map-pin", size: 17, color: "var(--vl-muted)" }
+                                            input {
+                                                value: "{delivery_address}",
+                                                placeholder: "Start typing a delivery address",
+                                                autocomplete: "off",
+                                                spellcheck: "false",
+                                                role: "combobox",
+                                                aria_label: "Delivery address",
+                                                aria_autocomplete: "list",
+                                                aria_expanded: show_suggestions,
+                                                aria_controls: "rvd-address-suggestions",
+                                                onfocus: move |_| {
+                                                    if delivery_address.read().trim().chars().count() >= 3 {
+                                                        suggestions_open.set(true);
+                                                    }
+                                                },
+                                                oninput: move |event| {
+                                                    let value = event.value();
+                                                    delivery_address.set(value.clone());
+                                                    delivery_km.set(None);
+                                                    address_result.set(None);
+                                                    address_error.set(String::new());
+                                                    suggestions_error.set(String::new());
+                                                    let version = suggestion_version.peek().wrapping_add(1);
+                                                    suggestion_version.set(version);
+                                                    if value.trim().chars().count() < 3 {
+                                                        address_suggestions.set(Vec::new());
+                                                        suggestions_busy.set(false);
+                                                        suggestions_open.set(false);
+                                                        return;
+                                                    }
+                                                    suggestions_busy.set(true);
+                                                    suggestions_open.set(true);
+                                                    spawn(async move {
+                                                        let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 320));").await;
+                                                        if *suggestion_version.peek() != version { return; }
+                                                        match api::address_suggestions(&value).await {
+                                                            Ok(items) => address_suggestions.set(items),
+                                                            Err(message) => {
+                                                                address_suggestions.set(Vec::new());
+                                                                suggestions_error.set(message);
+                                                            }
+                                                        }
+                                                        if *suggestion_version.peek() == version {
+                                                            suggestions_busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                            if *suggestions_busy.read() {
+                                                span { class: "rvd-address-spinner", aria_label: "Searching addresses" }
+                                            }
+                                        }
+                                        if show_suggestions {
+                                            div { id: "rvd-address-suggestions", class: "rvd-address-suggestions", role: "listbox",
+                                                if !suggestion_items.is_empty() {
+                                                    for suggestion in suggestion_items {
+                                                        button {
+                                                            key: "{suggestion.display_name}",
+                                                            class: "rvd-address-suggestion",
+                                                            r#type: "button",
+                                                            role: "option",
+                                                            onclick: move |_| {
+                                                                delivery_address.set(suggestion.display_name.clone());
+                                                                delivery_km.set(None);
+                                                                address_result.set(None);
+                                                                address_error.set(String::new());
+                                                                address_suggestions.set(Vec::new());
+                                                                suggestions_open.set(false);
+                                                            },
+                                                            span { class: "rvd-address-suggestion-icon", Icon { name: "map-pin", size: 16, color: "var(--vl-forest)" } }
+                                                            span { class: "rvd-address-suggestion-copy",
+                                                                strong { "{suggestion.primary_text}" }
+                                                                small { "{suggestion.secondary_text}" }
+                                                            }
+                                                        }
+                                                    }
+                                                } else if !*suggestions_busy.read() && suggestions_error.read().is_empty() {
+                                                    div { class: "rvd-address-suggestion-status", "No matching Canadian address found. Keep typing or check the spelling." }
+                                                } else if !suggestions_error.read().is_empty() {
+                                                    div { class: "rvd-address-suggestion-status is-error", "{suggestions_error}" }
+                                                }
+                                                div { class: "rvd-address-suggestions-foot", "Canadian addresses · results prioritized near Kelowna" }
+                                            }
+                                        }
+                                    }
                                     button { r#type: "button", disabled: *address_busy.read(), onclick: calculate_address,
                                         if *address_busy.read() { "Calculating…" } else { "Calculate delivery" }
                                     }
@@ -1095,8 +1190,8 @@ fn CalendarMonth(
                             let now = Utc::now().with_timezone(&Vancouver);
                             let today = now.date_naive();
                             let valid_choice = date_is_selectable(day, start, end, minimum_nights, &unavailable);
-                            let pickup_has_passed = day == today && now.hour() >= 14;
-                            let unavailable_day = !availability_loaded || day < today || pickup_has_passed || !valid_choice;
+                            let delivery_has_passed = day == today && now.hour() >= 14;
+                            let unavailable_day = !availability_loaded || day < today || delivery_has_passed || !valid_choice;
                             let edge = start == Some(day) || end == Some(day);
                             let stay = start.zip(end).map(|(a, b)| day > a && day < b).unwrap_or(false);
                             let class = if edge { "edge" } else if stay { "stay" } else if unavailable_day { "booked" } else { "" };

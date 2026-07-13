@@ -60,7 +60,7 @@ fn attraction_cards() -> Vec<AttractionCard> {
             img: IMG_FISHING,
             category: "On the Water",
             title: "Fishing & Water Fun",
-            desc: "Catch the big one, make a splash — fishing and watersports all season.",
+            desc: "Catch the big one and enjoy lakeside recreation all season.",
         },
     ]
 }

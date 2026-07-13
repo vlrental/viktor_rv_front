@@ -1,22 +1,100 @@
+use chrono::NaiveDate;
 use dioxus::prelude::*;
 
-use crate::components::{Icon, ListingCard};
-use crate::data::{rv_listings, IMG_BULLET_VINEYARD, IMG_HERO_RV, IMG_OUTBACK};
+use super::catalog::{
+    bump_search_version, catalog_date_label, normalized_catalog_search, ApiListingCard, CatalogEmptyState,
+    CatalogErrorState, CatalogLoadingState, CatalogSearchOverlay,
+};
+use crate::api;
+use crate::components::Icon;
+use crate::data::{IMG_BULLET_VINEYARD, IMG_HERO_RV};
 use crate::Route;
 
 #[component]
 pub fn Home() -> Element {
+    let today = chrono::Utc::now()
+        .with_timezone(&chrono_tz::America::Vancouver)
+        .date_naive();
+    let initial_search = normalized_catalog_search(
+        api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"),
+        150,
+        today,
+    );
+    let mut applied_search = use_signal(|| initial_search.clone());
+    let search_version = use_signal(|| 0_u32);
+    let mut search_location = use_signal(|| initial_search.location.clone());
+    let mut search_radius = use_signal(|| initial_search.radius_km);
+    let mut search_starts_on = use_signal(|| search_date(initial_search.starts_on.as_deref()));
+    let mut search_ends_on = use_signal(|| search_date(initial_search.ends_on.as_deref()));
+    let mut search_guests = use_signal(|| initial_search.guests);
+    let mut search_open = use_signal(|| false);
+    use_effect(move || {
+        if *search_open.read() {
+            let search = applied_search.read().clone();
+            search_location.set(search.location);
+            search_radius.set(search.radius_km);
+            search_starts_on.set(search_date(search.starts_on.as_deref()));
+            search_ends_on.set(search_date(search.ends_on.as_deref()));
+            search_guests.set(search.guests);
+        }
+    });
+    use_effect(move || {
+        let search = applied_search.read().clone();
+        let _ = api::save_json("vl_catalog_search", &search);
+    });
+
     rsx! {
-        Hero {}
-        PopularRvs {}
+        Hero {
+            applied_search,
+            search_open,
+        }
+        PopularRvs {
+            applied_search,
+            search_version,
+            search_open,
+        }
         HowItWorks {}
         MoreServices {}
         CtaBand {}
+        if *search_open.read() {
+            CatalogSearchOverlay {
+                location: search_location,
+                radius: search_radius,
+                starts_on: search_starts_on,
+                ends_on: search_ends_on,
+                guests: search_guests,
+                on_apply: move |_| {
+                    let next = api::CatalogSearchDraft {
+                        location: search_location.read().clone(),
+                        radius_km: *search_radius.read(),
+                        starts_on: (*search_starts_on.read()).map(|value| value.to_string()),
+                        ends_on: (*search_ends_on.read()).map(|value| value.to_string()),
+                        guests: *search_guests.read(),
+                    };
+                    applied_search.set(next);
+                    bump_search_version(search_version);
+                    spawn(async move {
+                        let _ = document::eval(
+                            "await new Promise(resolve => setTimeout(resolve, 240)); document.getElementById('home-rentals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });",
+                        )
+                        .await;
+                    });
+                },
+                on_close: move |_| search_open.set(false),
+            }
+        }
     }
 }
 
+fn search_date(value: Option<&str>) -> Option<NaiveDate> {
+    value.and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+}
+
 #[component]
-fn Hero() -> Element {
+fn Hero(
+    applied_search: Signal<api::CatalogSearchDraft>,
+    mut search_open: Signal<bool>,
+) -> Element {
     use_effect(|| {
         document::eval(
             r#"
@@ -69,6 +147,16 @@ fn Hero() -> Element {
         );
     });
 
+    let search = applied_search.read().clone();
+    let starts_on = search_date(search.starts_on.as_deref());
+    let ends_on = search_date(search.ends_on.as_deref());
+    let dates_label = catalog_date_label(starts_on, ends_on);
+    let guests_label = if search.guests == 1 {
+        "1 guest".to_string()
+    } else {
+        format!("{} guests", search.guests)
+    };
+
     rsx! {
         section { class: "hero",
             div { class: "hero-media", style: "background-image: url('{IMG_HERO_RV}');",
@@ -94,15 +182,15 @@ fn Hero() -> Element {
                 }
             }
             div { class: "searchbar",
-                Link { class: "search-field", to: Route::Delivery {},
+                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
                     div { class: "search-label", "DELIVERY RADIUS" }
                     div { class: "search-value",
                         Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" }
-                        span { "Up to 150 km" }
+                        span { "Up to {search.radius_km} km" }
                     }
                 }
                 div { class: "search-divider" }
-                Link { class: "search-field", to: Route::Catalog {},
+                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
                     div { class: "search-label", "WHAT" }
                     div { class: "search-value",
                         Icon { name: "compass", size: 17, color: "var(--vl-forest)" }
@@ -110,22 +198,22 @@ fn Hero() -> Element {
                     }
                 }
                 div { class: "search-divider" }
-                Link { class: "search-field", to: Route::Catalog {},
+                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
                     div { class: "search-label", "DATES" }
                     div { class: "search-value",
                         Icon { name: "calendar", size: 17, color: "var(--vl-forest)" }
-                        span { "Add dates" }
+                        span { "{dates_label}" }
                     }
                 }
                 div { class: "search-divider" }
-                Link { class: "search-field", to: Route::Catalog {},
+                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
                     div { class: "search-label", "GUESTS" }
                     div { class: "search-value",
                         Icon { name: "users", size: 17, color: "var(--vl-forest)" }
-                        span { "2 guests" }
+                        span { "{guests_label}" }
                     }
                 }
-                Link { class: "search-btn", to: Route::Catalog {},
+                button { class: "search-btn", r#type: "button", onclick: move |_| search_open.set(true),
                     Icon { name: "search", size: 19, color: "var(--vl-white)" }
                     span { "Search" }
                 }
@@ -135,64 +223,78 @@ fn Hero() -> Element {
 }
 
 #[component]
-fn PopularRvs() -> Element {
-    let rvs = rv_listings();
+fn PopularRvs(
+    mut applied_search: Signal<api::CatalogSearchDraft>,
+    mut search_version: Signal<u32>,
+    mut search_open: Signal<bool>,
+) -> Element {
+    let listings = use_resource(move || {
+        let _version = *search_version.read();
+        let search = applied_search.read().clone();
+        async move { api::catalog(&search).await }
+    });
+    let search = applied_search.read().clone();
+    let starts_on = search_date(search.starts_on.as_deref());
+    let ends_on = search_date(search.ends_on.as_deref());
+    let dates_label = catalog_date_label(starts_on, ends_on);
+    let match_count = listings
+        .read()
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .map(Vec::len)
+        .unwrap_or(0);
+    let match_label = if starts_on.is_none() && ends_on.is_none() {
+        format!("{} RVs fit {} guests", match_count, search.guests)
+    } else {
+        format!(
+            "{} RVs · {} · {} guests",
+            match_count,
+            dates_label,
+            search.guests
+        )
+    };
     rsx! {
-        section { class: "section bg-white",
+        section { id: "home-rentals", class: "section bg-white home-rentals",
             div { class: "sec-header",
                 div {
                     div { class: "eyebrow", "CHOOSE YOUR WHEELS" }
-                    h2 { class: "sec-title", "Popular RV rentals" }
+                    h2 { class: "sec-title", "Explore available RVs" }
                 }
-                Link { class: "see-all", to: Route::Catalog {},
-                    span { "See all 6 RVs" }
-                    Icon { name: "arrow-right", size: 17, color: "var(--vl-forest)" }
-                }
-            }
-            div { class: "card-row", style: "margin-bottom: 26px;",
-                for rv in rvs.iter().take(4).copied() {
-                    ListingCard { key: "{rv.id}", listing: rv }
+                div { class: "home-match-label",
+                    Icon { name: "sparkles", size: 16, color: "var(--vl-accent)" }
+                    span { "{match_label}" }
                 }
             }
-            FeaturedRv {}
-        }
-    }
-}
-
-#[component]
-fn FeaturedRv() -> Element {
-    rsx! {
-        div { class: "featured-card",
-            div { class: "fc-image", style: "background-image: url('{IMG_OUTBACK}');",
-                div { class: "lc-badge",
-                    Icon { name: "truck", size: 14, color: "var(--vl-forest)" }
-                    span { "Delivery available" }
-                }
-            }
-            div { class: "fc-body",
-                div { class: "fc-tag",
-                    Icon { name: "sparkles", size: 14, color: "var(--vl-forest)" }
-                    span { "Complete the fleet" }
-                }
-                div { class: "fc-title-row",
-                    div { class: "fc-title", "Keystone Outback Ultra-Lite" }
-                    div { class: "fc-rating",
-                        Icon { name: "star", size: 15, color: "var(--vl-accent)" }
-                        span { "4.9" }
+            div { class: "home-catalog-grid",
+                if let Some(result) = listings.read().as_ref() {
+                    match result {
+                        Ok(values) if values.is_empty() => rsx! {
+                            CatalogEmptyState {
+                                dates_label: dates_label.clone(),
+                                has_dates: starts_on.is_some() && ends_on.is_some(),
+                                on_change: move |_| search_open.set(true),
+                                on_clear: move |_| {
+                                    let mut next = applied_search.read().clone();
+                                    next.starts_on = None;
+                                    next.ends_on = None;
+                                    let _ = api::save_json("vl_catalog_search", &next);
+                                    applied_search.set(next);
+                                    bump_search_version(search_version);
+                                },
+                            }
+                        },
+                        Ok(values) => rsx! { for rental in values.iter() {
+                            ApiListingCard { key: "{rental.slug}", rental: rental.clone() }
+                        } },
+                        Err(message) => rsx! {
+                            CatalogErrorState {
+                                message: message.clone(),
+                                on_retry: move |_| bump_search_version(search_version),
+                            }
+                        },
                     }
-                }
-                p { class: "fc-desc",
-                    "Light, easy-to-tow and sleeps 8 — the flexible all-rounder for family trips around the Okanagan. We can deliver, level and set it up for you."
-                }
-                div { class: "fc-footer",
-                    div { class: "lc-price-row",
-                        span { class: "fc-price", "$148" }
-                        span { class: "lc-per", "/ night" }
-                    }
-                    Link { class: "btn-forest", to: Route::RvDetail { slug: "2017-keystone-outback-ultra".to_string() },
-                        span { "Reserve" }
-                        Icon { name: "arrow-right", size: 16, color: "var(--vl-white)" }
-                    }
+                } else {
+                    CatalogLoadingState {}
                 }
             }
         }
@@ -233,11 +335,36 @@ fn HowItWorks() -> Element {
 #[component]
 fn MoreServices() -> Element {
     let services: [(&'static str, &'static str, &'static str, Route); 5] = [
-        ("snowflake", "Cooler Trailers", "Keep food & drinks cold on any trip", Route::CoolerTrailers {}),
-        ("truck", "Delivery Services", "We drop off, level and set up for you", Route::Delivery {}),
-        ("badge-dollar-sign", "RV Sales", "Ready to own? Browse RVs for sale", Route::RvSales {}),
-        ("mountain", "Attractions", "Local picks for the best of Kelowna", Route::Attractions {}),
-        ("utensils", "Restaurants", "Where to eat around the lake", Route::Restaurants {}),
+        (
+            "snowflake",
+            "Cooler Trailers",
+            "Keep food & drinks cold on any trip",
+            Route::CoolerTrailers {},
+        ),
+        (
+            "truck",
+            "Delivery Services",
+            "We drop off, level and set up for you",
+            Route::Delivery {},
+        ),
+        (
+            "badge-dollar-sign",
+            "RV Sales",
+            "Ready to own? Browse RVs for sale",
+            Route::RvSales {},
+        ),
+        (
+            "mountain",
+            "Attractions",
+            "Local picks for the best of Kelowna",
+            Route::Attractions {},
+        ),
+        (
+            "utensils",
+            "Restaurants",
+            "Where to eat around the lake",
+            Route::Restaurants {},
+        ),
     ];
     rsx! {
         section { class: "section bg-forest", style: "padding-top: 64px; padding-bottom: 64px;",
@@ -278,7 +405,7 @@ fn CtaBand() -> Element {
                     "The best memories are made outdoors — tracing scenic Okanagan highways and settling into lakeside campsites. Let's get you out there."
                 }
                 div { class: "cta-buttons",
-                    Link { class: "btn-gold", to: Route::Catalog {},
+                    a { class: "btn-gold", href: "#home-rentals",
                         Icon { name: "tent-tree", size: 18, color: "var(--vl-forest-2)" }
                         span { "Book an RV" }
                     }

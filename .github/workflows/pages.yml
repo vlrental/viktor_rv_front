@@ -1,8 +1,8 @@
-name: Deploy to GitHub Pages
+name: Deploy frontend to GitHub Pages
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   build:
+    # A dev build is available only through a deliberate manual dispatch. Normal
+    # dev pushes do not publish anything; pushing main is the production path.
+    if: github.event_name == 'push' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +39,7 @@ jobs:
 
   deploy:
     environment:
-      name: github-pages
+      name: ${{ github.ref_name == 'main' && 'github-pages' || 'github-pages-test' }}
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build

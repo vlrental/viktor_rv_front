@@ -9,49 +9,55 @@ use crate::{api, components::Icon, Route};
 
 #[component]
 pub fn Catalog() -> Element {
-    let listings = use_resource(api::catalog);
-    let saved_search = api::load_json::<api::CatalogSearchDraft>("vl_catalog_search");
-    let initial_location = "Kelowna, BC".to_string();
-    let initial_radius = saved_search
-        .as_ref()
-        .map(|value| value.radius_km.clamp(10, 150))
-        .unwrap_or(50);
-    let initial_start = saved_search
-        .as_ref()
-        .and_then(|value| value.starts_on.as_deref())
-        .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
-    let initial_end = saved_search
-        .as_ref()
-        .and_then(|value| value.ends_on.as_deref())
-        .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
-    let initial_guests = saved_search
-        .as_ref()
-        .map(|value| value.guests.clamp(1, 10))
-        .unwrap_or(2);
+    let today = Utc::now().with_timezone(&Vancouver).date_naive();
+    let initial_search = normalized_catalog_search(
+        api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"),
+        50,
+        today,
+    );
+    let mut applied_search = use_signal(|| initial_search.clone());
+    let search_version = use_signal(|| 0_u32);
     let mut search_open = use_signal(|| false);
-    let search_location = use_signal(|| initial_location);
-    let search_radius = use_signal(|| initial_radius);
-    let search_starts_on = use_signal(|| initial_start);
-    let search_ends_on = use_signal(|| initial_end);
-    let search_guests = use_signal(|| initial_guests);
+    let mut search_location = use_signal(|| initial_search.location.clone());
+    let mut search_radius = use_signal(|| initial_search.radius_km);
+    let mut search_starts_on = use_signal(|| parse_search_date(initial_search.starts_on.as_deref()));
+    let mut search_ends_on = use_signal(|| parse_search_date(initial_search.ends_on.as_deref()));
+    let mut search_guests = use_signal(|| initial_search.guests);
+    let listings = use_resource(move || {
+        let _version = *search_version.read();
+        let search = applied_search.read().clone();
+        async move { api::catalog(&search).await }
+    });
+    use_effect(move || {
+        if *search_open.read() {
+            let search = applied_search.read().clone();
+            search_location.set(search.location);
+            search_radius.set(search.radius_km);
+            search_starts_on.set(parse_search_date(search.starts_on.as_deref()));
+            search_ends_on.set(parse_search_date(search.ends_on.as_deref()));
+            search_guests.set(search.guests);
+        }
+    });
+    use_effect(move || {
+        let search = applied_search.read().clone();
+        let _ = api::save_json("vl_catalog_search", &search);
+    });
 
-    let location_label = format!("{} · {} km", search_location.read(), search_radius.read());
-    let dates_label = catalog_date_label(*search_starts_on.read(), *search_ends_on.read());
-    let guests_label = if *search_guests.read() == 1 {
+    let applied = applied_search.read().clone();
+    let location_label = format!("{} · {} km", applied.location, applied.radius_km);
+    let applied_start = parse_search_date(applied.starts_on.as_deref());
+    let applied_end = parse_search_date(applied.ends_on.as_deref());
+    let dates_label = catalog_date_label(applied_start, applied_end);
+    let guests_label = if applied.guests == 1 {
         "1 guest".to_string()
     } else {
-        format!("{} guests", search_guests.read())
+        format!("{} guests", applied.guests)
     };
     let match_count = listings
         .read()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
-        .map(|values| {
-            values
-                .iter()
-                .filter(|value| value.category == "rv" && value.capacity >= *search_guests.read())
-                .count()
-        })
+        .map(Vec::len)
         .unwrap_or(0);
     rsx! {
         section { class: "cat-header",
@@ -101,13 +107,30 @@ pub fn Catalog() -> Element {
                 div { class: "cat-grid",
                     if let Some(result) = listings.read().as_ref() {
                         match result {
-                            Ok(values) => rsx! { for rental in values.iter().filter(|value| value.category == "rv" && value.capacity >= *search_guests.read()) {
+                            Ok(values) if values.is_empty() => rsx! {
+                                CatalogEmptyState {
+                                    dates_label: dates_label.clone(),
+                                    has_dates: applied_start.is_some() && applied_end.is_some(),
+                                    on_change: move |_| search_open.set(true),
+                                    on_clear: move |_| {
+                                        let mut next = applied_search.read().clone();
+                                        next.starts_on = None;
+                                        next.ends_on = None;
+                                        let _ = api::save_json("vl_catalog_search", &next);
+                                        applied_search.set(next);
+                                        bump_search_version(search_version);
+                                    },
+                                }
+                            },
+                            Ok(values) => rsx! { for rental in values.iter() {
                                 ApiListingCard { key: "{rental.slug}", rental: rental.clone() }
                             } },
-                            Err(message) => rsx! { div { class: "co-card", role: "alert", "Could not load rentals: {message}" } },
+                            Err(message) => rsx! {
+                                CatalogErrorState { message: message.clone(), on_retry: move |_| bump_search_version(search_version) }
+                            },
                         }
                     } else {
-                        div { class: "co-card", "Loading rentals…" }
+                        CatalogLoadingState {}
                     }
                 }
             }
@@ -119,7 +142,106 @@ pub fn Catalog() -> Element {
                 starts_on: search_starts_on,
                 ends_on: search_ends_on,
                 guests: search_guests,
+                on_apply: move |_| {
+                    let next = api::CatalogSearchDraft {
+                        location: search_location.read().clone(),
+                        radius_km: *search_radius.read(),
+                        starts_on: (*search_starts_on.read()).map(|value| value.to_string()),
+                        ends_on: (*search_ends_on.read()).map(|value| value.to_string()),
+                        guests: *search_guests.read(),
+                    };
+                    applied_search.set(next);
+                    bump_search_version(search_version);
+                },
                 on_close: move |_| search_open.set(false),
+            }
+        }
+    }
+}
+
+fn parse_search_date(value: Option<&str>) -> Option<NaiveDate> {
+    value.and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+}
+
+pub(crate) fn bump_search_version(mut version: Signal<u32>) {
+    let next = *version.peek() + 1;
+    version.set(next);
+}
+
+pub(crate) fn normalized_catalog_search(
+    saved: Option<api::CatalogSearchDraft>,
+    default_radius: i32,
+    today: NaiveDate,
+) -> api::CatalogSearchDraft {
+    let mut search = saved.unwrap_or(api::CatalogSearchDraft {
+        location: "Kelowna, BC".into(),
+        radius_km: default_radius,
+        starts_on: None,
+        ends_on: None,
+        guests: 2,
+    });
+    if search.location.trim().is_empty() {
+        search.location = "Kelowna, BC".into();
+    }
+    search.radius_km = search.radius_km.clamp(10, 150);
+    search.guests = search.guests.clamp(1, 10);
+    let valid_dates = parse_search_date(search.starts_on.as_deref())
+        .zip(parse_search_date(search.ends_on.as_deref()))
+        .is_some_and(|(start, end)| start >= today && (end - start).num_days() >= 3);
+    if !valid_dates {
+        search.starts_on = None;
+        search.ends_on = None;
+    }
+    search
+}
+
+#[component]
+pub(crate) fn CatalogLoadingState() -> Element {
+    rsx! {
+        for index in 0..3 {
+            div { key: "catalog-skeleton-{index}", class: "listing-card catalog-skeleton", aria_hidden: "true",
+                div { class: "catalog-skeleton-image" }
+                div { class: "catalog-skeleton-line wide" }
+                div { class: "catalog-skeleton-line" }
+                div { class: "catalog-skeleton-line short" }
+            }
+        }
+    }
+}
+
+#[component]
+pub(crate) fn CatalogErrorState(message: String, on_retry: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "co-card catalog-result-message", role: "alert",
+            h3 { "Availability could not be checked" }
+            p { "No RV is being shown as available until the live calendar responds. {message}" }
+            button { class: "btn-forest", r#type: "button", onclick: move |_| on_retry.call(()), "Retry" }
+        }
+    }
+}
+
+#[component]
+pub(crate) fn CatalogEmptyState(
+    dates_label: String,
+    has_dates: bool,
+    on_change: EventHandler<()>,
+    on_clear: EventHandler<()>,
+) -> Element {
+    rsx! {
+        div { class: "co-card catalog-result-message",
+            h3 { if has_dates { "No RVs are available for these dates" } else { "No RV fits this group yet" } }
+            p {
+                if has_dates {
+                    "Nothing is free for {dates_label}. Try another period or clear the dates."
+                } else {
+                    "Reduce the guest count to see matching options."
+                }
+            }
+            div { class: "catalog-result-actions",
+                button { class: "btn-forest", r#type: "button", onclick: move |_| on_change.call(()), "Change search" }
+                if has_dates {
+                    button { class: "catalog-clear-search", r#type: "button", onclick: move |_| on_clear.call(()), "Clear dates" }
+                }
             }
         }
     }
@@ -133,7 +255,7 @@ fn add_months(date: NaiveDate, count: u32) -> NaiveDate {
     date.checked_add_months(Months::new(count)).unwrap_or(date)
 }
 
-fn catalog_date_label(start: Option<NaiveDate>, end: Option<NaiveDate>) -> String {
+pub(crate) fn catalog_date_label(start: Option<NaiveDate>, end: Option<NaiveDate>) -> String {
     match (start, end) {
         (Some(start), Some(end)) if start.month() == end.month() => {
             format!("{} {} – {}", start.format("%b"), start.day(), end.day())
@@ -173,13 +295,144 @@ fn next_catalog_date_selection(
     }
 }
 
+fn manual_date_text(value: Option<NaiveDate>) -> String {
+    value
+        .map(|date| date.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+fn format_manual_date_input(value: &str) -> String {
+    let digits = value
+        .chars()
+        .filter(|character| character.is_ascii_digit())
+        .take(8)
+        .collect::<String>();
+    let mut formatted = String::with_capacity(10);
+    for (index, character) in digits.chars().enumerate() {
+        if index == 4 || index == 6 {
+            formatted.push('-');
+        }
+        formatted.push(character);
+    }
+    formatted
+}
+
+fn parse_manual_date_input(value: &str) -> Option<NaiveDate> {
+    (value.len() == 10)
+        .then(|| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+        .flatten()
+}
+
+const DELIVERY_MAP_SCRIPT: &str = r#"
+await (async () => {
+    const root = document.querySelector('.cat-radius-map');
+    const container = document.getElementById('vl-delivery-map');
+    if (!root || !container) return;
+
+    const fallback = root.querySelector('.cat-map-fallback span');
+    const ensureLeaflet = async () => {
+        if (!document.getElementById('vl-leaflet-css')) {
+            const style = document.createElement('link');
+            style.id = 'vl-leaflet-css';
+            style.rel = 'stylesheet';
+            style.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            style.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+            style.crossOrigin = '';
+            document.head.appendChild(style);
+        }
+
+        if (window.L) return;
+        if (!window.__vlLeafletReady) {
+            window.__vlLeafletReady = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.id = 'vl-leaflet-script';
+                script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+                script.crossOrigin = '';
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('Leaflet failed to load'));
+                document.head.appendChild(script);
+            });
+        }
+        await window.__vlLeafletReady;
+    };
+
+    try {
+        await ensureLeaflet();
+        if (!document.body.contains(container)) return;
+
+        const base = [50.0150675, -119.3870978];
+        let state = window.__vlDeliveryMapState;
+        if (!state || state.container !== container) {
+            if (state?.map) state.map.remove();
+
+            const map = L.map(container, {
+                zoomControl: false,
+                attributionControl: true,
+                scrollWheelZoom: false,
+                doubleClickZoom: true,
+                dragging: true,
+            }).setView(base, 8);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            }).addTo(map);
+
+            const zone = L.circle(base, {
+                radius: __RADIUS_KM__ * 1000,
+                color: '#174D32',
+                weight: 2,
+                opacity: 0.92,
+                fillColor: '#4A8D63',
+                fillOpacity: 0.2,
+            }).addTo(map);
+            L.circleMarker(base, {
+                radius: 8,
+                color: '#FFFFFF',
+                weight: 3,
+                fillColor: '#174D32',
+                fillOpacity: 1,
+            })
+                .addTo(map)
+                .bindTooltip('VL Rental · Kelowna', {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: 'vl-base-tooltip',
+                });
+
+            state = { map, zone, container };
+            window.__vlDeliveryMapState = state;
+        }
+
+        state.zone.setRadius(__RADIUS_KM__ * 1000);
+        state.map.invalidateSize(false);
+        state.map.fitBounds(state.zone.getBounds(), {
+            padding: [22, 22],
+            maxZoom: 10,
+            animate: true,
+            duration: 0.25,
+        });
+        root.classList.remove('is-error');
+        root.classList.add('is-ready');
+    } catch (error) {
+        root.classList.remove('is-ready');
+        root.classList.add('is-error');
+        root.dataset.mapError = error instanceof Error ? error.message : String(error);
+        if (fallback) fallback.textContent = 'Map preview is temporarily unavailable';
+    }
+})();
+"#;
+
 #[component]
-fn CatalogSearchOverlay(
+pub(crate) fn CatalogSearchOverlay(
     mut location: Signal<String>,
     mut radius: Signal<i32>,
     mut starts_on: Signal<Option<NaiveDate>>,
     mut ends_on: Signal<Option<NaiveDate>>,
     mut guests: Signal<i32>,
+    on_apply: EventHandler<()>,
     on_close: EventHandler<()>,
 ) -> Element {
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
@@ -189,18 +442,41 @@ fn CatalogSearchOverlay(
             .map(month_start)
             .unwrap_or(initial_month)
     });
+    let initial_start_input = manual_date_text(*starts_on.read());
+    let initial_end_input = manual_date_text(*ends_on.read());
+    let mut start_input = use_signal(|| initial_start_input);
+    let mut end_input = use_signal(|| initial_end_input);
     let mut closing = use_signal(|| false);
     let nights = starts_on
         .read()
         .zip(*ends_on.read())
         .map(|(start, end)| (end - start).num_days())
         .unwrap_or(0);
-    let radius_size = 34.0 + (*radius.read() as f64 / 150.0 * 50.0);
+    let can_apply = (starts_on.read().is_none() && ends_on.read().is_none()) || nights >= 3;
     let guest_word = if *guests.read() == 1 {
         "guest"
     } else {
         "guests"
     };
+    use_effect(move || {
+        let radius_km = *radius.read();
+        spawn(async move {
+            let script = DELIVERY_MAP_SCRIPT.replace("__RADIUS_KM__", &radius_km.to_string());
+            let _ = document::eval(&script).await;
+        });
+    });
+    use_effect(move || {
+        let next = manual_date_text(*starts_on.read());
+        if *start_input.peek() != next {
+            start_input.set(next);
+        }
+    });
+    use_effect(move || {
+        let next = manual_date_text(*ends_on.read());
+        if *end_input.peek() != next {
+            end_input.set(next);
+        }
+    });
     let close_overlay = move || async move {
         if *closing.peek() {
             return;
@@ -215,7 +491,8 @@ fn CatalogSearchOverlay(
             class: if *closing.read() { "cat-planner-backdrop is-closing" } else { "cat-planner-backdrop" },
             role: "presentation",
             onclick: move |_| close_overlay(),
-            div { class: "cat-planner", role: "dialog", aria_modal: "true", aria_label: "Plan your RV search", onclick: move |event| event.stop_propagation(),
+            div { class: "cat-planner-shell", role: "dialog", aria_modal: "true", aria_label: "Plan your RV search", onclick: move |event| event.stop_propagation(),
+              div { class: "cat-planner",
                 div { class: "cat-planner-head",
                     div {
                         div { class: "cat-planner-kicker", "OKANAGAN RV SEARCH" }
@@ -239,18 +516,17 @@ fn CatalogSearchOverlay(
                                 input { value: "{location}", readonly: true, aria_label: "Delivery base" }
                             }
                         }
-                        div { class: "cat-radius-map",
-                            div { class: "cat-map-road road-one" }
-                            div { class: "cat-map-road road-two" }
-                            span { class: "cat-map-label label-vernon", "Vernon" }
-                            span { class: "cat-map-label label-west", "West Kelowna" }
-                            span { class: "cat-map-label label-penticton", "Penticton" }
-                            div { class: "cat-radius-ring", style: "width: {radius_size}%; height: {radius_size}%;" }
-                            div { class: "cat-map-centre",
-                                div { class: "cat-map-pin", Icon { name: "map-pin", size: 18, color: "var(--vl-white)" } }
-                                strong { "{location}" }
+                        div { class: "cat-radius-map", aria_label: "Interactive delivery radius map centred on Kelowna",
+                            div { id: "vl-delivery-map", class: "cat-leaflet-map" }
+                            div { class: "cat-map-fallback",
+                                div { class: "cat-map-fallback-icon", Icon { name: "map", size: 22, color: "var(--vl-forest)" } }
+                                span { "Loading delivery map…" }
                             }
                             div { class: "cat-map-radius-badge", strong { "{radius} km" } span { "maximum search radius" } }
+                            div { class: "cat-map-legend",
+                                i {}
+                                span { "Approximate delivery area" }
+                            }
                         }
                         div { class: "cat-radius-control",
                             div { span { "Search radius" } strong { "{radius} km" } }
@@ -263,7 +539,7 @@ fn CatalogSearchOverlay(
                                 }
                             }
                         }
-                        div { class: "cat-radius-note", Icon { name: "info", size: 15, color: "var(--vl-forest)" } span { "RV delivery is limited to 150 km one way from the Kelowna base." } }
+                        div { class: "cat-radius-note", Icon { name: "info", size: 15, color: "var(--vl-forest)" } span { "Approximate area. Final eligibility and fee use driving distance, up to 150 km one way." } }
                     }
 
                     section { class: "cat-planner-trip",
@@ -272,9 +548,90 @@ fn CatalogSearchOverlay(
                             div { h3 { "Travel dates" } p { "All RV stays require at least 3 nights." } }
                         }
                         div { class: "cat-trip-summary",
-                            div { span { "DELIVERY/SETUP · 2:00 PM" } strong { if let Some(date) = *starts_on.read() { "{date}" } else { "Choose date" } } }
+                            label { class: "cat-trip-date-field",
+                                span { "DELIVERY/SETUP · 2:00 PM" }
+                                div { class: "cat-trip-date-control",
+                                    input {
+                                        r#type: "text",
+                                        inputmode: "numeric",
+                                        maxlength: "10",
+                                        autocomplete: "off",
+                                        spellcheck: "false",
+                                        value: "{start_input}",
+                                        placeholder: "YYYY-MM-DD",
+                                        aria_label: "Delivery and setup date in YYYY-MM-DD format",
+                                        oninput: move |event| {
+                                            let value = format_manual_date_input(&event.value());
+                                            start_input.set(value.clone());
+                                            if let Some(date) = parse_manual_date_input(&value).filter(|date| *date >= today) {
+                                                starts_on.set(Some(date));
+                                                if ends_on.peek().is_some_and(|end| end < date + chrono::Duration::days(3)) {
+                                                    ends_on.set(None);
+                                                }
+                                                visible_month.set(month_start(date));
+                                            } else if value.len() == 10 {
+                                                start_input.set(manual_date_text(*starts_on.peek()));
+                                            }
+                                        },
+                                        onblur: move |_| {
+                                            let value = start_input.read().clone();
+                                            if let Some(date) = parse_manual_date_input(&value).filter(|date| *date >= today) {
+                                                starts_on.set(Some(date));
+                                                if ends_on.peek().is_some_and(|end| end < date + chrono::Duration::days(3)) {
+                                                    ends_on.set(None);
+                                                }
+                                                visible_month.set(month_start(date));
+                                            } else {
+                                                start_input.set(manual_date_text(*starts_on.peek()));
+                                            }
+                                        }
+                                    }
+                                    Icon { name: "calendar-days", size: 16, color: "var(--vl-muted)" }
+                                }
+                            }
                             Icon { name: "arrow-right", size: 18, color: "var(--vl-muted)" }
-                            div { span { "RETURN · 11:00 AM" } strong { if let Some(date) = *ends_on.read() { "{date}" } else { "Choose date" } } }
+                            label { class: "cat-trip-date-field",
+                                span { "RETURN · 11:00 AM" }
+                                div { class: "cat-trip-date-control",
+                                    input {
+                                        r#type: "text",
+                                        inputmode: "numeric",
+                                        maxlength: "10",
+                                        autocomplete: "off",
+                                        spellcheck: "false",
+                                        value: "{end_input}",
+                                        placeholder: "YYYY-MM-DD",
+                                        disabled: starts_on.read().is_none(),
+                                        aria_label: "Return date in YYYY-MM-DD format",
+                                        oninput: move |event| {
+                                            let value = format_manual_date_input(&event.value());
+                                            end_input.set(value.clone());
+                                            if let (Some(start), Some(date)) = (*starts_on.peek(), parse_manual_date_input(&value)) {
+                                                if date >= start + chrono::Duration::days(3) {
+                                                    ends_on.set(Some(date));
+                                                } else if value.len() == 10 {
+                                                    end_input.set(manual_date_text(*ends_on.peek()));
+                                                }
+                                            } else if value.len() == 10 {
+                                                end_input.set(manual_date_text(*ends_on.peek()));
+                                            }
+                                        },
+                                        onblur: move |_| {
+                                            let value = end_input.read().clone();
+                                            if let (Some(start), Some(date)) = (*starts_on.peek(), parse_manual_date_input(&value)) {
+                                                if date >= start + chrono::Duration::days(3) {
+                                                    ends_on.set(Some(date));
+                                                } else {
+                                                    end_input.set(manual_date_text(*ends_on.peek()));
+                                                }
+                                            } else {
+                                                end_input.set(manual_date_text(*ends_on.peek()));
+                                            }
+                                        }
+                                    }
+                                    Icon { name: "calendar-days", size: 16, color: "var(--vl-muted)" }
+                                }
+                            }
                         }
                         div { class: "cat-month-nav",
                             button { r#type: "button", aria_label: "Previous month", disabled: *visible_month.read() <= initial_month, onclick: move |_| {
@@ -324,7 +681,7 @@ fn CatalogSearchOverlay(
                             span { "{location} · within {radius} km · {guests} {guest_word}" }
                         }
                     }
-                    button { class: "cat-planner-apply", r#type: "button", onclick: move |_| {
+                    button { class: "cat-planner-apply", r#type: "button", disabled: !can_apply, onclick: move |_| {
                         let draft = api::CatalogSearchDraft {
                             location: location.read().clone(),
                             radius_km: *radius.read(),
@@ -333,12 +690,14 @@ fn CatalogSearchOverlay(
                             guests: *guests.read(),
                         };
                         let _ = api::save_json("vl_catalog_search", &draft);
+                        on_apply.call(());
                         close_overlay()
                     },
                         Icon { name: "search", size: 18, color: "var(--vl-white)" }
                         span { "Show matching RVs" }
                     }
                 }
+              }
             }
         }
     }
@@ -409,10 +768,51 @@ mod catalog_search_tests {
             (Some(selected), Some(day("2030-08-13")))
         );
     }
+
+    #[test]
+    fn manual_date_input_is_limited_and_formatted() {
+        assert_eq!(format_manual_date_input("2026081333"), "2026-08-13");
+        assert_eq!(format_manual_date_input("2026-8-1"), "2026-81");
+    }
+
+    #[test]
+    fn impossible_manual_date_is_rejected() {
+        assert_eq!(parse_manual_date_input("2026-02-33"), None);
+        assert_eq!(parse_manual_date_input("2026-08-13"), Some(day("2026-08-13")));
+    }
+
+    #[test]
+    fn stale_or_incomplete_saved_dates_are_cleared() {
+        let saved = api::CatalogSearchDraft {
+            location: "Kelowna, BC".into(),
+            radius_km: 200,
+            starts_on: Some("2030-07-01".into()),
+            ends_on: None,
+            guests: 20,
+        };
+        let normalized = normalized_catalog_search(Some(saved), 50, day("2030-07-02"));
+        assert_eq!(normalized.starts_on, None);
+        assert_eq!(normalized.ends_on, None);
+        assert_eq!(normalized.radius_km, 150);
+        assert_eq!(normalized.guests, 10);
+    }
+
+    #[test]
+    fn valid_saved_dates_are_preserved() {
+        let saved = api::CatalogSearchDraft {
+            location: "Kelowna, BC".into(),
+            radius_km: 75,
+            starts_on: Some("2030-07-10".into()),
+            ends_on: Some("2030-07-13".into()),
+            guests: 4,
+        };
+        let normalized = normalized_catalog_search(Some(saved.clone()), 50, day("2030-07-02"));
+        assert_eq!(normalized, saved);
+    }
 }
 
 #[component]
-fn ApiListingCard(rental: api::Rental) -> Element {
+pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
     let image = match rental.slug.as_str() {
         "jayco26" => IMG_JAYCO.to_string(),
         "2015-keystone-bullet" => IMG_BULLET.to_string(),

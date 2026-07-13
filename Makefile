@@ -1,4 +1,4 @@
-# VL Rental - Makefile (аренда RV/лодок). Курирован из idyll_v2, упрощён под web-only проект.
+# VL Rental - Makefile (RV-only). Курирован из idyll_v2, упрощён под web-only проект.
 # Windows -> PowerShell, macOS/Linux -> bash. `dx serve` одинаков на всех ОС; отличается только kill.
 
 PORT ?= 8080
@@ -23,12 +23,19 @@ devo:
 build:
 	dx build --release
 
-# Push development work. All normal work happens on dev.
+# Push development work. This does not publish GitHub Pages.
 deploy:
 	@test "$$(git branch --show-current)" = "dev" || (echo "Run this command from the dev branch" && exit 1)
 	git push origin dev
 
-# Promote the tested dev commit to production main. Pushing main triggers Pages.
+# Manually publish dev to the repository's test GitHub Pages URL. This workflow
+# never adds a custom domain; run it only after the user directly requests it.
+deploy-test:
+	@test "$$(git branch --show-current)" = "dev" || (echo "Run this command from the dev branch" && exit 1)
+	gh workflow run pages.yml --ref dev
+
+# Promote the tested dev commit to production main. Only main pushes trigger the
+# production Pages workflow automatically.
 deploy-migrate:
 	@test "$$(git branch --show-current)" = "dev" || (echo "Run this command from the dev branch" && exit 1)
 	git fetch origin
@@ -51,4 +58,4 @@ b: build
 d: deploy
 dm: deploy-migrate
 
-.PHONY: dev devo build deploy deploy-migrate k cc c co b d dm
+.PHONY: dev devo build deploy deploy-test deploy-migrate k cc c co b d dm

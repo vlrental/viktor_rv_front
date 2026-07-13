@@ -22,8 +22,8 @@
 - Dioxus 0.7.9 web + router. Один крейт `viktor_rv_front`.
 - CSS: один `assets/main.css` с CSS-переменными-токенами + классами; @media ≤768px для мобильной версии.
 - `src/components/`: header (нав), footer, listing_card, общие мелочи.
-- `src/pages/`: home, catalog, rv_detail, boat_detail, checkout, confirmed, contact, about,
-  attractions, restaurants, cooler_trailers, delivery, rv_sales, terms, book_boat.
+- `src/pages/`: home, catalog, rv_detail, checkout, confirmed, contact, about,
+  attractions, restaurants, cooler_trailers, delivery, rv_sales, terms.
 - Данные-моки: локальные структуры в `src/data.rs` (листинги RV/лодок) — потом заменятся на API.
 - Картинки: экспорт из Pencil-фреймов в `assets/img/` (или плейсхолдеры-градиенты где не критично).
 
@@ -33,7 +33,7 @@
 3. ✅ Header (overlay на Home / светлый на остальных) + Footer по дизайну.
 4. ✅ Home (RWhwx) целиком: hero+search, RV-карточки, featured, лодки, how-it-works, services, CTA. Сверено в превью (порт 8090, конфиг rv-preview).
 5. ✅ Catalog (kTkmm): header+компактный search, фильтры (чекбоксы/слайдер/чипы), грид 3 кол.
-6-8. ✅ Остальные 13 страниц — 7 параллельных суб-агентов (detail×2, checkout+confirmed, contact+about, attractions+restaurants, cooler+delivery, sales+terms, book_boat). Все отчитались: pixel-per-export, свои css в assets/css/.
+6-8. ✅ Остальные RV-страницы были реализованы по макетам и проверены pixel-per-export.
 9. ✅ Финал: общий cargo check зелёный, 0 warnings; обход всех 15 роутов в превью — контент на месте, консоль без ошибок; мобильная адаптация проверена (одна колонка, нет h-scroll).
 
 ## Известные хвосты
@@ -45,7 +45,7 @@
 - Иконки: lucide icon-font с CDN (unpkg lucide-static), компонент Icon{name,size,color}.
 - Картинки дизайна скопированы из C:\code\tools\pencil\assets\vl → assets/img (30 шт).
 - CSS: main.css (токены+глобальные+home+catalog+footer), по-страничные файлы assets/css/*.css.
-- Данные-моки: src/data.rs (Listing/Boat, catalog_listings 8 позиций).
+- Данные-моки: src/data.rs (RV listings, 6 позиций).
 - Превью: .claude/launch.json (idyll_v2) — конфиг rv-preview, порт 8090, cmd cd в папку проекта.
 
 ## Проверка
