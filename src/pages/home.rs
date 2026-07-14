@@ -1,13 +1,15 @@
 use chrono::NaiveDate;
 use dioxus::prelude::*;
 
+use super::booking_overlay::UnifiedBookingOverlay;
 use super::catalog::{
-    bump_search_version, catalog_date_label, normalized_catalog_search, ApiListingCard, CatalogEmptyState,
-    CatalogErrorState, CatalogLoadingState, CatalogSearchOverlay,
+    bump_search_version, catalog_date_label, filtered_catalog_for_guests,
+    normalized_catalog_search, ApiListingCard, CatalogEmptyState, CatalogErrorState,
+    CatalogFilteredEmpty, CatalogFilters, CatalogLoadingState, Filters,
 };
 use crate::api;
 use crate::components::Icon;
-use crate::data::{IMG_BULLET_VINEYARD, IMG_HERO_RV};
+use crate::data::IMG_HERO_RV;
 use crate::Route;
 
 #[component]
@@ -26,8 +28,9 @@ pub fn Home() -> Element {
     let mut search_radius = use_signal(|| initial_search.radius_km);
     let mut search_starts_on = use_signal(|| search_date(initial_search.starts_on.as_deref()));
     let mut search_ends_on = use_signal(|| search_date(initial_search.ends_on.as_deref()));
-    let mut search_guests = use_signal(|| initial_search.guests);
+    let mut search_guests = use_signal(|| 1_i32);
     let mut search_open = use_signal(|| false);
+    let search_initial_step = use_signal(|| 1_u8);
     use_effect(move || {
         if *search_open.read() {
             let search = applied_search.read().clone();
@@ -35,7 +38,7 @@ pub fn Home() -> Element {
             search_radius.set(search.radius_km);
             search_starts_on.set(search_date(search.starts_on.as_deref()));
             search_ends_on.set(search_date(search.ends_on.as_deref()));
-            search_guests.set(search.guests);
+            search_guests.set(1);
         }
     });
     use_effect(move || {
@@ -47,23 +50,26 @@ pub fn Home() -> Element {
         Hero {
             applied_search,
             search_open,
+            search_initial_step,
         }
         PopularRvs {
             applied_search,
             search_version,
             search_open,
+            search_initial_step,
         }
         HowItWorks {}
         MoreServices {}
         CtaBand {}
         if *search_open.read() {
-            CatalogSearchOverlay {
+            UnifiedBookingOverlay {
                 location: search_location,
                 radius: search_radius,
                 starts_on: search_starts_on,
                 ends_on: search_ends_on,
                 guests: search_guests,
-                on_apply: move |_| {
+                initial_step: *search_initial_step.read(),
+                on_search_change: move |_| {
                     let next = api::CatalogSearchDraft {
                         location: search_location.read().clone(),
                         radius_km: *search_radius.read(),
@@ -73,14 +79,19 @@ pub fn Home() -> Element {
                     };
                     applied_search.set(next);
                     bump_search_version(search_version);
-                    spawn(async move {
-                        let _ = document::eval(
-                            "await new Promise(resolve => setTimeout(resolve, 240)); document.getElementById('home-rentals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });",
-                        )
-                        .await;
-                    });
                 },
-                on_close: move |_| search_open.set(false),
+                on_close: move |_| {
+                    let next = api::CatalogSearchDraft {
+                        location: search_location.read().clone(),
+                        radius_km: *search_radius.read(),
+                        starts_on: (*search_starts_on.read()).map(|value| value.to_string()),
+                        ends_on: (*search_ends_on.read()).map(|value| value.to_string()),
+                        guests: *search_guests.read(),
+                    };
+                    applied_search.set(next);
+                    bump_search_version(search_version);
+                    search_open.set(false);
+                },
             }
         }
     }
@@ -94,6 +105,7 @@ fn search_date(value: Option<&str>) -> Option<NaiveDate> {
 fn Hero(
     applied_search: Signal<api::CatalogSearchDraft>,
     mut search_open: Signal<bool>,
+    mut search_initial_step: Signal<u8>,
 ) -> Element {
     use_effect(|| {
         document::eval(
@@ -182,7 +194,8 @@ fn Hero(
                 }
             }
             div { class: "searchbar",
-                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
+                button { class: "searchbar-open", r#type: "button", aria_label: "Open booking dates", onclick: move |_| { search_initial_step.set(1); search_open.set(true); } }
+                div { class: "search-field is-static",
                     div { class: "search-label", "DELIVERY RADIUS" }
                     div { class: "search-value",
                         Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" }
@@ -190,7 +203,7 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(2); search_open.set(true); },
                     div { class: "search-label", "WHAT" }
                     div { class: "search-value",
                         Icon { name: "compass", size: 17, color: "var(--vl-forest)" }
@@ -198,7 +211,7 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(1); search_open.set(true); },
                     div { class: "search-label", "DATES" }
                     div { class: "search-value",
                         Icon { name: "calendar", size: 17, color: "var(--vl-forest)" }
@@ -206,14 +219,14 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| search_open.set(true),
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(1); search_open.set(true); },
                     div { class: "search-label", "GUESTS" }
                     div { class: "search-value",
                         Icon { name: "users", size: 17, color: "var(--vl-forest)" }
                         span { "{guests_label}" }
                     }
                 }
-                button { class: "search-btn", r#type: "button", onclick: move |_| search_open.set(true),
+                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(if search.starts_on.is_some() && search.ends_on.is_some() { 2 } else { 1 }); search_open.set(true); },
                     Icon { name: "search", size: 19, color: "var(--vl-white)" }
                     span { "Search" }
                 }
@@ -227,7 +240,18 @@ fn PopularRvs(
     mut applied_search: Signal<api::CatalogSearchDraft>,
     mut search_version: Signal<u32>,
     mut search_open: Signal<bool>,
+    mut search_initial_step: Signal<u8>,
 ) -> Element {
+    let mut filters = use_signal(CatalogFilters::default);
+    use_effect(move || {
+        let search = applied_search.read();
+        let dates_are_complete = search.starts_on.is_some() && search.ends_on.is_some();
+        if !dates_are_complete && filters.peek().sort == "date-fit" {
+            let mut next = filters.peek().clone();
+            next.sort = "recommended".into();
+            filters.set(next);
+        }
+    });
     let listings = use_resource(move || {
         let _version = *search_version.read();
         let search = applied_search.read().clone();
@@ -236,21 +260,23 @@ fn PopularRvs(
     let search = applied_search.read().clone();
     let starts_on = search_date(search.starts_on.as_deref());
     let ends_on = search_date(search.ends_on.as_deref());
+    let has_dates = starts_on.is_some() && ends_on.is_some();
     let dates_label = catalog_date_label(starts_on, ends_on);
-    let match_count = listings
+    let visible_rentals = listings
         .read()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
-        .map(Vec::len)
-        .unwrap_or(0);
+        .map(|values| {
+            filtered_catalog_for_guests(values, &filters.read(), has_dates.then_some(search.guests))
+        })
+        .unwrap_or_default();
+    let match_count = visible_rentals.len();
     let match_label = if starts_on.is_none() && ends_on.is_none() {
         format!("{} RVs fit {} guests", match_count, search.guests)
     } else {
         format!(
             "{} RVs · {} · {} guests",
-            match_count,
-            dates_label,
-            search.guests
+            match_count, dates_label, search.guests
         )
     };
     rsx! {
@@ -260,41 +286,70 @@ fn PopularRvs(
                     div { class: "eyebrow", "CHOOSE YOUR WHEELS" }
                     h2 { class: "sec-title", "Explore available RVs" }
                 }
+            }
+            div { class: "home-catalog-toolbar",
                 div { class: "home-match-label",
                     Icon { name: "sparkles", size: 16, color: "var(--vl-accent)" }
                     span { "{match_label}" }
                 }
-            }
-            div { class: "home-catalog-grid",
-                if let Some(result) = listings.read().as_ref() {
-                    match result {
-                        Ok(values) if values.is_empty() => rsx! {
-                            CatalogEmptyState {
-                                dates_label: dates_label.clone(),
-                                has_dates: starts_on.is_some() && ends_on.is_some(),
-                                on_change: move |_| search_open.set(true),
-                                on_clear: move |_| {
-                                    let mut next = applied_search.read().clone();
-                                    next.starts_on = None;
-                                    next.ends_on = None;
-                                    let _ = api::save_json("vl_catalog_search", &next);
-                                    applied_search.set(next);
-                                    bump_search_version(search_version);
-                                },
-                            }
+                label { class: "cat-sort",
+                    Icon { name: "arrow-up-down", size: 14, color: "var(--vl-ink)" }
+                    span { "Sort" }
+                    select {
+                        aria_label: "Sort RVs",
+                        value: "{filters.read().sort}",
+                        onchange: move |event| {
+                            let mut next = filters.read().clone();
+                            next.sort = event.value();
+                            filters.set(next);
                         },
-                        Ok(values) => rsx! { for rental in values.iter() {
-                            ApiListingCard { key: "{rental.slug}", rental: rental.clone() }
-                        } },
-                        Err(message) => rsx! {
-                            CatalogErrorState {
-                                message: message.clone(),
-                                on_retry: move |_| bump_search_version(search_version),
-                            }
-                        },
+                        option { value: "recommended", "Recommended" }
+                        if has_dates {
+                            option { value: "date-fit", "Best fit for your dates" }
+                        }
+                        option { value: "price-low", "Price: low to high" }
+                        option { value: "price-high", "Price: high to low" }
+                        option { value: "capacity", "Most sleeping space" }
                     }
-                } else {
-                    CatalogLoadingState {}
+                    Icon { name: "chevron-down", size: 14, color: "var(--vl-ink)" }
+                }
+            }
+            div { class: "home-catalog-layout",
+                Filters { filters }
+                div { class: "home-catalog-grid",
+                    if let Some(result) = listings.read().as_ref() {
+                        match result {
+                            Ok(values) if values.is_empty() => rsx! {
+                                CatalogEmptyState {
+                                    dates_label: dates_label.clone(),
+                                    has_dates: starts_on.is_some() && ends_on.is_some(),
+                                    on_change: move |_| { search_initial_step.set(1); search_open.set(true); },
+                                    on_clear: move |_| {
+                                        let mut next = applied_search.read().clone();
+                                        next.starts_on = None;
+                                        next.ends_on = None;
+                                        let _ = api::save_json("vl_catalog_search", &next);
+                                        applied_search.set(next);
+                                        bump_search_version(search_version);
+                                    },
+                                }
+                            },
+                            Ok(_) if visible_rentals.is_empty() => rsx! {
+                                CatalogFilteredEmpty { on_reset: move |_| filters.set(CatalogFilters::default()) }
+                            },
+                            Ok(_) => rsx! { for rental in visible_rentals.iter() {
+                                ApiListingCard { key: "{rental.slug}", rental: rental.clone() }
+                            } },
+                            Err(message) => rsx! {
+                                CatalogErrorState {
+                                    message: message.clone(),
+                                    on_retry: move |_| bump_search_version(search_version),
+                                }
+                            },
+                        }
+                    } else {
+                        CatalogLoadingState {}
+                    }
                 }
             }
         }
@@ -394,9 +449,53 @@ fn MoreServices() -> Element {
 
 #[component]
 fn CtaBand() -> Element {
+    use_effect(|| {
+        spawn(async move {
+            let _ = document::eval(
+                r#"
+                    window.__vlCtaParallaxCleanup?.();
+                    const band = document.getElementById('home-parallax-cta');
+                    const image = band?.querySelector('.cta-img');
+                    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+                    if (!band || !image || reducedMotion.matches) {
+                        if (image) image.style.transform = 'translate3d(0, 0, 0)';
+                        return;
+                    }
+
+                    let frame = 0;
+                    const update = () => {
+                        frame = 0;
+                        const rect = band.getBoundingClientRect();
+                        const viewport = window.innerHeight || document.documentElement.clientHeight;
+                        const progress = (viewport - rect.top) / (viewport + rect.height);
+                        const offset = Math.max(-64, Math.min(64, (progress - 0.5) * 128));
+                        image.style.transform = `translate3d(0, ${offset}px, 0) scale(1.035)`;
+                    };
+                    const requestUpdate = () => {
+                        if (!frame) frame = requestAnimationFrame(update);
+                    };
+
+                    window.addEventListener('scroll', requestUpdate, { passive: true });
+                    window.addEventListener('resize', requestUpdate, { passive: true });
+                    update();
+                    window.__vlCtaParallaxCleanup = () => {
+                        window.removeEventListener('scroll', requestUpdate);
+                        window.removeEventListener('resize', requestUpdate);
+                        if (frame) cancelAnimationFrame(frame);
+                    };
+                "#,
+            )
+            .await;
+        });
+    });
     rsx! {
-        section { class: "cta-band",
-            div { class: "cta-img", style: "background-image: url('{IMG_BULLET_VINEYARD}');" }
+        section { id: "home-parallax-cta", class: "cta-band",
+            div {
+                class: "cta-img",
+                role: "img",
+                aria_label: "Travel trailer at an Okanagan lakeside campsite",
+                style: "background-image: url('/assets/img/generated/okanagan-rv-parallax.webp');"
+            }
             div { class: "cta-overlay" }
             div { class: "cta-copy",
                 div { class: "eyebrow gold", "TRAVEL WITH US" }

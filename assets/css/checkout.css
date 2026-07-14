@@ -186,6 +186,13 @@
   font-weight: 400;
   color: var(--vl-forest);
 }
+.co-deposit-card, .co-payment-plan { padding: 13px 14px; border-radius: 11px; }
+.co-deposit-card { border: 1px solid #D8B35B66; background: #FFF9E9; }
+.co-payment-plan { background: var(--vl-mint); }
+.co-deposit-card > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--vl-forest); }
+.co-deposit-card b { white-space: nowrap; }
+.co-deposit-card p, .co-payment-plan p { margin-top: 5px; color: var(--vl-muted); font-size: 11px; line-height: 16px; }
+.co-payment-plan strong { color: var(--vl-forest); }
 
 .co-pay {
   display: flex;

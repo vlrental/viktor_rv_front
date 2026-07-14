@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{api, components::Icon, Route};
+use crate::{api, components::Icon, pricing, Route};
 
 const CSS: Asset = asset!("/assets/css/checkout.css");
 
@@ -8,14 +8,18 @@ const CSS: Asset = asset!("/assets/css/checkout.css");
 pub fn Checkout() -> Element {
     let quote = api::load_json::<api::QuoteResponse>("vl_active_quote");
     let saved_draft = api::load_json::<api::TripDraft>("vl_trip_draft");
-    let recovery_slug = saved_draft.as_ref().and_then(|draft| {
-        (!api::rv_delivery_ready(draft)).then(|| draft.rental_slug.clone())
-    });
+    let recovery_slug = saved_draft
+        .as_ref()
+        .and_then(|draft| (!api::rv_delivery_ready(draft)).then(|| draft.rental_slug.clone()));
     let draft = saved_draft.filter(api::rv_delivery_ready);
     let user = api::current_user();
     let first_name = use_signal(String::new);
     let last_name = use_signal(String::new);
-    let email = use_signal(|| user.as_ref().map(|value| value.email.clone()).unwrap_or_default());
+    let email = use_signal(|| {
+        user.as_ref()
+            .map(|value| value.email.clone())
+            .unwrap_or_default()
+    });
     let phone = use_signal(String::new);
     let mut notes = use_signal(String::new);
     let mut accepted = use_signal(|| false);
@@ -28,8 +32,12 @@ pub fn Checkout() -> Element {
         let active_quote = quote_for_confirm.clone();
         let selected_draft = draft_for_confirm.clone();
         let values = (
-            first_name.read().clone(), last_name.read().clone(), email.read().clone(),
-            phone.read().clone(), notes.read().clone(), *accepted.read(),
+            first_name.read().clone(),
+            last_name.read().clone(),
+            email.read().clone(),
+            phone.read().clone(),
+            notes.read().clone(),
+            *accepted.read(),
         );
         async move {
             let Some(active_quote) = active_quote else {
@@ -40,7 +48,11 @@ pub fn Checkout() -> Element {
                 error.set("Please accept the rental terms.".to_string());
                 return;
             }
-            if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 {
+            if values.0.trim().len() < 2
+                || values.1.trim().len() < 2
+                || !values.2.contains('@')
+                || values.3.trim().len() < 7
+            {
                 error.set("Enter your full name, email, and phone number.".to_string());
                 return;
             }
@@ -48,14 +60,45 @@ pub fn Checkout() -> Element {
             error.set(String::new());
             let booking_notes = if let Some(draft) = selected_draft.as_ref() {
                 let mut parts = Vec::new();
-                if !values.4.trim().is_empty() { parts.push(values.4.trim().to_string()); }
-                if let Some(address) = draft.delivery_address.as_ref().filter(|value| !value.is_empty()) { parts.push(format!("Delivery address: {address}")); }
-                if let Some(distance) = draft.delivery_km.as_ref() { parts.push(format!("Delivery distance: {distance} km one way")); }
-                parts.push(format!("Festival/event: {}", if draft.attending_event { "yes" } else { "no" }));
-                parts.push(format!("Towing after delivery: {}", if draft.towing_after_delivery { "yes" } else { "no" }));
+                if !values.4.trim().is_empty() {
+                    parts.push(values.4.trim().to_string());
+                }
+                if let Some(address) = draft
+                    .delivery_address
+                    .as_ref()
+                    .filter(|value| !value.is_empty())
+                {
+                    parts.push(format!("Delivery address: {address}"));
+                }
+                if let Some(distance) = draft.delivery_km.as_ref() {
+                    parts.push(format!("Delivery distance: {distance} km one way"));
+                }
+                parts.push(format!(
+                    "Festival/event: {}",
+                    if draft.attending_event { "yes" } else { "no" }
+                ));
+                parts.push(format!(
+                    "Towing after delivery: {}",
+                    if draft.towing_after_delivery {
+                        "yes"
+                    } else {
+                        "no"
+                    }
+                ));
                 parts.join("\n")
-            } else { values.4.clone() };
-            match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await {
+            } else {
+                values.4.clone()
+            };
+            match api::create_booking(
+                &active_quote.quote.quote_id,
+                &values.0,
+                &values.1,
+                &values.2,
+                &values.3,
+                &booking_notes,
+            )
+            .await
+            {
                 Ok(created) => {
                     let _ = api::save_json("vl_last_booking", &created);
                     nav.push(Route::Confirmed {});
@@ -71,7 +114,7 @@ pub fn Checkout() -> Element {
                     } else {
                         error.set(api_error.message);
                     }
-                },
+                }
             }
             busy.set(false);
         }
@@ -81,7 +124,7 @@ pub fn Checkout() -> Element {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "co-body",
             div { class: "co-breadcrumb",
-                Link { class: "co-breadcrumb-a", to: Route::Catalog {}, "RV Rentals" }
+                a { class: "co-breadcrumb-a", href: "/#home-rentals", "RV Rentals" }
                 Icon { name: "chevron-right", size: 15, color: "var(--vl-muted)" }
                 span { class: "co-breadcrumb-b", "Confirm booking" }
             }
@@ -130,13 +173,21 @@ pub fn Checkout() -> Element {
                     }
                     div { class: "co-summary",
                         h2 { class: "co-card-h", "Price details" }
-                        for item in quote.items.iter() {
+                        for item in quote.items.iter().filter(|item| item.item_type != "deposit") {
                             PriceLine { label: item.label.clone(), value: format!("CA${}", item.amount) }
                         }
                         div { class: "co-divider" }
                         div { class: "co-line",
-                            span { class: "co-total-label", "Total (CAD)" }
-                            span { class: "co-total-value", "CA${quote.quote.total}" }
+                            span { class: "co-total-label", "Trip price (CAD)" }
+                            span { class: "co-total-value", "{pricing::money(pricing::quote_trip_price(&quote))}" }
+                        }
+                        div { class: "co-deposit-card",
+                            div { strong { "Refundable damage deposit" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                            p { "Paid separately 48 hours before delivery. It is not part of the trip price or the 30% booking payment." }
+                        }
+                        div { class: "co-payment-plan",
+                            strong { "Payment timing" }
+                            p { "30% to confirm when booked more than 30 days ahead; the balance is due 30 days before delivery. Within 30 days, the trip price is due in full." }
                         }
                         if user.is_none() {
                             div { class: "co-auth-choice",
@@ -159,7 +210,7 @@ pub fn Checkout() -> Element {
                     if let Some(slug) = recovery_slug {
                         Link { class: "co-pay", to: Route::RvDetail { slug }, "Enter delivery address" }
                     } else {
-                        Link { class: "co-pay", to: Route::Catalog {}, "Return to catalog" }
+                        a { class: "co-pay", href: "/#home-rentals", "Browse available RVs" }
                     }
                 }
             }

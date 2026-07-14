@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 
-use crate::{api, components::Icon};
 use crate::data::{rv_listings, IMG_BULLET};
 use crate::Route;
+use crate::{api, components::Icon, pricing};
 
 const CSS: Asset = asset!("/assets/css/confirmed.css");
 
@@ -11,7 +11,22 @@ const CSS: Asset = asset!("/assets/css/confirmed.css");
 pub fn Confirmed() -> Element {
     let created = api::load_json::<api::CreatedBooking>("vl_last_booking");
     let draft = api::load_json::<api::TripDraft>("vl_trip_draft");
-    let booking_number = created.as_ref().map(|value| value.booking.booking_number.clone()).unwrap_or_else(|| "Unavailable".into());
+    if created.is_none() {
+        return rsx! {
+            document::Link { rel: "stylesheet", href: CSS }
+            div { class: "cf-body",
+                div { class: "cf-inner",
+                    h1 { class: "cf-title", "No confirmed booking found" }
+                    p { class: "cf-sub", "Complete the booking window before opening this page." }
+                    div { class: "cf-buttons", Link { class: "cf-btn-primary", to: Route::Home {}, "Browse available RVs" } }
+                }
+            }
+        };
+    }
+    let booking_number = created
+        .as_ref()
+        .map(|value| value.booking.booking_number.clone())
+        .unwrap_or_else(|| "Unavailable".into());
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "cf-body",
@@ -44,10 +59,16 @@ pub fn Confirmed() -> Element {
 #[component]
 fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraft>) -> Element {
     let booking = created.as_ref().map(|value| &value.booking);
-    let rental_label = draft.as_ref().map(|value| value.rental_slug.clone()).unwrap_or_else(|| "Rental".into());
-    let rental_image = draft
-        .as_ref()
-        .and_then(|value| rv_listings().into_iter().find(|listing| listing.slug == value.rental_slug))
+    let rental_listing = draft.as_ref().and_then(|value| {
+        rv_listings()
+            .into_iter()
+            .find(|listing| listing.slug == value.rental_slug)
+    });
+    let rental_label = rental_listing
+        .map(|listing| listing.title.to_string())
+        .or_else(|| draft.as_ref().map(|value| value.rental_slug.clone()))
+        .unwrap_or_else(|| "Rental".into());
+    let rental_image = rental_listing
         .map(|listing| listing.image)
         .unwrap_or(IMG_BULLET);
     rsx! {
@@ -61,7 +82,7 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
                     div { class: "cf-item-t", "{rental_label}" }
                     div { class: "cf-item-r",
                         Icon { name: "map-pin", size: 14, color: "var(--vl-muted)" }
-                        span { "Kelowna, BC · Delivery included" }
+                        span { "Kelowna, BC · Delivery calculated" }
                     }
                 }
             }
@@ -70,8 +91,11 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
                 GridCell { label: "Delivery/setup", value: draft.as_ref().map(|value| format!("{} at 2:00 PM", value.starts_on)).unwrap_or_default() }
                 GridCell { label: "Return", value: draft.as_ref().map(|value| format!("{} at 11:00 AM", value.ends_on)).unwrap_or_default() }
                 GridCell { label: "Guests", value: format!("{} guests", draft.as_ref().map(|value| value.guests).unwrap_or_default()) }
-                GridCell { label: "Test total", value: format!("CA${}", booking.map(|value| value.total.as_str()).unwrap_or("0.00")) }
+                GridCell { label: "Trip price", value: format!("CA${}", booking.map(|value| value.total.as_str()).unwrap_or("0.00")) }
+                GridCell { label: "Booking payment", value: format!("CA${}", booking.map(|value| value.amount_due_now.as_str()).unwrap_or("0.00")) }
+                GridCell { label: "Damage deposit", value: pricing::money(pricing::DAMAGE_DEPOSIT) }
             }
+            div { class: "cf-payment-note", "Damage deposit is separate and due 48 hours before delivery. Future payment reminders include a direct payment link by email." }
             div { class: "cf-divider" }
             div { class: "cf-host",
                 div { class: "cf-host-l",

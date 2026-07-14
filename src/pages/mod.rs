@@ -1,5 +1,8 @@
 mod about;
+mod admin;
 mod attractions;
+mod auth;
+mod booking_overlay;
 mod catalog;
 mod checkout;
 mod confirmed;
@@ -11,10 +14,11 @@ mod restaurants;
 mod rv_detail;
 mod rv_sales;
 mod terms;
-mod auth;
 
 pub use about::About;
+pub use admin::Admin;
 pub use attractions::Attractions;
+pub use auth::{Account, AuthCallback, Login, Register};
 pub use catalog::Catalog;
 pub use checkout::Checkout;
 pub use confirmed::Confirmed;
@@ -26,4 +30,3 @@ pub use restaurants::Restaurants;
 pub use rv_detail::RvDetail;
 pub use rv_sales::RvSales;
 pub use terms::Terms;
-pub use auth::{Account, AuthCallback, Login, Register};

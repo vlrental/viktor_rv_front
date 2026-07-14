@@ -13,12 +13,12 @@ fn term_sections() -> Vec<TermSection> {
     vec![
         TermSection {
             id: "tm-s1",
-            title: "1. Booking & Security Deposit",
-            body: "A refundable security deposit of $1,000 CAD is required at booking, with full payment due 5 days before the rental. The deposit covers damage, missing items and cleanliness issues — any unused amount is refunded within a week of return.",
+            title: "1. Pricing, Booking Payments & Damage Deposit",
+            body: "The trip price is shown separately from the refundable damage deposit. It includes the nightly rental, the mandatory one-time CA$97 RV Preparation Fee, mandatory Stationary Plus Protection at CA$50 per booked night, delivery and setup, selected extras, and applicable GST and PST. For trips booked more than 30 days ahead, 30% of the trip price is due to confirm and the remaining balance is due 30 days before delivery. For trips booked within 30 days, the full trip price is due when booking. A separate refundable CA$1,000 damage deposit is due 48 hours before delivery and is not included in the 30% calculation. Customers receive an email with a direct payment link whenever a payment becomes due. For the Gold option, the refundable damage deposit is held for seven days after the RV is returned and then refunded without interest, less any valid damage charges.",
         },
         TermSection {
             id: "tm-s2",
-            title: "2. Cancellations (Trailers & RVs)",
+            title: "2. Cancellations (RVs)",
             body: "Cancel within 5 days of booking at no charge if departure is more than 30 days away. After that: $100 fee if cancelled 30+ days before departure, $500 if 16–30 days before, and the full amount within 14 days of departure or for no-shows.",
         },
         TermSection {
@@ -55,10 +55,10 @@ pub fn Terms() -> Element {
         section { class: "tm-header",
             h1 { class: "tm-title", "Terms & Conditions" }
             p { class: "tm-sub",
-                "Please review the rental terms below before booking. These terms apply to all trailer and RV rentals from VL Rental."
+                "Please review the rental terms below before booking. These terms apply to RV rentals from VL Rental."
             }
             div { class: "tm-updated",
-                "Based on vlrental.ca Trailer & RV T&C · Last updated July 2026"
+                "VL Rental RV Terms & Conditions · Last updated July 2026"
             }
         }
 

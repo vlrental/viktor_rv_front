@@ -29,6 +29,8 @@ jobs:
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version 0.7.9 --locked
       - name: Build site
+        env:
+          VL_FRONTEND_BASE_URL: https://${{ github.repository_owner }}.github.io/viktor_rv_front
         run: dx build --release --web --base-path viktor_rv_front
       - name: Prepare Pages artifact
         run: cp target/dx/viktor_rv_front/release/web/public/index.html target/dx/viktor_rv_front/release/web/public/404.html

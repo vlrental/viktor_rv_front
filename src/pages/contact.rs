@@ -1,5 +1,5 @@
-use crate::{api, components::Icon};
 use crate::data::PHONE;
+use crate::{api, components::Icon};
 use dioxus::prelude::*;
 
 const CSS: Asset = asset!("/assets/css/contact.css");
@@ -15,11 +15,27 @@ pub fn Contact() -> Element {
     let mut status = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let submit = move |_| {
-        let values = (full_name.read().clone(), email.read().clone(), phone.read().clone(), interest.read().clone(), message.read().clone());
+        let values = (
+            full_name.read().clone(),
+            email.read().clone(),
+            phone.read().clone(),
+            interest.read().clone(),
+            message.read().clone(),
+        );
         async move {
-            busy.set(true); status.set(String::new());
+            status.set(String::new());
+            if values.0.trim().len() < 2 || !values.1.contains('@') || values.4.trim().len() < 5 {
+                status.set("Enter your name, a valid email, and a short message.".into());
+                return;
+            }
+            busy.set(true);
             match api::send_contact(&values.0, &values.1, &values.2, &values.3, &values.4).await {
-                Ok(()) => { status.set("Thanks — your message has been saved. We'll get back to you soon.".into()); message.set(String::new()); }
+                Ok(()) => {
+                    status.set(
+                        "Thanks — your message has been saved. We'll get back to you soon.".into(),
+                    );
+                    message.set(String::new());
+                }
                 Err(error) => status.set(error),
             }
             busy.set(false);
@@ -120,10 +136,10 @@ pub fn Contact() -> Element {
                         span { class: "ct-info-v", "@lairichviktor" }
                     }
                     div { class: "ct-social-btns",
-                        a { class: "ct-social-btn", href: "#",
+                        a { class: "ct-social-btn", href: "https://www.facebook.com/people/VL-Pro-Trailer-Care/61576201770508/", target: "_blank", rel: "noopener noreferrer", aria_label: "VL Rental on Facebook",
                             Icon { name: "facebook", size: 18, color: "var(--vl-white)" }
                         }
-                        a { class: "ct-social-btn", href: "#",
+                        a { class: "ct-social-btn", href: "https://www.instagram.com/lairichviktor/", target: "_blank", rel: "noopener noreferrer", aria_label: "VL Rental on Instagram",
                             Icon { name: "instagram", size: 18, color: "var(--vl-white)" }
                         }
                     }

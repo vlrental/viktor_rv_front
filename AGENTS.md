@@ -8,6 +8,7 @@
 
 - Frontend repository: `/Users/viktoriiakarpova/Projects/it_work/viktor_rv_front`.
 - Backend repository: `/Users/viktoriiakarpova/Projects/it_work/viktor_rv_back`.
+- Before changing the current booking flow, read `BOOKING_FLOW_HANDOFF.md` in the frontend repository. It documents the unified overlay architecture, browser persistence, completed fixes, verified behavior, and remaining end-to-end checks.
 - Treat these as the paired frontend and backend repositories for the Viktor RV project.
 - Keep shared project context and cross-repository working rules synchronized in both repositories' `AGENTS.md` files. When adding or changing a rule that applies to the whole project, write it to both the frontend and backend instructions.
 - The frontend is the default working directory for this workspace. When a task involves API behavior, server code, routes, database access, or backend integrations, inspect the backend repository at the path above instead of searching for it.
@@ -18,6 +19,14 @@
 - The canonical project design is available through the connected design tool. Open and inspect it directly when design context is needed; do not ask the user to provide it again unless access fails.
 - Design Node IDs: `IUHnT`, `x8t0A0`, `I6W2Es`, `raX6S`, `rmfa4`, `ODW3r`, `f1GuCf`, `ns0xG`, `LaBip`, `iKgTN`, `Oijpd`, `MEsd0`, `XgqBg`, `w19Mf`, `jr5XP`, `CdnCR`, `X9ejnB`, `g9upP`, `qaZRF`, `yTWGi`, `Al6fI`, `lsQAl`, `eb6Ck`, `cOu0u`, `YuNUS`, `TDhXo`, `M4DJcJ`, `e8z6o4`, `K7A9o`.
 - Use these nodes as the visual source of truth when implementing or reviewing the corresponding frontend UI.
+
+## Page architecture
+
+- Prefer completing actions inside the user's current page, panel, dialog, drawer, or established workflow.
+- Every overlay, dialog, or drawer with a visible close (`×`) control must also close when the user presses `Escape`. Use the same guarded close path as the visible control; when overlays are nested, `Escape` closes only the topmost dismissible layer.
+- Do not create a dedicated page for authentication, callbacks, transient success/error states, validation, or a single small action when the existing interface can contain it clearly.
+- Compatibility routes may exist only as invisible immediate redirects; they must not render a standalone user-facing screen.
+- Add a new page only when it represents a distinct, persistent destination in the product's information architecture and materially improves navigation.
 
 ## Application roles
 
@@ -59,4 +68,11 @@
 - A following customer may receive the same RV at 2:00 PM on the previous customer's return date; the 11:00 AM–2:00 PM gap is reserved for cleaning and transport.
 - RV delivery is limited to 150 km one way from the Kelowna base. The fee is CA$150 through 50 km, then CA$3.50 for each additional one-way kilometre (CA$1.75/km in each direction).
 - RV rentals require at least three nights. Backend code is the source of truth for converting selected dates into timestamps and enforcing availability.
+- Every RV quote includes a mandatory `RV Preparation Fee` of CA$97 once per booking.
+- Every RV quote includes mandatory `Stationary Plus Protection` at CA$50 for each booked night, automatically calculated from the calendar date difference. Both mandatory charges must appear as separate quote line items, and backend quote code is the pricing source of truth.
+- At initial booking, if RV delivery is more than 30 days away, the customer must pay 30% of the trip price immediately. Calculate the 30% only from the trip price; the separate CA$1,000 damage deposit is not part of this percentage. If delivery is 30 days away or less, the customer must pay 100% of the trip price immediately.
+- For a booking made more than 30 days before delivery, the remaining trip-price balance becomes due exactly 30 days before the delivery date, bringing the booking payment to 100%.
+- Every booking requires a CA$1,000 damage deposit, due 48 hours before RV delivery.
+- Whenever a scheduled booking payment or damage-deposit payment becomes due, notify the customer immediately by email and include a direct payment link.
+- For the Gold option, hold the CA$1,000 damage deposit for seven days after the RV is returned, then refund it without interest, subject to any valid damage charges.
 - Until Stripe is explicitly enabled, bookings are test bookings stored as `confirmed` / `test_paid`; no card is collected and no real payment row is created.

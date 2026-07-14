@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
-use crate::{api, components::Icon};
 use crate::data::{IMG_BULLET, IMG_OPENRANGE, IMG_ROCKWOOD};
+use crate::{api, components::Icon};
 
 const CSS: Asset = asset!("/assets/css/rv_sales.css");
 
@@ -39,13 +39,39 @@ pub fn RvSales() -> Element {
     let mut email = use_signal(String::new);
     let mut requested = use_signal(String::new);
     let mut status = use_signal(String::new);
+    let mut busy = use_signal(|| false);
     let send = move |_| {
-        let values = (full_name.read().clone(), email.read().clone(), requested.read().clone());
+        let values = (
+            full_name.read().clone(),
+            email.read().clone(),
+            requested.read().clone(),
+        );
         async move {
-            match api::send_sales_inquiry(&values.0, &values.1, "", &values.2, "Interested in an RV purchase").await {
-                Ok(()) => status.set("Thanks — your sales request has been saved.".into()),
+            status.set(String::new());
+            if values.0.trim().len() < 2 || !values.1.contains('@') || values.2.trim().len() < 2 {
+                status.set(
+                    "Enter your name, a valid email, and the RV or budget you are looking for."
+                        .into(),
+                );
+                return;
+            }
+            busy.set(true);
+            match api::send_sales_inquiry(
+                &values.0,
+                &values.1,
+                "",
+                &values.2,
+                "Interested in an RV purchase",
+            )
+            .await
+            {
+                Ok(()) => {
+                    status.set("Thanks — your sales request has been saved.".into());
+                    requested.set(String::new());
+                }
                 Err(error) => status.set(error),
             }
+            busy.set(false);
         }
     };
     rsx! {
@@ -105,9 +131,9 @@ pub fn RvSales() -> Element {
                 }
                 if !status.read().is_empty() { p { role: "status", "{status}" } }
             }
-            button { class: "sale-cta-btn", onclick: send,
+            button { class: "sale-cta-btn", disabled: *busy.read(), onclick: send,
                 Icon { name: "send", size: 16, color: "var(--vl-forest-2)" }
-                span { "Send inquiry" }
+                span { if *busy.read() { "Sending…" } else { "Send inquiry" } }
             }
         }
     }

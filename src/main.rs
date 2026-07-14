@@ -1,7 +1,8 @@
-mod components;
 mod api;
+mod components;
 mod data;
 mod pages;
+mod pricing;
 
 use components::{Footer, Header};
 use pages::*;
@@ -55,6 +56,8 @@ pub enum Route {
         AuthCallback {},
         #[route("/account")]
         Account {},
+        #[route("/admin")]
+        Admin {},
 }
 
 #[component]
@@ -79,10 +82,48 @@ fn App() -> Element {
 #[component]
 fn SiteShell() -> Element {
     rsx! {
+        AuthSessionBridge {}
         div { class: "site-shell",
             Header {}
             main { class: "site-main", Outlet::<Route> {} }
             Footer {}
         }
     }
+}
+
+#[component]
+fn AuthSessionBridge() -> Element {
+    let compatibility_callback = matches!(use_route::<Route>(), Route::AuthCallback {});
+    use_effect(move || {
+        let result = api::finish_google_sign_in();
+        match result {
+            Ok(Some(path)) => {
+                if let Some(window) = web_sys::window() {
+                    let _ = window.location().replace(&api::frontend_path(&path));
+                }
+            }
+            Ok(None) if compatibility_callback => {
+                let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
+                if api::take_google_auth_pending() {
+                    api::request_inline_auth(
+                        false,
+                        Some("Google sign in was not completed. Please try again."),
+                    );
+                }
+                if let Some(window) = web_sys::window() {
+                    let _ = window.location().replace(&api::frontend_path(&path));
+                }
+            }
+            Err(message) => {
+                let _ = api::take_google_auth_pending();
+                let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
+                api::request_inline_auth(false, Some(&message));
+                if let Some(window) = web_sys::window() {
+                    let _ = window.location().replace(&api::frontend_path(&path));
+                }
+            }
+            Ok(None) => {}
+        }
+    });
+    rsx! {}
 }

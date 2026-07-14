@@ -11,11 +11,16 @@ const LOGO: Asset = asset!("/assets/img/logo.png");
 #[component]
 pub fn Header() -> Element {
     let route = use_route::<Route>();
-    let mut account_open = use_signal(|| false);
-    let mut register = use_signal(|| false);
+    let inline_auth = api::take_inline_auth_request();
+    let initial_account_open = inline_auth.is_some();
+    let initial_register = inline_auth.as_ref().is_some_and(|value| value.0);
+    let initial_error = inline_auth.and_then(|value| value.1).unwrap_or_default();
+    let mut account_open = use_signal(move || initial_account_open);
+    let mut mobile_open = use_signal(|| false);
+    let mut register = use_signal(move || initial_register);
     let mut email = use_signal(String::new);
     let mut password = use_signal(String::new);
-    let mut error = use_signal(String::new);
+    let mut error = use_signal(move || initial_error);
     let mut busy = use_signal(|| false);
     let mut session_version = use_signal(|| 0_u32);
     let _session_version = *session_version.read();
@@ -26,6 +31,12 @@ pub fn Header() -> Element {
     } else {
         "site-header"
     };
+    let mobile_menu_label = if *mobile_open.read() {
+        "Close navigation"
+    } else {
+        "Open navigation"
+    };
+    let mobile_menu_icon = if *mobile_open.read() { "x" } else { "menu" };
     let submit = move |_| {
         let email_value = email.read().clone();
         let password_value = password.read().clone();
@@ -54,13 +65,15 @@ pub fn Header() -> Element {
                 img { class: "brand-mark", src: LOGO, alt: "VL Rental" }
                 span { class: "brand-word", "VL Rental" }
             }
-            nav { class: "nav-menu",
-                Link { class: "nav-link", to: Route::Catalog {}, "RV Rentals" }
-                Link { class: "nav-link", to: Route::CoolerTrailers {}, "Cooler Trailers" }
-                Link { class: "nav-link", to: Route::Delivery {}, "Delivery" }
-                Link { class: "nav-link", to: Route::RvSales {}, "RV Sales" }
+            nav { class: if *mobile_open.read() { "nav-menu is-open" } else { "nav-menu" },
+                a { class: "nav-link", href: "/#home-rentals", onclick: move |_| mobile_open.set(false), "RV Rentals" }
+                Link { class: "nav-link", to: Route::CoolerTrailers {}, onclick: move |_| mobile_open.set(false), "Cooler Trailers" }
+                Link { class: "nav-link", to: Route::Delivery {}, onclick: move |_| mobile_open.set(false), "Delivery" }
+                Link { class: "nav-link", to: Route::RvSales {}, onclick: move |_| mobile_open.set(false), "RV Sales" }
+                Link { class: "nav-link nav-menu-contact", to: Route::Contact {}, onclick: move |_| mobile_open.set(false), "Contact" }
             }
             div { class: "nav-right",
+                button { class: "nav-burger", r#type: "button", aria_label: mobile_menu_label, aria_expanded: *mobile_open.read(), onclick: move |_| { let next = !*mobile_open.peek(); mobile_open.set(next); account_open.set(false); }, Icon { name: mobile_menu_icon, size: 21, color: "currentColor" } }
                 a { class: "nav-phone", href: "tel:+12508785874",
                     Icon { name: "phone", size: 15, color: "var(--vl-accent)" }
                     span { "{PHONE}" }
@@ -75,6 +88,7 @@ pub fn Header() -> Element {
                         onclick: move |_| {
                             let next = !*account_open.peek();
                             account_open.set(next);
+                            mobile_open.set(false);
                             error.set(String::new());
                         },
                         Icon { name: "circle-user-round", size: 20, color: "currentColor" }
@@ -94,6 +108,12 @@ pub fn Header() -> Element {
                                 Link { class: "nav-account-primary", to: Route::Account {}, onclick: move |_| account_open.set(false),
                                     span { "View my bookings" }
                                     Icon { name: "arrow-right", size: 16, color: "var(--vl-white)" }
+                                }
+                                if user.role == "admin" {
+                                    Link { class: "nav-account-admin", to: Route::Admin {}, onclick: move |_| account_open.set(false),
+                                        Icon { name: "layout-dashboard", size: 16, color: "var(--vl-forest)" }
+                                        span { "Open admin dashboard" }
+                                    }
                                 }
                                 button { class: "nav-account-signout", r#type: "button", onclick: move |_| {
                                     api::clear_session();
@@ -133,7 +153,13 @@ pub fn Header() -> Element {
                         }
                     }
                 }
-                Link { class: "nav-cta", to: Route::Catalog {}, "Book now" }
+                if current_user.as_ref().is_some_and(|user| user.role == "admin") {
+                    Link { class: "nav-admin-cta", to: Route::Admin {},
+                        Icon { name: "shield-check", size: 15, color: "currentColor" }
+                        span { "Admin dashboard" }
+                    }
+                }
+                a { class: "nav-cta", href: "/#home-rentals", "Book now" }
             }
         }
     }

@@ -1,7 +1,6 @@
 use dioxus::prelude::*;
 
 use crate::components::Icon;
-use crate::Route;
 
 const CSS: Asset = asset!("/assets/css/cooler_trailers.css");
 const IMG_COOLER_HERO: Asset = asset!("/assets/img/cooler-hero.jpg");
@@ -65,7 +64,7 @@ pub fn CoolerTrailers() -> Element {
                         }
                     }
                 }
-                Link { class: "clt-btn", to: Route::Catalog {},
+                a { class: "clt-btn", href: "/#home-rentals",
                     span { "Explore RV rentals" }
                     Icon { name: "arrow-right", size: 17, color: "var(--vl-white)" }
                 }

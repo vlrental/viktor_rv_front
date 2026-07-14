@@ -95,10 +95,11 @@
 
 .cf-divider { height: 1px; width: 100%; background-color: var(--vl-hair); }
 
-.cf-grid { display: flex; width: 100%; }
+.cf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 22px; width: 100%; }
 .cf-cell { flex: 1 1 0; display: flex; flex-direction: column; gap: 4px; }
 .cf-cell-l { font-size: 13px; color: var(--vl-muted); }
 .cf-cell-v { font-size: 16px; font-weight: 600; color: var(--vl-ink); }
+.cf-payment-note { padding: 12px 14px; border: 1px solid #D8B35B66; border-radius: 11px; background: #FFF9E9; color: var(--vl-muted); font-size: 12px; line-height: 17px; }
 
 .cf-host {
   display: flex;
@@ -162,6 +163,7 @@
   .cf-cell { gap: 3px; }
   .cf-cell-l { font-size: 12px; }
   .cf-cell-v { font-size: 15px; }
+  .cf-grid { grid-template-columns: 1fr; gap: 14px; }
   .cf-host { flex-direction: column; align-items: flex-start; gap: 6px; }
   .cf-buttons { flex-direction: column; width: 100%; gap: 12px; padding-top: 0; }
   .cf-btn-primary, .cf-btn-secondary { width: 100%; padding: 15px; }

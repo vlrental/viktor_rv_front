@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 
-use crate::{api, components::Icon};
 use crate::data::PHONE;
 use crate::Route;
+use crate::{api, components::Icon};
 
 const LOGO: Asset = asset!("/assets/img/logo.png");
 
@@ -10,13 +10,24 @@ const LOGO: Asset = asset!("/assets/img/logo.png");
 pub fn Footer() -> Element {
     let mut email = use_signal(String::new);
     let mut status = use_signal(String::new);
+    let mut busy = use_signal(|| false);
     let subscribe = move |_| {
-        let value = email.read().clone();
+        let value = email.read().trim().to_string();
         async move {
+            status.set(String::new());
+            if !value.contains('@') || !value.contains('.') {
+                status.set("Enter a valid email address.".into());
+                return;
+            }
+            busy.set(true);
             match api::subscribe(&value).await {
-                Ok(()) => { status.set("Subscribed".into()); email.set(String::new()); }
+                Ok(()) => {
+                    status.set("Subscribed".into());
+                    email.set(String::new());
+                }
                 Err(error) => status.set(error),
             }
+            busy.set(false);
         }
     };
     rsx! {
@@ -43,6 +54,7 @@ pub fn Footer() -> Element {
                             class: "f-social-btn",
                             href: "https://www.facebook.com/people/VL-Pro-Trailer-Care/61576201770508/",
                             target: "_blank",
+                            rel: "noopener noreferrer",
                             aria_label: "Facebook",
                             Icon { name: "facebook", size: 19, color: "var(--vl-white)" }
                         }
@@ -50,6 +62,7 @@ pub fn Footer() -> Element {
                             class: "f-social-btn",
                             href: "https://www.instagram.com/lairichviktor/",
                             target: "_blank",
+                            rel: "noopener noreferrer",
                             aria_label: "Instagram",
                             Icon { name: "instagram", size: 19, color: "var(--vl-white)" }
                         }
@@ -57,7 +70,7 @@ pub fn Footer() -> Element {
                 }
                 div { class: "f-col",
                     div { class: "f-head", "RENTALS" }
-                    Link { class: "f-link", to: Route::Catalog {}, "RV Rentals" }
+                    a { class: "f-link", href: "/#home-rentals", "RV Rentals" }
                     Link { class: "f-link", to: Route::CoolerTrailers {}, "Cooler Trailers" }
                 }
                 div { class: "f-col",
@@ -79,7 +92,7 @@ pub fn Footer() -> Element {
                     div { class: "f-news-desc", "Get seasonal deals and availability straight to your inbox." }
                     div { class: "f-news-input",
                         input { r#type: "email", placeholder: "you@email.com", value: "{email}", oninput: move |e| email.set(e.value()) }
-                        button { class: "f-news-go", onclick: subscribe, "Subscribe" }
+                        button { class: "f-news-go", disabled: *busy.read(), onclick: subscribe, if *busy.read() { "Joining…" } else { "Subscribe" } }
                     }
                     if !status.read().is_empty() { div { class: "f-news-desc", role: "status", "{status}" } }
                 }

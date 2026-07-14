@@ -7,8 +7,120 @@ use crate::data::{
 };
 use crate::{api, components::Icon, Route};
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CatalogFilters {
+    pub(crate) travel_trailers: bool,
+    pub(crate) fifth_wheels: bool,
+    pub(crate) toy_haulers: bool,
+    pub(crate) maximum_nightly_price: i32,
+    pub(crate) minimum_capacity: i32,
+    pub(crate) sort: String,
+}
+
+impl Default for CatalogFilters {
+    fn default() -> Self {
+        Self {
+            travel_trailers: true,
+            fifth_wheels: true,
+            toy_haulers: true,
+            maximum_nightly_price: 185,
+            minimum_capacity: 0,
+            sort: "recommended".into(),
+        }
+    }
+}
+
+fn rental_price(rental: &api::Rental) -> f64 {
+    rental.base_rate.parse::<f64>().unwrap_or(f64::MAX)
+}
+
+fn rental_style(rental: &api::Rental) -> &'static str {
+    let searchable =
+        format!("{} {} {}", rental.name, rental.summary, rental.description).to_ascii_lowercase();
+    if searchable.contains("toy-hauler") || searchable.contains("toy hauler") {
+        "toy-hauler"
+    } else if searchable.contains("fifth wheel") || searchable.contains("5th wheel") {
+        "fifth-wheel"
+    } else {
+        "travel-trailer"
+    }
+}
+
+pub(crate) fn filtered_catalog(
+    values: &[api::Rental],
+    filters: &CatalogFilters,
+) -> Vec<api::Rental> {
+    filtered_catalog_for_guests(values, filters, None)
+}
+
+pub(crate) fn filtered_catalog_for_guests(
+    values: &[api::Rental],
+    filters: &CatalogFilters,
+    guests: Option<i32>,
+) -> Vec<api::Rental> {
+    let mut rentals = values
+        .iter()
+        .filter(|rental| {
+            let style_matches = match rental_style(rental) {
+                "fifth-wheel" => filters.fifth_wheels,
+                "toy-hauler" => filters.toy_haulers,
+                _ => filters.travel_trailers,
+            };
+            style_matches
+                && rental_price(rental) <= f64::from(filters.maximum_nightly_price)
+                && rental.capacity >= filters.minimum_capacity
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    match filters.sort.as_str() {
+        "date-fit" => {
+            if let Some(guests) = guests {
+                rentals.sort_by(|left, right| {
+                    (left.capacity - guests)
+                        .abs()
+                        .cmp(&(right.capacity - guests).abs())
+                        .then_with(|| rental_price(left).total_cmp(&rental_price(right)))
+                });
+            }
+        }
+        "price-low" => {
+            rentals.sort_by(|left, right| rental_price(left).total_cmp(&rental_price(right)))
+        }
+        "price-high" => {
+            rentals.sort_by(|left, right| rental_price(right).total_cmp(&rental_price(left)))
+        }
+        "capacity" => rentals.sort_by(|left, right| {
+            right
+                .capacity
+                .cmp(&left.capacity)
+                .then_with(|| rental_price(left).total_cmp(&rental_price(right)))
+        }),
+        _ => {}
+    }
+    rentals
+}
+
 #[component]
 pub fn Catalog() -> Element {
+    let navigator = use_navigator();
+    use_effect(move || {
+        navigator.replace(Route::Home {});
+        spawn(async move {
+            let _ = document::eval(
+                "await new Promise(resolve => setTimeout(resolve, 180)); document.getElementById('home-rentals')?.scrollIntoView({ block: 'start' });",
+            )
+            .await;
+        });
+    });
+    rsx! {
+        div { class: "catalog-redirect", "Opening available RVs…" }
+    }
+}
+
+#[component]
+#[allow(dead_code)]
+fn CatalogPage() -> Element {
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let initial_search = normalized_catalog_search(
         api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"),
@@ -20,9 +132,11 @@ pub fn Catalog() -> Element {
     let mut search_open = use_signal(|| false);
     let mut search_location = use_signal(|| initial_search.location.clone());
     let mut search_radius = use_signal(|| initial_search.radius_km);
-    let mut search_starts_on = use_signal(|| parse_search_date(initial_search.starts_on.as_deref()));
+    let mut search_starts_on =
+        use_signal(|| parse_search_date(initial_search.starts_on.as_deref()));
     let mut search_ends_on = use_signal(|| parse_search_date(initial_search.ends_on.as_deref()));
     let mut search_guests = use_signal(|| initial_search.guests);
+    let mut filters = use_signal(CatalogFilters::default);
     let listings = use_resource(move || {
         let _version = *search_version.read();
         let search = applied_search.read().clone();
@@ -53,12 +167,13 @@ pub fn Catalog() -> Element {
     } else {
         format!("{} guests", applied.guests)
     };
-    let match_count = listings
+    let visible_rentals = listings
         .read()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
-        .map(Vec::len)
-        .unwrap_or(0);
+        .map(|values| filtered_catalog(values, &filters.read()))
+        .unwrap_or_default();
+    let match_count = visible_rentals.len();
     rsx! {
         section { class: "cat-header",
             h1 { class: "sec-title", "Explore the fleet" }
@@ -94,13 +209,26 @@ pub fn Catalog() -> Element {
             }
         }
         section { class: "cat-body",
-            Filters {}
+            Filters { filters }
             div { class: "cat-results",
                 div { class: "cat-results-head",
                     div { class: "cat-count", "{match_count} stays that fit your group" }
-                    button { class: "cat-sort",
+                    label { class: "cat-sort",
                         Icon { name: "arrow-up-down", size: 14, color: "var(--vl-ink)" }
-                        span { "Sort: Recommended" }
+                        span { "Sort" }
+                        select {
+                            aria_label: "Sort RVs",
+                            value: "{filters.read().sort}",
+                            onchange: move |event| {
+                                let mut next = filters.read().clone();
+                                next.sort = event.value();
+                                filters.set(next);
+                            },
+                            option { value: "recommended", "Recommended" }
+                            option { value: "price-low", "Price: low to high" }
+                            option { value: "price-high", "Price: high to low" }
+                            option { value: "capacity", "Most sleeping space" }
+                        }
                         Icon { name: "chevron-down", size: 14, color: "var(--vl-ink)" }
                     }
                 }
@@ -122,7 +250,10 @@ pub fn Catalog() -> Element {
                                     },
                                 }
                             },
-                            Ok(values) => rsx! { for rental in values.iter() {
+                            Ok(_) if visible_rentals.is_empty() => rsx! {
+                                CatalogFilteredEmpty { on_reset: move |_| filters.set(CatalogFilters::default()) }
+                            },
+                            Ok(_) => rsx! { for rental in visible_rentals.iter() {
                                 ApiListingCard { key: "{rental.slug}", rental: rental.clone() }
                             } },
                             Err(message) => rsx! {
@@ -187,7 +318,7 @@ pub(crate) fn normalized_catalog_search(
     search.guests = search.guests.clamp(1, 10);
     let valid_dates = parse_search_date(search.starts_on.as_deref())
         .zip(parse_search_date(search.ends_on.as_deref()))
-        .is_some_and(|(start, end)| start >= today && (end - start).num_days() >= 3);
+        .is_some_and(|(start, end)| start > today && (end - start).num_days() >= 3);
     if !valid_dates {
         search.starts_on = None;
         search.ends_on = None;
@@ -247,11 +378,11 @@ pub(crate) fn CatalogEmptyState(
     }
 }
 
-fn month_start(date: NaiveDate) -> NaiveDate {
+pub(crate) fn month_start(date: NaiveDate) -> NaiveDate {
     date.with_day(1).unwrap_or(date)
 }
 
-fn add_months(date: NaiveDate, count: u32) -> NaiveDate {
+pub(crate) fn add_months(date: NaiveDate, count: u32) -> NaiveDate {
     date.checked_add_months(Months::new(count)).unwrap_or(date)
 }
 
@@ -563,7 +694,7 @@ pub(crate) fn CatalogSearchOverlay(
                                         oninput: move |event| {
                                             let value = format_manual_date_input(&event.value());
                                             start_input.set(value.clone());
-                                            if let Some(date) = parse_manual_date_input(&value).filter(|date| *date >= today) {
+                                            if let Some(date) = parse_manual_date_input(&value).filter(|date| *date > today) {
                                                 starts_on.set(Some(date));
                                                 if ends_on.peek().is_some_and(|end| end < date + chrono::Duration::days(3)) {
                                                     ends_on.set(None);
@@ -575,7 +706,7 @@ pub(crate) fn CatalogSearchOverlay(
                                         },
                                         onblur: move |_| {
                                             let value = start_input.read().clone();
-                                            if let Some(date) = parse_manual_date_input(&value).filter(|date| *date >= today) {
+                                            if let Some(date) = parse_manual_date_input(&value).filter(|date| *date > today) {
                                                 starts_on.set(Some(date));
                                                 if ends_on.peek().is_some_and(|end| end < date + chrono::Duration::days(3)) {
                                                     ends_on.set(None);
@@ -704,11 +835,13 @@ pub(crate) fn CatalogSearchOverlay(
 }
 
 #[component]
-fn CatalogSearchMonth(
+pub(crate) fn CatalogSearchMonth(
     month: NaiveDate,
     today: NaiveDate,
     mut starts_on: Signal<Option<NaiveDate>>,
     mut ends_on: Signal<Option<NaiveDate>>,
+    #[props(default)] unavailable_dates: Vec<NaiveDate>,
+    #[props(default = false)] availability_pending: bool,
 ) -> Element {
     let start = *starts_on.read();
     let end = *ends_on.read();
@@ -724,7 +857,8 @@ fn CatalogSearchMonth(
                             let is_end = end == Some(day);
                             let in_range = start.zip(end).map(|(first, last)| day > first && day < last).unwrap_or(false);
                             let too_short = start.filter(|_| end.is_none()).map(|first| day > first && (day - first).num_days() < 3).unwrap_or(false);
-                            let disabled = day < today || too_short;
+                            let unavailable = unavailable_dates.contains(&day) && !is_start && !is_end;
+                            let disabled = day <= today || too_short || unavailable || (availability_pending && !is_start && !is_end);
                             let class = if is_start || is_end { "selected" } else if in_range { "in-range" } else { "" };
                             rsx! { button { key: "day-{index}", r#type: "button", class, disabled, aria_label: "{day}", onclick: move |_| {
                                 let current_start = *starts_on.read();
@@ -778,7 +912,10 @@ mod catalog_search_tests {
     #[test]
     fn impossible_manual_date_is_rejected() {
         assert_eq!(parse_manual_date_input("2026-02-33"), None);
-        assert_eq!(parse_manual_date_input("2026-08-13"), Some(day("2026-08-13")));
+        assert_eq!(
+            parse_manual_date_input("2026-08-13"),
+            Some(day("2026-08-13"))
+        );
     }
 
     #[test]
@@ -809,19 +946,114 @@ mod catalog_search_tests {
         let normalized = normalized_catalog_search(Some(saved.clone()), 50, day("2030-07-02"));
         assert_eq!(normalized, saved);
     }
+
+    #[test]
+    fn same_day_saved_start_is_cleared() {
+        let saved = api::CatalogSearchDraft {
+            location: "Kelowna, BC".into(),
+            radius_km: 75,
+            starts_on: Some("2030-07-02".into()),
+            ends_on: Some("2030-07-05".into()),
+            guests: 4,
+        };
+        let normalized = normalized_catalog_search(Some(saved), 50, day("2030-07-02"));
+        assert_eq!(normalized.starts_on, None);
+        assert_eq!(normalized.ends_on, None);
+    }
+
+    fn rental(slug: &str, description: &str, price: &str, capacity: i32) -> api::Rental {
+        api::Rental {
+            slug: slug.into(),
+            name: slug.into(),
+            category: "rv".into(),
+            summary: String::new(),
+            description: description.into(),
+            capacity,
+            price_unit: "night".into(),
+            base_rate: price.into(),
+            currency: "CAD".into(),
+            min_units: 3,
+            refundable_deposit: "1000.00".into(),
+            hero_image_url: None,
+            review_rating: None,
+            review_count: 0,
+        }
+    }
+
+    #[test]
+    fn catalog_filters_budget_capacity_and_style_together() {
+        let rentals = vec![
+            rental("couples", "lightweight travel trailer", "125.00", 4),
+            rental("family", "family travel trailer", "160.00", 10),
+            rental("fifth", "26-foot fifth wheel", "185.00", 4),
+            rental("toys", "toy-hauler layout", "148.00", 8),
+        ];
+        let filters = CatalogFilters {
+            fifth_wheels: false,
+            maximum_nightly_price: 150,
+            minimum_capacity: 8,
+            ..CatalogFilters::default()
+        };
+
+        let result = filtered_catalog(&rentals, &filters);
+        assert_eq!(
+            result
+                .iter()
+                .map(|rental| rental.slug.as_str())
+                .collect::<Vec<_>>(),
+            ["toys"]
+        );
+    }
+
+    #[test]
+    fn catalog_price_sort_is_numeric() {
+        let rentals = vec![
+            rental("premium", "travel trailer", "185.00", 4),
+            rental("value", "travel trailer", "125.00", 4),
+            rental("family", "travel trailer", "160.00", 10),
+        ];
+        let filters = CatalogFilters {
+            sort: "price-low".into(),
+            ..CatalogFilters::default()
+        };
+
+        let result = filtered_catalog(&rentals, &filters);
+        assert_eq!(
+            result
+                .iter()
+                .map(|rental| rental.slug.as_str())
+                .collect::<Vec<_>>(),
+            ["value", "family", "premium"]
+        );
+    }
+
+    #[test]
+    fn date_fit_sort_prioritizes_capacity_match_then_price() {
+        let rentals = vec![
+            rental("large", "travel trailer", "150.00", 10),
+            rental("premium-fit", "travel trailer", "180.00", 6),
+            rental("value-fit", "travel trailer", "140.00", 6),
+            rental("compact", "travel trailer", "120.00", 4),
+        ];
+        let filters = CatalogFilters {
+            sort: "date-fit".into(),
+            ..CatalogFilters::default()
+        };
+
+        let result = filtered_catalog_for_guests(&rentals, &filters, Some(6));
+        assert_eq!(
+            result
+                .iter()
+                .map(|rental| rental.slug.as_str())
+                .collect::<Vec<_>>(),
+            ["value-fit", "premium-fit", "compact", "large"]
+        );
+    }
 }
 
 #[component]
 pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
-    let image = match rental.slug.as_str() {
-        "jayco26" => IMG_JAYCO.to_string(),
-        "2015-keystone-bullet" => IMG_BULLET.to_string(),
-        "2014-forest-river-rockwood" => IMG_ROCKWOOD.to_string(),
-        "2025-open-range-1" => IMG_OPENRANGE.to_string(),
-        "2025-highland-ridge-2" => IMG_OPENRANGE2.to_string(),
-        "2017-keystone-outback-ultra" => IMG_OUTBACK.to_string(),
-        _ => rental.hero_image_url.clone().unwrap_or_default(),
-    };
+    let image = rental_image(&rental);
     rsx! {
         Link { class: "listing-card", to: Route::RvDetail { slug: rental.slug.clone() },
             div { class: "lc-image", style: "background-image: url('{image}');",
@@ -831,73 +1063,113 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
                 div { class: "lc-title-row", div { class: "lc-title", "{rental.name}" } }
                 div { class: "lc-meta", "{rental.summary}" }
                 div { class: "lc-price-row", span { class: "lc-price", "${rental.base_rate}" } span { class: "lc-per", " / {rental.price_unit}" } }
+                div { class: "lc-price-note", "Plus mandatory fees · CA$1,000 refundable deposit paid separately" }
             }
         }
     }
 }
 
+pub(crate) fn rental_image(rental: &api::Rental) -> String {
+    match rental.slug.as_str() {
+        "jayco26" => IMG_JAYCO.to_string(),
+        "2015-keystone-bullet" => IMG_BULLET.to_string(),
+        "2014-forest-river-rockwood" => IMG_ROCKWOOD.to_string(),
+        "2025-open-range-1" => IMG_OPENRANGE.to_string(),
+        "2025-highland-ridge-2" => IMG_OPENRANGE2.to_string(),
+        "2017-keystone-outback-ultra" => IMG_OUTBACK.to_string(),
+        _ => rental.hero_image_url.clone().unwrap_or_default(),
+    }
+}
+
 #[component]
-fn Filters() -> Element {
+pub(crate) fn CatalogFilteredEmpty(on_reset: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "co-card catalog-result-message", role: "status",
+            h3 { "No RV matches these filters" }
+            p { "Try a higher nightly budget, a smaller sleeping capacity, or another RV style." }
+            button { class: "btn-forest", r#type: "button", onclick: move |_| on_reset.call(()), "Reset filters" }
+        }
+    }
+}
+
+#[component]
+pub(crate) fn Filters(mut filters: Signal<CatalogFilters>) -> Element {
+    let mut mobile_open = use_signal(|| false);
+    let state = filters.read().clone();
+    let active_count = usize::from(state.maximum_nightly_price < 185)
+        + usize::from(state.minimum_capacity > 0)
+        + usize::from(!state.travel_trailers || !state.fifth_wheels || !state.toy_haulers);
+    let budget_label = if state.maximum_nightly_price >= 185 {
+        "Any budget".to_string()
+    } else {
+        format!("Up to ${}/night", state.maximum_nightly_price)
+    };
+    let mobile_chevron = if *mobile_open.read() {
+        "chevron-up"
+    } else {
+        "chevron-down"
+    };
     rsx! {
         aside { class: "cat-filters",
-            div { class: "filter-group",
-                div { class: "filter-head", "Type" }
-                FilterCheck { label: "RVs", checked: true }
-                FilterCheck { label: "Cooler trailers", checked: false }
+            button { class: "filter-mobile-toggle", r#type: "button", aria_expanded: *mobile_open.read(), onclick: move |_| {
+                let next = !*mobile_open.peek();
+                mobile_open.set(next);
+            },
+                span { Icon { name: "sliders-horizontal", size: 17, color: "var(--vl-forest)" } "Filters" }
+                if active_count > 0 { b { "{active_count}" } }
+                Icon { name: mobile_chevron, size: 17, color: "var(--vl-ink)" }
             }
-            div { class: "filter-divider" }
-            div { class: "filter-group", style: "gap: 14px;",
-                div { class: "filter-head", "Price / night" }
-                div { class: "price-track",
-                    div { class: "price-fill" }
-                    div { class: "price-handle", style: "left: 26px;" }
-                    div { class: "price-handle", style: "left: 170px;" }
-                }
-                div { class: "price-labels",
-                    span { "$125" }
-                    span { "$185+" }
-                }
-            }
-            div { class: "filter-divider" }
-            div { class: "filter-group",
-                div { class: "filter-head", "Sleeps / capacity" }
-                div { class: "sleep-chips",
-                    for (label, active) in [("2", false), ("4", true), ("6", false), ("8", true), ("10+", false)] {
-                        button {
-                            key: "sleeps-{label}",
-                            class: "sleep-chip",
-                            style: if active {
-                                "background-color: var(--vl-forest); border-color: var(--vl-forest); color: var(--vl-white);"
-                            } else {
-                                "background-color: var(--vl-white); border-color: var(--vl-hair); color: var(--vl-muted);"
-                            },
-                            "{label}"
-                        }
+            div { class: if *mobile_open.read() { "cat-filter-panel is-open" } else { "cat-filter-panel" },
+                div { class: "filter-title-row",
+                    div { div { class: "filter-kicker", "REFINE RESULTS" } h2 { "Filters" } }
+                    if active_count > 0 {
+                        button { r#type: "button", onclick: move |_| filters.set(CatalogFilters::default()), "Reset" }
                     }
                 }
-            }
-            div { class: "filter-divider" }
-            div { class: "filter-group",
-                div { class: "filter-head", "Features" }
-                FilterCheck { label: "Delivery available", checked: true }
-                FilterCheck { label: "Air conditioning", checked: false }
-                FilterCheck { label: "Pet friendly", checked: false }
+                div { class: "filter-group",
+                    div { class: "filter-head", "RV style" }
+                    FilterCheck { label: "Travel trailers", checked: state.travel_trailers, on_toggle: move |_| {
+                        let mut next = filters.read().clone(); next.travel_trailers = !next.travel_trailers; filters.set(next);
+                    } }
+                    FilterCheck { label: "Fifth wheels", checked: state.fifth_wheels, on_toggle: move |_| {
+                        let mut next = filters.read().clone(); next.fifth_wheels = !next.fifth_wheels; filters.set(next);
+                    } }
+                    FilterCheck { label: "Toy haulers", checked: state.toy_haulers, on_toggle: move |_| {
+                        let mut next = filters.read().clone(); next.toy_haulers = !next.toy_haulers; filters.set(next);
+                    } }
+                }
+                div { class: "filter-divider" }
+                div { class: "filter-group price-filter", style: "gap: 14px;",
+                    div { class: "filter-head-row", div { class: "filter-head", "Nightly budget" } strong { "{budget_label}" } }
+                    input { class: "price-range", r#type: "range", min: "125", max: "185", step: "5", value: "{state.maximum_nightly_price}", aria_label: "Maximum nightly price", oninput: move |event| {
+                        if let Ok(value) = event.value().parse::<i32>() {
+                            let mut next = filters.read().clone(); next.maximum_nightly_price = value.clamp(125, 185); filters.set(next);
+                        }
+                    } }
+                    div { class: "price-labels", span { "$125" } span { "$185+" } }
+                }
+                div { class: "filter-divider" }
+                div { class: "filter-group",
+                    div { class: "filter-head", "Sleeping capacity" }
+                    div { class: "sleep-chips",
+                        for (label, value) in [("Any", 0), ("4+", 4), ("8+", 8), ("10", 10)] {
+                            button { key: "sleeps-{label}", r#type: "button", class: if state.minimum_capacity == value { "sleep-chip active" } else { "sleep-chip" }, onclick: move |_| {
+                                let mut next = filters.read().clone(); next.minimum_capacity = value; filters.set(next);
+                            }, "{label}" }
+                        }
+                    }
+                    p { class: "filter-help", "Shows RVs that can sleep at least this many guests." }
+                }
             }
         }
     }
 }
 
 #[component]
-fn FilterCheck(label: &'static str, checked: bool) -> Element {
+fn FilterCheck(label: &'static str, checked: bool, on_toggle: EventHandler<()>) -> Element {
     rsx! {
-        div { class: "filter-check",
-            div {
-                class: "filter-box",
-                style: if checked {
-                    "background-color: var(--vl-forest); border-color: var(--vl-forest);"
-                } else {
-                    "background-color: var(--vl-white); border-color: var(--vl-hair);"
-                },
+        button { class: if checked { "filter-check active" } else { "filter-check" }, r#type: "button", aria_pressed: checked, onclick: move |_| on_toggle.call(()),
+            span { class: "filter-box",
                 if checked {
                     Icon { name: "check", size: 13, color: "var(--vl-white)" }
                 }

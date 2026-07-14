@@ -25,7 +25,8 @@ fn attraction_cards() -> Vec<AttractionCard> {
             img: IMG_LAKE,
             category: "Beaches & Water",
             title: "Okanagan Lake Adventures",
-            desc: "Discover the beauty of Okanagan Lake — cruise, swim and play on 135 km of water.",
+            desc:
+                "Discover the beauty of Okanagan Lake — cruise, swim and play on 135 km of water.",
         },
         AttractionCard {
             id: "wine",

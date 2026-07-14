@@ -7,17 +7,45 @@ const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 
 /// Ценности компании (правая колонка секции Story).
 const VALUES: [(&str, &str, &str); 4] = [
-    ("shield-check", "Safety first", "Meticulous maintenance and safety checks on every unit."),
-    ("scale", "Fair & transparent", "Upfront pricing and clear policies — no hidden fees."),
-    ("map-pin", "Local & personal", "Okanagan-based team that knows the lakes and the roads."),
-    ("compass", "Adventure-ready", "Whatever your trip, we've got the gear to get you out there."),
+    (
+        "shield-check",
+        "Safety first",
+        "Meticulous maintenance and safety checks on every unit.",
+    ),
+    (
+        "scale",
+        "Fair & transparent",
+        "Upfront pricing and clear policies — no hidden fees.",
+    ),
+    (
+        "map-pin",
+        "Local & personal",
+        "Okanagan-based team that knows the lakes and the roads.",
+    ),
+    (
+        "compass",
+        "Adventure-ready",
+        "Whatever your trip, we've got the gear to get you out there.",
+    ),
 ];
 
 /// Отзывы гостей.
 const REVIEWS: [(&str, &str, &str); 3] = [
-    ("“Viktor's trailer was very clean and well maintained…”", "Michael Coulter", "August 2025"),
-    ("“Excellent experience with Victor…”", "Sabrina Polga", "July 2025"),
-    ("“Viktor is a gracious and considerate host…”", "Karin Atkinson", "July 2025"),
+    (
+        "“Viktor's trailer was very clean and well maintained…”",
+        "Michael Coulter",
+        "August 2025",
+    ),
+    (
+        "“Excellent experience with Victor…”",
+        "Sabrina Polga",
+        "July 2025",
+    ),
+    (
+        "“Viktor is a gracious and considerate host…”",
+        "Karin Atkinson",
+        "July 2025",
+    ),
 ];
 
 /// Цифры-факты (тёмная полоса Stats).
