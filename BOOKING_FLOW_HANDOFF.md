@@ -91,6 +91,7 @@ This document records the current frontend booking architecture, the problems fi
 ### Step 5 — Guest details and confirmation
 
 - An unauthenticated customer signs in or creates an account inside the overlay.
+- Before Google sign-in leaves the page, the current dates, guests, selected RV, calculated delivery, extras, and any guest-form values are saved in transient browser session storage. The OAuth callback is completed before route components mount, then the same home or RV-detail booking overlay reopens on step 5 with the authenticated session. Delivery and quote data are refreshed after restoration; passwords are never stored.
 - After authentication, the form collects name, email, phone, optional notes, and acceptance of rental terms.
 - Confirmation uses the current server quote and calls `/api/v1/bookings` with the saved access token.
 - Until Stripe is explicitly enabled, the UI must continue to say this is a test booking and that no card is collected or charged.
@@ -120,6 +121,7 @@ This document records the current frontend booking architecture, the problems fi
 - `vl_active_quote`: last authoritative quote.
 - `vl_last_booking`: last successfully created booking shown on the confirmation page.
 - `vl_pending_booking_payment`: the current private pending booking, reusable embedded Checkout client secret, and private status token. When present, reopening the unified overlay must go directly to step 5, check webhook-backed status first, and remount the same Checkout Session without creating another booking.
+- `vl_booking_auth_continuation` (session storage): transient pre-Google-auth overlay state used once to reopen the same booking window on step 5 after callback. It is consumed on return and never contains the customer's password.
 
 ## Verified rental reviews
 
@@ -142,6 +144,7 @@ This document records the current frontend booking architecture, the problems fi
 - The page behind the overlay scrolled instead of the overlay. Body scroll locking and contained overlay scrolling were added.
 - The separate catalog duplicated home functionality. The public catalog route now redirects to the home RV section.
 - Several secondary issues were corrected: mobile navigation, contact/newsletter/sales validation, invalid RV slugs, saved RV state, sharing, account loading state, and misleading confirmation copy.
+- Google sign-in previously mounted the booking route before the returned session was saved and did not preserve the open overlay. OAuth completion now happens before application mount, while a one-time continuation restores the same overlay and selections on step 5.
 
 ## Behavior verified manually
 

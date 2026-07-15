@@ -399,13 +399,34 @@ fn BookingCard(
     mut starts_on: Signal<String>,
     mut ends_on: Signal<String>,
 ) -> Element {
-    let mut booking_open = use_signal(|| false);
-    let mut booking_initial_step = use_signal(|| 1_u8);
-    let planner_starts_on = use_signal(|| selected_date(&starts_on));
-    let planner_ends_on = use_signal(|| selected_date(&ends_on));
-    let planner_guests = use_signal(|| 1_i32);
-    let planner_location = use_signal(|| "Kelowna, BC".to_string());
-    let planner_radius = use_signal(|| 150_i32);
+    let resumed_booking = use_signal(api::take_booking_auth_continuation);
+    let resumed_booking_value = resumed_booking.peek().clone();
+    let resume_after_auth = resumed_booking_value.is_some();
+    let resumed_start = resumed_booking_value.as_ref().and_then(|continuation| {
+        NaiveDate::parse_from_str(&continuation.draft.starts_on, "%Y-%m-%d").ok()
+    });
+    let resumed_end = resumed_booking_value.as_ref().and_then(|continuation| {
+        NaiveDate::parse_from_str(&continuation.draft.ends_on, "%Y-%m-%d").ok()
+    });
+    let resumed_guests = resumed_booking_value
+        .as_ref()
+        .map(|continuation| continuation.draft.guests.clamp(1, 10))
+        .unwrap_or(1);
+    let resumed_location = resumed_booking_value
+        .as_ref()
+        .map(|continuation| continuation.location.clone())
+        .unwrap_or_else(|| "Kelowna, BC".to_string());
+    let resumed_radius = resumed_booking_value
+        .as_ref()
+        .map(|continuation| continuation.radius_km.clamp(10, 150))
+        .unwrap_or(150);
+    let mut booking_open = use_signal(move || resume_after_auth);
+    let mut booking_initial_step = use_signal(move || if resume_after_auth { 5_u8 } else { 1_u8 });
+    let planner_starts_on = use_signal(move || resumed_start.or_else(|| selected_date(&starts_on)));
+    let planner_ends_on = use_signal(move || resumed_end.or_else(|| selected_date(&ends_on)));
+    let planner_guests = use_signal(move || resumed_guests);
+    let planner_location = use_signal(move || resumed_location);
+    let planner_radius = use_signal(move || resumed_radius);
     let selected_nights = selected_date(&starts_on)
         .zip(selected_date(&ends_on))
         .map(|(start, end)| (end - start).num_days())
@@ -413,6 +434,12 @@ fn BookingCard(
     let rental_total = price_amount(listing.price) * selected_nights.max(0) as f64;
     let protection_total = pricing::STATIONARY_PLUS_NIGHTLY_RATE * selected_nights.max(0) as f64;
     let known_trip_cost = rental_total + pricing::mandatory_costs(selected_nights);
+    let resumed_booking_value = resumed_booking.read().clone();
+    let overlay_rental_slug = resumed_booking_value
+        .as_ref()
+        .map(|continuation| continuation.draft.rental_slug.clone())
+        .filter(|slug| !slug.is_empty())
+        .or_else(|| Some(listing.slug.to_string()));
     rsx! {
         div { class: "rvd-booking",
             div { class: "rvd-price-row",
@@ -481,8 +508,9 @@ fn BookingCard(
                 starts_on: planner_starts_on,
                 ends_on: planner_ends_on,
                 guests: planner_guests,
-                initial_rental_slug: Some(listing.slug.to_string()),
+                initial_rental_slug: overlay_rental_slug,
                 initial_step: *booking_initial_step.read(),
+                resume_after_auth: resumed_booking_value,
                 on_search_change: move |_| {
                     starts_on.set((*planner_starts_on.read()).map(|date| date.to_string()).unwrap_or_default());
                     ends_on.set((*planner_ends_on.read()).map(|date| date.to_string()).unwrap_or_default());

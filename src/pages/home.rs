@@ -16,14 +16,22 @@ const IMG_CTA_PARALLAX: Asset = asset!("/assets/img/generated/okanagan-rv-parall
 
 #[component]
 pub fn Home() -> Element {
+    let resumed_booking = use_signal(api::take_booking_auth_continuation);
+    let resumed_booking_value = resumed_booking.peek().clone();
     let today = chrono::Utc::now()
         .with_timezone(&chrono_tz::America::Vancouver)
         .date_naive();
-    let initial_search = normalized_catalog_search(
-        api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"),
-        150,
-        today,
-    );
+    let saved_search = resumed_booking_value
+        .as_ref()
+        .map(|continuation| api::CatalogSearchDraft {
+            location: continuation.location.clone(),
+            radius_km: continuation.radius_km,
+            starts_on: Some(continuation.draft.starts_on.clone()),
+            ends_on: Some(continuation.draft.ends_on.clone()),
+            guests: continuation.draft.guests,
+        })
+        .or_else(|| api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"));
+    let initial_search = normalized_catalog_search(saved_search, 150, today);
     let mut applied_search = use_signal(|| initial_search.clone());
     let search_version = use_signal(|| 0_u32);
     let mut search_location = use_signal(|| initial_search.location.clone());
@@ -31,8 +39,9 @@ pub fn Home() -> Element {
     let mut search_starts_on = use_signal(|| search_date(initial_search.starts_on.as_deref()));
     let mut search_ends_on = use_signal(|| search_date(initial_search.ends_on.as_deref()));
     let mut search_guests = use_signal(|| 1_i32);
-    let mut search_open = use_signal(|| false);
-    let search_initial_step = use_signal(|| 1_u8);
+    let resume_after_auth = resumed_booking_value.is_some();
+    let mut search_open = use_signal(move || resume_after_auth);
+    let search_initial_step = use_signal(move || if resume_after_auth { 5_u8 } else { 1_u8 });
     use_effect(move || {
         if *search_open.read() {
             let search = applied_search.read().clone();
@@ -47,6 +56,11 @@ pub fn Home() -> Element {
         let search = applied_search.read().clone();
         let _ = api::save_json("vl_catalog_search", &search);
     });
+    let resumed_booking_value = resumed_booking.read().clone();
+    let resumed_rental_slug = resumed_booking_value
+        .as_ref()
+        .map(|continuation| continuation.draft.rental_slug.clone())
+        .filter(|slug| !slug.is_empty());
 
     rsx! {
         Hero {
@@ -70,7 +84,9 @@ pub fn Home() -> Element {
                 starts_on: search_starts_on,
                 ends_on: search_ends_on,
                 guests: search_guests,
+                initial_rental_slug: resumed_rental_slug,
                 initial_step: *search_initial_step.read(),
+                resume_after_auth: resumed_booking_value,
                 on_search_change: move |_| {
                     let next = api::CatalogSearchDraft {
                         location: search_location.read().clone(),
@@ -120,6 +136,8 @@ fn Hero(
                     const playerIframe = document.getElementById('hero-youtube-player');
                     if (!playerIframe || !window.YT?.Player) return;
 
+                    let revealTimer;
+
                     new window.YT.Player('hero-youtube-player', {
                         events: {
                             onReady: (event) => {
@@ -131,9 +149,22 @@ fn Hero(
                             },
                             onStateChange: (event) => {
                                 if (event.data === window.YT.PlayerState.PLAYING) {
-                                    event.target.getIframe().classList.add('is-playing');
+                                    window.clearTimeout(revealTimer);
+                                    revealTimer = window.setTimeout(() => {
+                                        if (event.target.getPlayerState() === window.YT.PlayerState.PLAYING) {
+                                            event.target.getIframe().classList.add('is-playing');
+                                        }
+                                    }, 1500);
+                                }
+                                if (
+                                    event.data === window.YT.PlayerState.PAUSED ||
+                                    event.data === window.YT.PlayerState.CUED
+                                ) {
+                                    window.clearTimeout(revealTimer);
+                                    event.target.getIframe().classList.remove('is-playing');
                                 }
                                 if (event.data === window.YT.PlayerState.ENDED) {
+                                    event.target.getIframe().classList.remove('is-playing');
                                     event.target.seekTo(0);
                                     event.target.playVideo();
                                 }

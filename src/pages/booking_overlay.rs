@@ -667,12 +667,67 @@ pub(crate) fn UnifiedBookingOverlay(
     mut guests: Signal<i32>,
     #[props(default)] initial_rental_slug: Option<String>,
     #[props(default = 1)] initial_step: u8,
+    #[props(default)] resume_after_auth: Option<api::BookingAuthContinuation>,
     on_search_change: EventHandler<()>,
     on_close: EventHandler<()>,
 ) -> Element {
+    let resumed_draft = resume_after_auth
+        .as_ref()
+        .map(|continuation| continuation.draft.clone());
+    let resumed_booking = resume_after_auth.is_some();
+    let resumed_address = resumed_draft
+        .as_ref()
+        .and_then(|draft| draft.delivery_address.clone())
+        .unwrap_or_default();
+    let resumed_distance = resumed_draft
+        .as_ref()
+        .and_then(|draft| draft.delivery_km.clone());
+    let resumed_addons = resumed_draft
+        .as_ref()
+        .map(|draft| draft.addon_keys.clone())
+        .unwrap_or_default();
+    let resumed_delivery_estimate = resume_after_auth
+        .as_ref()
+        .and_then(|continuation| continuation.delivery_estimate.clone());
+    let resumed_first_name = resume_after_auth
+        .as_ref()
+        .map(|continuation| continuation.first_name.clone())
+        .unwrap_or_default();
+    let resumed_last_name = resume_after_auth
+        .as_ref()
+        .map(|continuation| continuation.last_name.clone())
+        .unwrap_or_default();
+    let resumed_phone = resume_after_auth
+        .as_ref()
+        .map(|continuation| continuation.phone.clone())
+        .unwrap_or_default();
+    let resumed_notes = resume_after_auth
+        .as_ref()
+        .map(|continuation| continuation.notes.clone())
+        .unwrap_or_default();
+    let resumed_accepted_terms = resume_after_auth
+        .as_ref()
+        .is_some_and(|continuation| continuation.accepted_terms);
+    let current_user = api::current_user();
+    let resumed_booking_email = resume_after_auth
+        .as_ref()
+        .map(|continuation| continuation.booking_email.trim().to_string())
+        .filter(|email| !email.is_empty())
+        .or_else(|| current_user.as_ref().map(|value| value.email.clone()))
+        .unwrap_or_default();
+    let resumed_delivery_check = resumed_draft.as_ref().and_then(|draft| {
+        let address = draft.delivery_address.as_deref()?.trim();
+        (!draft.rental_slug.is_empty() && !address.is_empty())
+            .then(|| (draft.rental_slug.clone(), address.to_string()))
+    });
+
     // A new booking window starts with an unfiltered guest count. Do not let a
     // value persisted by an earlier catalog search silently hide smaller RVs.
-    use_effect(move || guests.set(1));
+    use_effect(move || {
+        if !resumed_booking {
+            guests.set(1);
+        }
+    });
     use_effect(|| {
         document::eval(LOCK_PAGE_SCROLL);
     });
@@ -691,41 +746,43 @@ pub(crate) fn UnifiedBookingOverlay(
             .map(month_start)
             .unwrap_or(initial_month)
     });
-    let initial_slug = initial_rental_slug.unwrap_or_default();
-    let mut open_step = use_signal(move || initial_booking_step(initial_step, has_pending_payment));
+    let initial_slug = resumed_draft
+        .as_ref()
+        .map(|draft| draft.rental_slug.clone())
+        .filter(|slug| !slug.is_empty())
+        .or(initial_rental_slug)
+        .unwrap_or_default();
+    let resumed_initial_step = if resumed_booking { 5 } else { initial_step };
+    let mut open_step =
+        use_signal(move || initial_booking_step(resumed_initial_step, has_pending_payment));
     let mut closing = use_signal(|| false);
     let mut selected_slug = use_signal(move || initial_slug);
-    let mut delivery_address = use_signal(String::new);
-    let mut delivery_km = use_signal(|| None::<String>);
-    let mut delivery_result = use_signal(|| None::<api::DeliveryEstimate>);
+    let mut delivery_address = use_signal(move || resumed_address);
+    let mut delivery_km = use_signal(move || resumed_distance);
+    let mut delivery_result = use_signal(move || resumed_delivery_estimate);
     let mut address_error = use_signal(String::new);
     let mut address_busy = use_signal(|| false);
     let mut suggestions_open = use_signal(|| false);
     let mut saved_addresses =
         use_signal(|| api::load_json::<Vec<String>>(SAVED_DELIVERY_ADDRESSES).unwrap_or_default());
-    let mut addon_keys = use_signal(Vec::<String>::new);
+    let mut addon_keys = use_signal(move || resumed_addons);
     let mut quote = use_signal(|| None::<api::QuoteResponse>);
     let mut quote_busy = use_signal(|| false);
     let mut quote_error = use_signal(String::new);
     let mut quote_version = use_signal(|| 0_u32);
     let mut quote_refresh_nonce = use_signal(|| 0_u32);
-    let mut user = use_signal(api::current_user);
+    let mut user = use_signal(move || current_user);
     let mut auth_email = use_signal(String::new);
     let mut auth_password = use_signal(String::new);
     let mut auth_register = use_signal(|| false);
     let mut auth_busy = use_signal(|| false);
     let mut auth_error = use_signal(String::new);
-    let mut first_name = use_signal(String::new);
-    let mut last_name = use_signal(String::new);
-    let mut booking_email = use_signal(|| {
-        user.read()
-            .as_ref()
-            .map(|value| value.email.clone())
-            .unwrap_or_default()
-    });
-    let mut phone = use_signal(String::new);
-    let mut notes = use_signal(String::new);
-    let mut accepted = use_signal(|| false);
+    let mut first_name = use_signal(move || resumed_first_name);
+    let mut last_name = use_signal(move || resumed_last_name);
+    let mut booking_email = use_signal(move || resumed_booking_email);
+    let mut phone = use_signal(move || resumed_phone);
+    let mut notes = use_signal(move || resumed_notes);
+    let mut accepted = use_signal(move || resumed_accepted_terms);
     let mut booking_busy = use_signal(|| false);
     let mut booking_error = use_signal(String::new);
     let mut payment_config = use_signal(|| None::<api::PaymentConfig>);
@@ -737,6 +794,50 @@ pub(crate) fn UnifiedBookingOverlay(
     let navigator = use_navigator();
     let google_href = api::google_login_url();
     let google_return = use_route::<Route>().to_string();
+
+    use_effect(move || {
+        let Some((slug, address)) = resumed_delivery_check.clone() else {
+            return;
+        };
+        address_busy.set(true);
+        spawn(async move {
+            match api::delivery_estimate(&slug, &address).await {
+                Ok(result) if result.within_range => {
+                    let next = remember_delivery_address(
+                        &saved_addresses.peek(),
+                        &result.resolved_address,
+                    );
+                    let _ = api::save_json(SAVED_DELIVERY_ADDRESSES, &next);
+                    saved_addresses.set(next);
+                    delivery_address.set(result.resolved_address.clone());
+                    delivery_km.set(Some(result.one_way_km.clone()));
+                    delivery_result.set(Some(result));
+                    address_error.set(String::new());
+                    open_step.set(5);
+                }
+                Ok(result) => {
+                    delivery_km.set(None);
+                    delivery_result.set(Some(result.clone()));
+                    quote.set(None);
+                    address_error.set(format!(
+                        "This address is beyond the {} km delivery limit.",
+                        result.maximum_km
+                    ));
+                    open_step.set(3);
+                }
+                Err(message) => {
+                    delivery_km.set(None);
+                    delivery_result.set(None);
+                    quote.set(None);
+                    address_error.set(format!(
+                        "Your booking was restored, but the delivery address must be checked again: {message}"
+                    ));
+                    open_step.set(3);
+                }
+            }
+            address_busy.set(false);
+        });
+    });
 
     use_effect(move || {
         let _retry = *payment_config_retry.read();
@@ -1438,7 +1539,49 @@ pub(crate) fn UnifiedBookingOverlay(
                             div { class: "ub-step-content",
                                 if user.read().is_none() { div { class: "ub-auth",
                                     h3 { if *auth_register.read() { "Create your account" } else { "Sign in to confirm" } }
-                                    a { class: "ub-google", href: google_href, onclick: move |_| api::remember_auth_return(&google_return),
+                                    a { class: "ub-google", href: google_href, onclick: move |event| {
+                                        let draft = make_draft(
+                                            &selected_slug.read(),
+                                            *starts_on.read(),
+                                            *ends_on.read(),
+                                            *guests.read(),
+                                            &delivery_address.read(),
+                                            delivery_km.read().clone(),
+                                            addon_keys.read().clone(),
+                                            false,
+                                            false,
+                                        );
+                                        let continuation = api::BookingAuthContinuation {
+                                            draft: draft.clone(),
+                                            location: location.read().clone(),
+                                            radius_km: *radius.read(),
+                                            delivery_estimate: delivery_result.read().clone(),
+                                            first_name: first_name.read().clone(),
+                                            last_name: last_name.read().clone(),
+                                            booking_email: booking_email.read().clone(),
+                                            phone: phone.read().clone(),
+                                            notes: notes.read().clone(),
+                                            accepted_terms: *accepted.read(),
+                                        };
+                                        match api::save_booking_auth_continuation(&continuation) {
+                                            Ok(()) => {
+                                                let search = api::CatalogSearchDraft {
+                                                    location: location.read().clone(),
+                                                    radius_km: *radius.read(),
+                                                    starts_on: Some(draft.starts_on),
+                                                    ends_on: Some(draft.ends_on),
+                                                    guests: draft.guests,
+                                                };
+                                                let _ = api::save_json("vl_catalog_search", &search);
+                                                on_search_change.call(());
+                                                api::remember_auth_return(&google_return);
+                                            }
+                                            Err(message) => {
+                                                event.prevent_default();
+                                                auth_error.set(message);
+                                            }
+                                        }
+                                    },
                                         span { class: "auth-google-mark", "G" }
                                         "Continue with Google"
                                     }
@@ -1462,6 +1605,9 @@ pub(crate) fn UnifiedBookingOverlay(
                                     }
                                     if payment_availability == api::PaymentAvailability::Blocked { button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); payment_phase.set("idle".into()); }, "Retry test configuration" } }
                                 } } else { div { class: "ub-fields",
+                                    if let Some(authenticated_user) = user.read().as_ref() {
+                                        div { class: "ub-success", Icon { name: "check-circle-2", size: 17, color: "var(--vl-forest)" } span { "Signed in as {authenticated_user.email}" } }
+                                    }
                                     div { class: "ub-field-grid", input { value: "{first_name}", placeholder: "First name", oninput: move |event| first_name.set(event.value()) } input { value: "{last_name}", placeholder: "Last name", oninput: move |event| last_name.set(event.value()) } }
                                     div { class: "ub-field-grid", input { r#type: "email", value: "{booking_email}", placeholder: "Email", oninput: move |event| booking_email.set(event.value()) } input { r#type: "tel", value: "{phone}", placeholder: "Phone", oninput: move |event| phone.set(event.value()) } }
                                     textarea { value: "{notes}", placeholder: "Notes (optional)", oninput: move |event| notes.set(event.value()) }

@@ -9,13 +9,26 @@ use pages::*;
 
 use dioxus::prelude::*;
 
-const MAIN_CSS: Asset = asset!("/assets/main.css");
+const _: Asset = asset!(
+    "/assets/main.css",
+    AssetOptions::css().with_static_head(true)
+);
 const PARALLAX_JS: Asset = asset!("/assets/parallax.js");
 
-const FONTS_URL: &str = "https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap";
-
 fn main() {
-    //
+    // Finish OAuth before mounting route components so they see the restored
+    // session on their very first render.
+    if let Ok(Some(path)) = api::finish_google_sign_in() {
+        if let Some(window) = web_sys::window() {
+            if window
+                .location()
+                .replace(&api::frontend_path(&path))
+                .is_ok()
+            {
+                return;
+            }
+        }
+    }
     dioxus::launch(App);
 }
 
@@ -64,19 +77,7 @@ pub enum Route {
 #[component]
 fn App() -> Element {
     rsx! {
-        document::Link { rel: "stylesheet", href: MAIN_CSS }
         document::Script { src: PARALLAX_JS }
-        document::Link { rel: "preconnect", href: "https://fonts.googleapis.com" }
-        document::Link {
-            rel: "preconnect",
-            href: "https://fonts.gstatic.com",
-            crossorigin: "anonymous",
-        }
-        document::Link { rel: "stylesheet", href: FONTS_URL }
-        document::Link {
-            rel: "stylesheet",
-            href: "https://unpkg.com/lucide-static@latest/font/lucide.css",
-        }
         Router::<Route> {}
     }
 }

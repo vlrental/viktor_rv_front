@@ -4,6 +4,16 @@ name = "viktor_rv_front"
 [web.app]
 title = "VL Rental — RV Rentals"
 
+[web.resource]
+style = [
+    "https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap",
+    "https://unpkg.com/lucide-static@latest/font/lucide.css",
+]
+
+[web.resource.dev]
+style = []
+script = []
+
 [web.watcher]
 watch_path = ["src", "assets"]
 reload_html = true

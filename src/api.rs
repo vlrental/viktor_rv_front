@@ -74,6 +74,29 @@ pub fn take_auth_return() -> Option<String> {
     path
 }
 
+pub fn save_booking_auth_continuation(
+    continuation: &BookingAuthContinuation,
+) -> Result<(), String> {
+    let storage = web_sys::window()
+        .and_then(|window| window.session_storage().ok())
+        .flatten()
+        .ok_or("Browser session storage is unavailable")?;
+    let value = serde_json::to_string(continuation).map_err(|error| error.to_string())?;
+    storage
+        .set_item("vl_booking_auth_continuation", &value)
+        .map_err(|_| "Could not preserve the booking while signing in".to_string())
+}
+
+pub fn take_booking_auth_continuation() -> Option<BookingAuthContinuation> {
+    let storage = web_sys::window()?.session_storage().ok().flatten()?;
+    let value = storage
+        .get_item("vl_booking_auth_continuation")
+        .ok()
+        .flatten();
+    let _ = storage.remove_item("vl_booking_auth_continuation");
+    serde_json::from_str(&value?).ok()
+}
+
 pub fn request_inline_auth(register: bool, message: Option<&str>) {
     if let Some(storage) = web_sys::window()
         .and_then(|window| window.session_storage().ok())
@@ -399,7 +422,7 @@ pub struct CatalogSearchDraft {
     pub guests: i32,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct DeliveryEstimate {
     pub resolved_address: String,
     pub one_way_km: String,
@@ -407,6 +430,27 @@ pub struct DeliveryEstimate {
     pub delivery_fee: String,
     pub maximum_km: String,
     pub within_range: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct BookingAuthContinuation {
+    pub draft: TripDraft,
+    pub location: String,
+    pub radius_km: i32,
+    #[serde(default)]
+    pub delivery_estimate: Option<DeliveryEstimate>,
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default)]
+    pub last_name: String,
+    #[serde(default)]
+    pub booking_email: String,
+    #[serde(default)]
+    pub phone: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub accepted_terms: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -2749,5 +2793,44 @@ mod delivery_draft_tests {
         assert_eq!(direct["email"], "vl@example.com");
         assert_eq!(hash_router["access_token"], "access");
         assert_eq!(hash_router["role"], "admin");
+    }
+
+    #[test]
+    fn booking_auth_continuation_preserves_the_overlay_without_credentials() {
+        let continuation = BookingAuthContinuation {
+            draft: TripDraft {
+                rental_slug: "jayco26".into(),
+                starts_on: "2030-08-16".into(),
+                ends_on: "2030-08-19".into(),
+                guests: 4,
+                addon_keys: vec!["portable_bbq".into(), "bedding".into()],
+                delivery_km: Some("22.0".into()),
+                delivery_address: Some("Bear Creek Provincial Park".into()),
+                attending_event: false,
+                towing_after_delivery: false,
+            },
+            location: "Kelowna, BC".into(),
+            radius_km: 150,
+            delivery_estimate: Some(DeliveryEstimate {
+                resolved_address: "Bear Creek Provincial Park".into(),
+                one_way_km: "22.0".into(),
+                round_trip_km: "44.0".into(),
+                delivery_fee: "150.00".into(),
+                maximum_km: "150.0".into(),
+                within_range: true,
+            }),
+            first_name: "Test".into(),
+            last_name: "Guest".into(),
+            booking_email: "guest@example.com".into(),
+            phone: "2505550100".into(),
+            notes: "Late arrival".into(),
+            accepted_terms: true,
+        };
+
+        let serialized = serde_json::to_string(&continuation).unwrap();
+        let restored: BookingAuthContinuation = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(restored, continuation);
+        assert!(!serialized.contains("password"));
     }
 }
