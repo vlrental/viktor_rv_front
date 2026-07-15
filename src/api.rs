@@ -9,15 +9,42 @@ pub const API_BASE: &str = match option_env!("VL_API_BASE_URL") {
 };
 
 pub fn frontend_base_url() -> String {
-    option_env!("VL_FRONTEND_BASE_URL")
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| value.trim_end_matches('/').to_string())
+    browser_github_pages_base()
+        .or_else(|| {
+            option_env!("VL_FRONTEND_BASE_URL")
+                .filter(|value| !value.trim().is_empty())
+                .map(|value| value.trim_end_matches('/').to_string())
+        })
         .or_else(|| {
             web_sys::window()
                 .and_then(|window| window.location().origin().ok())
                 .map(|value| value.trim_end_matches('/').to_string())
         })
         .unwrap_or_else(|| "https://vlrental.ca".to_string())
+}
+
+fn browser_github_pages_base() -> Option<String> {
+    let location = web_sys::window()?.location();
+    github_pages_base(
+        &location.origin().ok()?,
+        &location.hostname().ok()?,
+        &location.pathname().ok()?,
+    )
+}
+
+fn github_pages_base(origin: &str, hostname: &str, pathname: &str) -> Option<String> {
+    if !hostname.to_ascii_lowercase().ends_with(".github.io") {
+        return None;
+    }
+    let repository = pathname
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        .filter(|value| !value.is_empty());
+    Some(match repository {
+        Some(repository) => format!("{}/{}", origin.trim_end_matches('/'), repository),
+        None => origin.trim_end_matches('/').to_string(),
+    })
 }
 
 pub fn google_login_url() -> String {
@@ -2805,6 +2832,23 @@ mod delivery_draft_tests {
         assert_eq!(
             frontend_path_for_base(base, "/admin"),
             "https://gaponovalexey.github.io/viktor_rv_front/admin"
+        );
+    }
+
+    #[test]
+    fn github_pages_runtime_cannot_fall_back_to_the_production_domain() {
+        assert_eq!(
+            github_pages_base(
+                "https://gaponovalexey.github.io",
+                "gaponovalexey.github.io",
+                "/viktor_rv_front/admin"
+            )
+            .as_deref(),
+            Some("https://gaponovalexey.github.io/viktor_rv_front")
+        );
+        assert_eq!(
+            github_pages_base("https://vlrental.ca", "vlrental.ca", "/admin"),
+            None
         );
     }
 

@@ -74,7 +74,10 @@ pub enum Route {
         Admin {},
 }
 
-const SITE_URL: &str = "https://vlrental.ca";
+const SITE_URL: &str = match option_env!("VL_FRONTEND_BASE_URL") {
+    Some(value) => value,
+    None => "https://vlrental.ca",
+};
 
 #[derive(Clone, PartialEq)]
 struct SeoMetadata {
