@@ -1,6 +1,6 @@
 # Viktor RV frontend — AI handoff
 
-Last updated: 2026-07-13
+Last updated: 2026-07-15
 
 This document records the current frontend booking architecture, the problems fixed during the one-page booking work, the verified behavior, and the safe continuation plan for future AI agents.
 
@@ -57,14 +57,14 @@ This document records the current frontend booking architecture, the problems fi
 - Every newly opened unified booking overlay resets the guest count to one. A guest count saved by an earlier catalog search must not silently filter the RV choices before the customer selects guests in the current overlay.
 - Changing dates or guests causes the available RV resource to run again. Do not precompute the search outside the reactive resource closure; doing so previously left the RV list permanently stale.
 - When an RV is selected first, the calendar loads that model's live unavailable intervals and disables date choices that cannot form a valid minimum stay. The 11:00 AM return and 2:00 PM next-delivery turnover remains selectable.
-- After an RV is selected without dates, step 1 shows up to four nearest valid minimum-stay ranges from that model's live availability. Selecting a suggested range fills both dates immediately; customers can still browse later months manually.
-- When a customer opens a specific RV without dates, step 1 first asks whether they prefer 3 or 7 nights. It then shows the nearest and later live openings for that exact stay length, with a separate `Choose dates manually` fallback. This guided prompt is not shown when valid dates already exist.
+- After an RV is selected without dates, step 1 opens its custom live-availability calendar directly. Customers choose delivery and return dates manually, with unavailable days disabled.
 - Every dismissible booking overlay with a visible close control must close through the same guarded path when the user presses `Escape`.
 
 ### Step 2 — Choose an RV
 
 - RV choices use image cards based on the home listing design, including name, capacity, summary, and nightly price.
 - Step 2 uses two server catalog views: the no-date response supplies every model that fits the guest count, and the dated response marks which of those models are available for the current range.
+- Step 2 keeps a compact guest stepper in its upper-right toolbar so customers can see and change the active capacity filter without returning to step 1. Its fixed desktop width and mobile wrap must not shift or overflow the RV card grid.
 - Step 2 is always clickable and never becomes an empty dead end merely because all RVs are booked for the selected dates. Without a valid range, selecting any model opens step 1. With dates, available cards continue to delivery, while booked cards remain clickable and open their own calendar after clearing only the incompatible date range.
 - RV detail pages pass their slug as the initial selection, but the customer can choose another available RV in the same overlay.
 - Each RV card has previous/next gallery controls that appear on pointer hover and remain visible on touch devices. The controls rotate through the project gallery without selecting the RV.
@@ -98,17 +98,17 @@ This document records the current frontend booking architecture, the problems fi
 
 ## Live price behavior
 
-- A local preview can be shown from nightly rate, nights, selected extras, delivery fee, and refundable deposit.
+- A local preview can be shown from nightly rate, nights, selected extras, delivery fee, and the separate refundable damage deposit.
 - Every quote automatically includes the mandatory `RV Preparation Fee` of CA$97 once per booking.
 - Every quote automatically includes mandatory `Stationary Plus Protection` at CA$50 multiplied by the number of booked calendar nights.
 - Both mandatory charges are separate server quote line items and cannot be removed as extras.
-- The customer-facing trip price excludes the separate CA$1,000 refundable damage deposit. The deposit remains a quote field and deposit line item for transparency, but it must never be included in the 30% booking-payment calculation.
-- The CA$1,000 refundable damage deposit is due separately 48 hours before RV delivery.
+- The customer-facing trip price excludes the separate refundable CA$1,000 damage deposit. The deposit remains a compatibility quote field and a separate line item for transparency, but it must never be included in the 30% booking-payment calculation.
+- The refundable CA$1,000 damage deposit is charged separately through Stripe 48 hours before RV delivery. After return and inspection it is refunded to the original payment method, less documented damage.
 - For trips booked more than 30 days ahead, 30% of the trip price is due at booking and the balance is due 30 days before delivery. Trips booked within 30 days require the full trip price at booking.
 - The authoritative total is the response from `POST /api/v1/quotes`.
 - The exact server quote is requested only when dates, RV, and an in-range calculated delivery address are ready.
 - The quote must refresh when the selected RV, dates, guests, delivery address/result, event choices, towing choice, or extras change.
-- The summary sidebar shows trip-price line items, the exact CAD trip price, the separate damage deposit, and payment timing when available. It must not imply that a preview is final or that the damage deposit is part of the trip price.
+- The summary sidebar shows trip-price line items, the exact CAD trip price, the separate refundable damage deposit, and payment timing when available. It must not imply that a preview is final or that the deposit is part of the trip price.
 
 ## Browser persistence
 
@@ -119,6 +119,7 @@ This document records the current frontend booking architecture, the problems fi
 - `vl_trip_draft`: last booking draft used for confirmation/conflict recovery.
 - `vl_active_quote`: last authoritative quote.
 - `vl_last_booking`: last successfully created booking shown on the confirmation page.
+- `vl_pending_booking_payment`: the current private pending booking, reusable embedded Checkout client secret, and private status token. When present, reopening the unified overlay must go directly to step 5, check webhook-backed status first, and remount the same Checkout Session without creating another booking.
 
 ## Verified rental reviews
 
@@ -185,6 +186,32 @@ Do not create a test booking, send email, or mutate production merely to run an 
 - Admin blocks immediately participate in the same catalog, quote, booking, and concurrency checks as imported owner blocks. An attempted block that overlaps an active customer booking returns a conflict and is not created.
 - The page lists future blocks created through the admin control and can reopen them. It cannot delete legacy Google blocks, external calendar blocks, or customer bookings.
 - Admin access is granted only by changing `app_users.role` to `admin` after the intended account has authenticated. Never infer admin access from a frontend email comparison.
+
+## Admin Center and Stripe test-mode handoff (2026-07-14)
+
+- `/admin` remains the only persistent admin route. Overview, Bookings, Payments, Calendar, and Audit are embedded tab states; booking detail and phone booking use drawers, while financial/lifecycle decisions use nested confirmation modals. Mobile drawers are full-screen. No standalone admin action pages are added.
+- The approved Pencil source states are desktop `HBpPe`, `K8YXx`, `p8p6P`, `l86oa9`, and `tjohf`; mobile `JNkTK`, `o6Esvq`, `IfQL5`, `BvlyF`, `RRAEN`, `GBXFF`, and `mgKti`; overlays `FoWiG`, `ujgoM`, `lNyUh`, and `ANiTF`.
+- The customer payment step belongs inside the existing `UnifiedBookingOverlay`. Embedded Checkout completion only starts a webhook-backed confirming state; it must not navigate to a new callback page or mark a booking paid in the browser.
+- With Stripe test payments enabled, booking creation produces `pending_payment` plus a 30-minute payment reservation. A successful verified webhook moves it to `confirmed`; expiry moves it to `expired` and releases availability. A manual phone booking uses the same quote rules but reserves availability for two hours.
+- The immutable backend quote supplies every Stripe amount. Initial payment is 30% more than 30 days before delivery and 100% at 30 days or less. A remaining balance uses one backend-created invoice due exactly 30 days before delivery. Fixed Stripe Price IDs are not part of this architecture.
+- The CA$1,000 damage amount is a refundable Stripe charge requested 48 hours before delivery, not a `Gold` option and not an authorization hold. Extended Authorization is not used. Stripe's original processing fees are not returned to VL Rental, but they are never deducted from the customer's approved refund.
+- `Delivered` maps to booking status `active` and is blocked without full trip payment and a paid deposit. `Returned` maps to `completed`; only then may an admin refund the deposit or retain documented damage and refund the remainder. Retention requires amount, reason, at least one private photo, confirmation, and audit logging. Seven days after return is the decision deadline.
+- Cancellation immediately changes calendar availability before any Stripe request. Each refund part is recorded as a durable financial operation; a booking paid through separate 30% and 70% PaymentIntents is refunded across those PaymentIntents, and a provider failure never restores the cancelled booking to the calendar.
+- Release, damage capture, and refund use durable `pending/submitted/succeeded/failed` operations. Final success is established by a verified webhook or authenticated reconciliation rather than a browser response. Damage-captured email is queued only after that final success.
+- Admin contact edits update a booking-scoped snapshot and never silently change another booking's shared customer record. Manual booking, calendar changes, resend, evidence access/upload, reconciliation, and all financial actions are audited.
+- The database foundation adds payment obligations, provider event reconciliation, durable financial operations, immutable admin audit events, notification delivery attempts, damage claims/evidence, worker claim fields, and private evidence storage. These tables have RLS enabled and all `anon`/`authenticated` privileges revoked; browsers never query them directly.
+- Evidence supports an ignored local/test adapter and a backend-only Supabase private-storage adapter. The preferred production credential is `SUPABASE_SECRET_KEY=sb_secret_...`; the legacy service-role JWT remains a compatibility fallback. Modern secret keys are sent only in the `apikey` header. Uploads validate file signatures and size and set `Cache-Control: 0`, so a browser/CDN cache cannot outlive the short signed-access window. Access is short-lived and admin-authorized. Live Stripe startup is blocked unless durable Supabase evidence storage is configured.
+- Stripe remains test-only. No live key, live webhook, production backend deployment, production payment routing, or `vlrental.ca` change is authorized by this handoff. The deposit model no longer depends on Extended Authorization.
+- Stripe CLI test credentials and webhook forwarding were configured locally on 2026-07-14 for `acct_1SpY7K2MR4C4rvKM`; they remain ignored and server-only. Real test-mode Checkout creation/expiry, Invoice creation/payment, signed webhook handling, decline, 3DS, standard manual authorization, release, partial capture, and refund were exercised successfully.
+- After the refundable-deposit decision, a new real test-mode smoke created and expired the dynamic CA$1,000 deposit Checkout, completed a full CA$1,000 charge/refund, and completed a CA$750 partial refund while retaining CA$250 from a separate CA$1,000 test charge. No live object was created.
+- A complete customer embedded Checkout was exercised inside the unified overlay with an insufficient-funds test-card decline followed by a successful `4242` test payment. The verified webhook moved the local booking to `confirmed / partially_paid`; initial, balance, and CA$1,000 hold remained separate obligations. Browser refresh/reopen reused the saved pending Session and did not create another booking.
+- A second customer booking completed the real nested Stripe 3DS challenge inside embedded Checkout. Its real Hosted Invoice then produced `invoice.payment_failed` with a declining test method, stayed on the same Invoice while the card was replaced, and completed through a verified paid webhook. Admin Payments/detail showed the final webhook-backed result.
+- On 2026-07-15, the full disposable-database verification was repeated against a clean PostgreSQL 17 instance: schema bootstrap, all three SQL safety suites, six ignored webhook/database tests, and both booking-schedule concurrency tests passed. The temporary database was removed after the run.
+- The browser pass found and fixed two Checkout regressions: the evaluated async mount script must `return await` its result, and payment configuration must be read reactively so a saved pending Session remounts after config arrives. Regression tests cover the initial step and mount-script return contract.
+- The one-page admin UI was exercised on desktop and 390 px mobile widths. Overview, Bookings, Payments, Calendar, and Audit stay embedded in `/admin`; booking and phone-booking overlays close with `Escape`. The mobile `More` selector no longer clips or pushes tabs outside the viewport.
+- Stripe Priority Support answered case `sco_Ut5ECLsXyQP2d9` on 2026-07-15 and declined Extended Authorization eligibility. The owner subsequently selected the refundable CA$1,000 charge/refund model. The backend, admin UI, customer copy, Terms and tests must use this selected model; live activation remains separately prohibited until the complete new test report is green and directly approved.
+- On 2026-07-15, production access was recovered through the ignored backend `.env.prod`, which points to the correct Supabase project `pwhlkpwlansarstmstge`; the unrelated visible project `oysipecbuubmjgdiqrku` was not used. The three pending versioned admin/Stripe/security migrations were applied, all three production SQL safety suites passed, and the private `damage-evidence` bucket was confirmed with a 10 MiB limit.
+- Real private Storage E2E first passed with an ephemeral legacy service role and was repeated successfully with the configured modern backend-only `sb_secret_...` key: upload, short-lived signed download, deletion, and post-delete denial all passed. The backend rejects publishable keys in the secret setting and never sends a modern secret as a Bearer JWT. No secret value is stored in tracked source, plans, or handoff files.
 
 ## Safe regression checklist
 

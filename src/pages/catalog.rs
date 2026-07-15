@@ -1063,7 +1063,7 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
                 div { class: "lc-title-row", div { class: "lc-title", "{rental.name}" } }
                 div { class: "lc-meta", "{rental.summary}" }
                 div { class: "lc-price-row", span { class: "lc-price", "${rental.base_rate}" } span { class: "lc-per", " / {rental.price_unit}" } }
-                div { class: "lc-price-note", "Plus mandatory fees · CA$1,000 refundable deposit paid separately" }
+                div { class: "lc-price-note", "Plus mandatory fees · separate refundable CA$1,000 damage deposit" }
             }
         }
     }

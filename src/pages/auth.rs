@@ -70,7 +70,7 @@ pub fn Account() -> Element {
                             p { "Delivery/setup: {booking.starts_at} · Return: {booking.ends_at}" }
                             p { "Trip price: {booking.currency} {booking.total}" }
                             p { "Booking payment: {booking.currency} {booking.amount_due_now}" }
-                            p { "Refundable damage deposit: {pricing::money(pricing::DAMAGE_DEPOSIT)} · separate · due 48 hours before delivery" }
+                            p { "Refundable damage deposit: {pricing::money(pricing::DAMAGE_DEPOSIT)} · separate · charged 48 hours before delivery" }
                             if booking.can_review {
                                 button { class: "account-review-open", r#type: "button", onclick: { let booking_id = booking.booking_id.clone(); move |_| { review_booking.set(Some(booking_id.clone())); review_rating.set(5); review_title.set(String::new()); review_body.set(String::new()); review_error.set(String::new()); } }, "Leave a verified review" }
                             } else if booking.review_id.is_some() {

@@ -12,6 +12,8 @@ use crate::components::Icon;
 use crate::data::IMG_HERO_RV;
 use crate::Route;
 
+const IMG_CTA_PARALLAX: Asset = asset!("/assets/img/generated/okanagan-rv-parallax.webp");
+
 #[component]
 pub fn Home() -> Element {
     let today = chrono::Utc::now()
@@ -449,52 +451,13 @@ fn MoreServices() -> Element {
 
 #[component]
 fn CtaBand() -> Element {
-    use_effect(|| {
-        spawn(async move {
-            let _ = document::eval(
-                r#"
-                    window.__vlCtaParallaxCleanup?.();
-                    const band = document.getElementById('home-parallax-cta');
-                    const image = band?.querySelector('.cta-img');
-                    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-                    if (!band || !image || reducedMotion.matches) {
-                        if (image) image.style.transform = 'translate3d(0, 0, 0)';
-                        return;
-                    }
-
-                    let frame = 0;
-                    const update = () => {
-                        frame = 0;
-                        const rect = band.getBoundingClientRect();
-                        const viewport = window.innerHeight || document.documentElement.clientHeight;
-                        const progress = (viewport - rect.top) / (viewport + rect.height);
-                        const offset = Math.max(-64, Math.min(64, (progress - 0.5) * 128));
-                        image.style.transform = `translate3d(0, ${offset}px, 0) scale(1.035)`;
-                    };
-                    const requestUpdate = () => {
-                        if (!frame) frame = requestAnimationFrame(update);
-                    };
-
-                    window.addEventListener('scroll', requestUpdate, { passive: true });
-                    window.addEventListener('resize', requestUpdate, { passive: true });
-                    update();
-                    window.__vlCtaParallaxCleanup = () => {
-                        window.removeEventListener('scroll', requestUpdate);
-                        window.removeEventListener('resize', requestUpdate);
-                        if (frame) cancelAnimationFrame(frame);
-                    };
-                "#,
-            )
-            .await;
-        });
-    });
     rsx! {
         section { id: "home-parallax-cta", class: "cta-band",
             div {
                 class: "cta-img",
                 role: "img",
                 aria_label: "Travel trailer at an Okanagan lakeside campsite",
-                style: "background-image: url('/assets/img/generated/okanagan-rv-parallax.webp');"
+                style: "background-image: url('{IMG_CTA_PARALLAX}');"
             }
             div { class: "cta-overlay" }
             div { class: "cta-copy",

@@ -454,7 +454,7 @@ fn BookingCard(
                 }
             }
             div { class: "rvd-damage-deposit",
-                div { Icon { name: "shield-check", size: 17, color: "var(--vl-forest)" } strong { "CA$1,000 refundable damage deposit" } }
+                div { Icon { name: "shield-check", size: 17, color: "var(--vl-forest)" } strong { "Refundable CA$1,000 damage deposit" } }
                 p { "Separate from the trip price and the 30% booking payment. Due 48 hours before delivery." }
             }
             div { class: "rvd-payment-schedule",
@@ -1097,7 +1097,7 @@ fn BookingCalendarOverlay(
                                 div { class: "rvd-calendar-range", "{starts_on} → {ends_on} · {nights}-night adventure" }
                                 div { class: "rvd-calendar-benefits",
                                     span { Icon { name: "zap", size: 13, color: "var(--vl-accent)" } "Instant confirmation" }
-                                    span { Icon { name: "shield-check", size: 13, color: "var(--vl-accent)" } "Refundable deposit" }
+                                    span { Icon { name: "shield-check", size: 13, color: "var(--vl-accent)" } "Authorization hold" }
                                     span { Icon { name: "check", size: 13, color: "var(--vl-accent)" } "Transparent pricing" }
                                 }
                             }
@@ -1107,7 +1107,7 @@ fn BookingCalendarOverlay(
                             if let Some(quote) = quote_response.as_ref() {
                                 div { class: "rvd-calendar-total", "{pricing::money(pricing::quote_trip_price(quote))}" }
                                 div { class: "rvd-calendar-total-note", "Preparation, protection, selected extras, delivery, GST and PST included" }
-                                div { class: "rvd-calendar-deposit-note", "CA$1,000 refundable damage deposit · separate · due 48 hours before delivery" }
+                                div { class: "rvd-calendar-deposit-note", "Refundable CA$1,000 damage deposit · separate · charged 48 hours before delivery" }
                             } else {
                                 div { class: "rvd-calendar-total", "Address required" }
                                 div { class: "rvd-calendar-total-note", "Calculate the delivery address to receive the exact trip price" }

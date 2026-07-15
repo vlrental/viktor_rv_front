@@ -20,6 +20,14 @@
 - Design Node IDs: `IUHnT`, `x8t0A0`, `I6W2Es`, `raX6S`, `rmfa4`, `ODW3r`, `f1GuCf`, `ns0xG`, `LaBip`, `iKgTN`, `Oijpd`, `MEsd0`, `XgqBg`, `w19Mf`, `jr5XP`, `CdnCR`, `X9ejnB`, `g9upP`, `qaZRF`, `yTWGi`, `Al6fI`, `lsQAl`, `eb6Ck`, `cOu0u`, `YuNUS`, `TDhXo`, `M4DJcJ`, `e8z6o4`, `K7A9o`.
 - Use these nodes as the visual source of truth when implementing or reviewing the corresponding frontend UI.
 
+## Supabase access and diagnostics
+
+- The correct Supabase project ref is `pwhlkpwlansarstmstge`. Never substitute the separately visible project `oysipecbuubmjgdiqrku` merely because a connector can access it.
+- Before claiming that the correct Supabase project is inaccessible, inspect the backend repository's ignored `.env.prod` safely. It contains the production IPv4 Session Pooler `DATABASE_URL` for `pwhlkpwlansarstmstge` and can be used for scoped read-only SQL diagnostics even when the Supabase connector returns permission denied or the local Supabase CLI is unavailable.
+- Never print, paste, log, or return the full `.env.prod`, `DATABASE_URL`, database password, service-role key, or other secrets. Check only exact project-ref matches, variable presence, safe parsed host/user metadata, or query results that do not expose credentials.
+- Distinguish access surfaces: a working `DATABASE_URL` proves PostgreSQL access only; Supabase MCP/Management API access is separate; Storage upload and signed-URL E2E require backend-only `SUPABASE_URL` plus the preferred `SUPABASE_SECRET_KEY=sb_secret_...` (or legacy `SUPABASE_SERVICE_ROLE_KEY`). New secret keys are sent only as the `apikey` header, never as a Bearer JWT. A connector permission error does not prove that database access is unavailable.
+- The backend local `.env` normally targets local PostgreSQL and must not be mistaken for production Supabase. Use `.env.prod` only for read-only production inspection unless the user directly authorizes a production database write or migration.
+
 ## Page architecture
 
 - Prefer completing actions inside the user's current page, panel, dialog, drawer, or established workflow.
@@ -70,9 +78,17 @@
 - RV rentals require at least three nights. Backend code is the source of truth for converting selected dates into timestamps and enforcing availability.
 - Every RV quote includes a mandatory `RV Preparation Fee` of CA$97 once per booking.
 - Every RV quote includes mandatory `Stationary Plus Protection` at CA$50 for each booked night, automatically calculated from the calendar date difference. Both mandatory charges must appear as separate quote line items, and backend quote code is the pricing source of truth.
-- At initial booking, if RV delivery is more than 30 days away, the customer must pay 30% of the trip price immediately. Calculate the 30% only from the trip price; the separate CA$1,000 damage deposit is not part of this percentage. If delivery is 30 days away or less, the customer must pay 100% of the trip price immediately.
+- At initial booking, if RV delivery is more than 30 days away, the customer must pay 30% of the trip price immediately. Calculate the 30% only from the trip price; the separate refundable CA$1,000 damage deposit is not part of this percentage. If delivery is 30 days away or less, the customer must pay 100% of the trip price immediately.
 - For a booking made more than 30 days before delivery, the remaining trip-price balance becomes due exactly 30 days before the delivery date, bringing the booking payment to 100%.
-- Every booking requires a CA$1,000 damage deposit, due 48 hours before RV delivery.
-- Whenever a scheduled booking payment or damage-deposit payment becomes due, notify the customer immediately by email and include a direct payment link.
-- For the Gold option, hold the CA$1,000 damage deposit for seven days after the RV is returned, then refund it without interest, subject to any valid damage charges.
-- Until Stripe is explicitly enabled, bookings are test bookings stored as `confirmed` / `test_paid`; no card is collected and no real payment row is created.
+- Every booking requires a refundable CA$1,000 Stripe damage deposit, charged 48 hours before RV delivery. It is separate from the trip price and is refunded to the original payment method after return and inspection, less any documented damage.
+- Whenever a scheduled booking payment or refundable damage deposit becomes due, notify the customer immediately by email and include a direct payment link. Critical failures and overdue actions also notify the administrator and appear in the admin dashboard.
+- Stripe is test-first. `PAYMENTS_ENABLED=true` is allowed only with test keys and `STRIPE_MODE=test` until the complete test report is green and the user separately gives direct approval for live activation. Never add live keys, a live webhook, production payment routing, production deployment, or domain changes without that approval.
+- The backend immutable quote is the only source of Stripe amounts. Do not bind fixed Stripe Price IDs. The frontend receives only the publishable key, mode, and expected account ID; secret and webhook keys never enter frontend code, the database, logs, commits, or chat output.
+- A verified Stripe webhook is the only source of payment truth. Browser completion and callback state never confirm a booking, invoice, deposit payment, or refund.
+- Initial payment is 30% of trip price when delivery is more than 30 days away and 100% at 30 days or less. A 30% booking receives one automatic balance invoice exactly 30 days before delivery.
+- The CA$1,000 deposit uses a dynamic Stripe Checkout payment and normal capture; Extended Authorization is not used. Stripe processing fees from the original deposit charge are not returned to VL Rental, but they are never deducted from the customer's approved refund.
+- `Delivered` (`active`) is blocked until the trip price and refundable CA$1,000 damage deposit are fully paid. `Returned` (`completed`) enables an admin to refund the full deposit or retain documented damage and refund the remainder. Seven days after return is the admin decision deadline.
+- Retaining any deposit amount requires a positive amount within the available deposit, a non-empty reason, at least one private photo, a confirmation dialog, and an audit event. Evidence is backend-only/private and is viewed only with short-lived admin-authorized signed URLs.
+- Phone/manual bookings use the same quote rules and a dynamic Stripe Checkout Session, reserve the RV for two hours, and expire without manual cash/bank `paid` overrides.
+- Only the backend `admin` role may access `/admin` data or actions. Financial and lifecycle actions require a confirmation dialog and immutable audit log; arbitrary generic status changes are not used by the UI.
+- When `PAYMENTS_ENABLED=false`, preserve the legacy no-card `confirmed` / `test_paid` test-booking behavior and do not create real payment rows.

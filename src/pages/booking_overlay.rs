@@ -7,6 +7,13 @@ use crate::{api, components::Icon, data::rv_gallery, pricing, Route};
 
 const SAVED_DELIVERY_ADDRESSES: &str = "vl_delivery_addresses";
 const MAX_SAVED_DELIVERY_ADDRESSES: usize = 5;
+const SAVED_PENDING_PAYMENT: &str = "vl_pending_booking_payment";
+const UNMOUNT_EMBEDDED_CHECKOUT: &str = r#"
+if (window.__vlEmbeddedCheckout) {
+  try { window.__vlEmbeddedCheckout.unmount(); } catch (_) {}
+  window.__vlEmbeddedCheckout = null;
+}
+"#;
 
 type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
 
@@ -77,31 +84,61 @@ fn booking_date_is_selectable(
     )
 }
 
-fn next_available_stays(
-    first_day: NaiveDate,
-    range_end: NaiveDate,
-    minimum_nights: i64,
-    unavailable: &[UnavailableRange],
-    limit: usize,
-) -> Vec<(NaiveDate, NaiveDate)> {
-    let mut stays = Vec::new();
-    let mut day = first_day;
-    while day + chrono::Duration::days(minimum_nights) <= range_end && stays.len() < limit {
-        let end = day + chrono::Duration::days(minimum_nights);
-        if booking_stay_is_available(day, end, unavailable) {
-            stays.push((day, end));
-        }
-        day += chrono::Duration::days(1);
-    }
-    stays
-}
-
 fn step_after_rental_selection(trip_ready: bool) -> u8 {
     if trip_ready {
         3
     } else {
         1
     }
+}
+
+fn initial_booking_step(initial_step: u8, has_pending_payment: bool) -> u8 {
+    if has_pending_payment {
+        5
+    } else {
+        initial_step.clamp(1, 5)
+    }
+}
+
+fn embedded_checkout_script(publishable_key: &str, client_secret: &str) -> String {
+    format!(
+        r#"
+return await (async () => {{
+  if (!window.Stripe) {{
+    await new Promise((resolve, reject) => {{
+      const current = document.querySelector('script[data-vl-stripe]');
+      if (current) {{
+        current.addEventListener('load', resolve, {{ once: true }});
+        current.addEventListener('error', reject, {{ once: true }});
+        if (window.Stripe) resolve();
+        return;
+      }}
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.async = true;
+      script.dataset.vlStripe = 'true';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    }});
+  }}
+  const root = document.getElementById('vl-embedded-checkout');
+  if (!root || !window.Stripe) throw new Error('Stripe Checkout is unavailable');
+  if (window.__vlEmbeddedCheckout) {{
+    try {{ window.__vlEmbeddedCheckout.unmount(); }} catch (_) {{}}
+  }}
+  root.replaceChildren();
+  const stripe = window.Stripe({publishable_key});
+  const checkout = await stripe.initEmbeddedCheckout({{
+    clientSecret: {client_secret},
+    onComplete: () => {{ root.dataset.complete = 'true'; }}
+  }});
+  checkout.mount('#vl-embedded-checkout');
+  window.__vlEmbeddedCheckout = checkout;
+  return 'mounted';
+}})();
+"#
+    )
 }
 
 fn rental_selection_keeps_dates(trip_ready: bool, available_for_dates: Option<bool>) -> bool {
@@ -641,21 +678,23 @@ pub(crate) fn UnifiedBookingOverlay(
     });
     use_drop(|| {
         document::eval(UNLOCK_PAGE_SCROLL);
+        document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
     });
 
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let initial_month = month_start(today);
+    let initial_pending_payment = api::load_json::<api::CreatedBooking>(SAVED_PENDING_PAYMENT)
+        .filter(|created| created.client_secret.is_some() && !created.access_token.is_empty());
+    let has_pending_payment = initial_pending_payment.is_some();
     let mut visible_month = use_signal(|| {
         (*starts_on.read())
             .map(month_start)
             .unwrap_or(initial_month)
     });
     let initial_slug = initial_rental_slug.unwrap_or_default();
-    let mut open_step = use_signal(move || initial_step.clamp(1, 5));
+    let mut open_step = use_signal(move || initial_booking_step(initial_step, has_pending_payment));
     let mut closing = use_signal(|| false);
     let mut selected_slug = use_signal(move || initial_slug);
-    let mut preferred_nights = use_signal(|| None::<i64>);
-    let mut manual_dates = use_signal(|| false);
     let mut delivery_address = use_signal(String::new);
     let mut delivery_km = use_signal(|| None::<String>);
     let mut delivery_result = use_signal(|| None::<api::DeliveryEstimate>);
@@ -669,6 +708,7 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut quote_busy = use_signal(|| false);
     let mut quote_error = use_signal(String::new);
     let mut quote_version = use_signal(|| 0_u32);
+    let mut quote_refresh_nonce = use_signal(|| 0_u32);
     let mut user = use_signal(api::current_user);
     let mut auth_email = use_signal(String::new);
     let mut auth_password = use_signal(String::new);
@@ -688,9 +728,184 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut accepted = use_signal(|| false);
     let mut booking_busy = use_signal(|| false);
     let mut booking_error = use_signal(String::new);
+    let mut payment_config = use_signal(|| None::<api::PaymentConfig>);
+    let mut payment_config_error = use_signal(String::new);
+    let mut payment_config_retry = use_signal(|| 0_u32);
+    let mut pending_payment = use_signal(move || initial_pending_payment);
+    let mut payment_phase = use_signal(|| "idle".to_string());
+    let mut payment_attempt_nonce = use_signal(|| 0_u32);
     let navigator = use_navigator();
     let google_href = api::google_login_url();
     let google_return = use_route::<Route>().to_string();
+
+    use_effect(move || {
+        let _retry = *payment_config_retry.read();
+        payment_config.set(None);
+        payment_config_error.set(String::new());
+        spawn(async move {
+            match api::payment_config().await {
+                Ok(config) => payment_config.set(Some(config)),
+                Err(error) => payment_config_error.set(error.message),
+            }
+        });
+    });
+
+    use_effect(move || {
+        let _attempt = *payment_attempt_nonce.read();
+        let pending = pending_payment.read().clone();
+        let config = payment_config.read().clone();
+        let availability =
+            api::payment_availability(config.as_ref(), !payment_config_error.read().is_empty());
+        if payment_phase.read().as_str() != "idle" {
+            return;
+        }
+        let Some(created) = pending else {
+            return;
+        };
+        payment_phase.set("checking".into());
+        spawn(async move {
+            match api::booking_status(&created.booking.booking_id, &created.access_token).await {
+                Ok(status) if status.confirmed || status.status == "confirmed" => {
+                    let mut confirmed = created.clone();
+                    confirmed.booking.status = status.status;
+                    confirmed.booking.payment_status = status.payment_status;
+                    let _ = api::save_json("vl_last_booking", &confirmed);
+                    api::remove_saved(SAVED_PENDING_PAYMENT);
+                    pending_payment.set(None);
+                    payment_phase.set("confirmed".into());
+                    navigator.push(Route::Confirmed {});
+                    return;
+                }
+                Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => {
+                    api::remove_saved(SAVED_PENDING_PAYMENT);
+                    pending_payment.set(None);
+                    payment_phase.set("expired".into());
+                    booking_error.set(
+                        "This payment reservation expired. Availability and price are being checked before you try again."
+                            .into(),
+                    );
+                    let next = quote_refresh_nonce.peek().wrapping_add(1);
+                    quote_refresh_nonce.set(next);
+                    return;
+                }
+                Ok(_) | Err(_) => {}
+            }
+
+            let config = match (availability, config) {
+                (api::PaymentAvailability::Loading, _) => {
+                    payment_phase.set("idle".into());
+                    return;
+                }
+                (api::PaymentAvailability::Disabled, _) => {
+                    payment_phase.set("blocked".into());
+                    booking_error.set("This saved Stripe reservation cannot be reopened while payments are disabled. Check its status before creating another booking.".into());
+                    return;
+                }
+                (api::PaymentAvailability::Blocked, _) => {
+                    payment_phase.set("blocked".into());
+                    booking_error.set("Secure Checkout is blocked because the Stripe test configuration could not be verified. Your existing reservation has not been recreated or charged.".into());
+                    return;
+                }
+                (api::PaymentAvailability::TestReady, Some(config)) => config,
+                _ => return,
+            };
+            let Some(client_secret) = created.client_secret.clone() else {
+                payment_phase.set("blocked".into());
+                booking_error.set("This reservation did not include a reusable Checkout session. Check its status before creating another booking.".into());
+                return;
+            };
+            if created.access_token.is_empty() {
+                payment_phase.set("blocked".into());
+                booking_error.set("This browser no longer has the private booking token required to check payment status.".into());
+                return;
+            }
+            payment_phase.set("mounting".into());
+            let publishable_key =
+                serde_json::to_string(&config.publishable_key).unwrap_or_else(|_| "\"\"".into());
+            let client_secret =
+                serde_json::to_string(&client_secret).unwrap_or_else(|_| "\"\"".into());
+            let script = embedded_checkout_script(&publishable_key, &client_secret);
+            match document::eval(&script).await {
+                Ok(_) => payment_phase.set("checkout".into()),
+                Err(_) => {
+                    payment_phase.set("error".into());
+                    booking_error.set(
+                        "Secure test checkout could not load. Keep this window open and try again."
+                            .into(),
+                    );
+                    return;
+                }
+            }
+
+            let mut submitted = false;
+            for _ in 0..800_u16 {
+                let checkout_is_mounted = document::eval(
+                    "return Boolean(document.getElementById('vl-embedded-checkout'));",
+                )
+                .join::<bool>()
+                .await
+                .unwrap_or(false);
+                if !checkout_is_mounted {
+                    return;
+                }
+                submitted = document::eval(
+                    "return document.getElementById('vl-embedded-checkout')?.dataset.complete === 'true';",
+                )
+                .join::<bool>()
+                .await
+                .unwrap_or(false);
+                if submitted {
+                    break;
+                }
+                let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 1500));")
+                    .await;
+            }
+            if !submitted {
+                payment_phase.set("delayed".into());
+                booking_error.set(
+                    "The secure checkout session is still open. Complete it before the reservation expires."
+                        .into(),
+                );
+                return;
+            }
+
+            payment_phase.set("confirming".into());
+            for _ in 0..120_u16 {
+                match api::booking_status(&created.booking.booking_id, &created.access_token).await
+                {
+                    Ok(status) if status.confirmed || status.status == "confirmed" => {
+                        let mut confirmed = created.clone();
+                        confirmed.booking.status = status.status;
+                        confirmed.booking.payment_status = status.payment_status;
+                        let _ = api::save_json("vl_last_booking", &confirmed);
+                        api::remove_saved(SAVED_PENDING_PAYMENT);
+                        pending_payment.set(None);
+                        payment_phase.set("confirmed".into());
+                        navigator.push(Route::Confirmed {});
+                        return;
+                    }
+                    Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => {
+                        api::remove_saved(SAVED_PENDING_PAYMENT);
+                        pending_payment.set(None);
+                        payment_phase.set("expired".into());
+                        booking_error.set(
+                            "This payment reservation expired. Check availability and create a new booking."
+                                .into(),
+                        );
+                        return;
+                    }
+                    Ok(_) | Err(_) => {}
+                }
+                let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 1500));")
+                    .await;
+            }
+            payment_phase.set("delayed".into());
+            booking_error.set(
+                "Stripe is still confirming the test payment. Keep this booking number and refresh its status shortly."
+                    .into(),
+            );
+        });
+    });
 
     let nights = starts_on
         .read()
@@ -698,6 +913,14 @@ pub(crate) fn UnifiedBookingOverlay(
         .map(|(start, end)| (end - start).num_days())
         .unwrap_or(0);
     let trip_ready = nights >= 3;
+    let payment_availability = api::payment_availability(
+        payment_config.read().as_ref(),
+        !payment_config_error.read().is_empty(),
+    );
+    let booking_can_submit = matches!(
+        payment_availability,
+        api::PaymentAvailability::Disabled | api::PaymentAvailability::TestReady
+    );
     let mut trip_was_ready = use_signal(|| trip_ready);
     let all_rentals = use_resource(move || {
         let query = api::CatalogSearchDraft {
@@ -853,24 +1076,6 @@ pub(crate) fn UnifiedBookingOverlay(
             calendar_day += chrono::Duration::days(1);
         }
     }
-    let preferred_stay_nights = *preferred_nights.read();
-    let suggested_stays = if current_availability.is_some()
-        && starts_on.read().is_none()
-        && ends_on.read().is_none()
-        && preferred_stay_nights.is_some()
-    {
-        next_available_stays(
-            (*visible_month.read()).max(today + chrono::Duration::days(1)),
-            add_months(*visible_month.read(), 3),
-            preferred_stay_nights
-                .unwrap_or(minimum_nights)
-                .max(minimum_nights),
-            &unavailable_ranges,
-            4,
-        )
-    } else {
-        Vec::new()
-    };
     let selected_rental = rental_values
         .iter()
         .find(|rental| rental.slug == *selected_slug.read())
@@ -1010,6 +1215,7 @@ pub(crate) fn UnifiedBookingOverlay(
     });
 
     use_effect(move || {
+        let _refresh = *quote_refresh_nonce.read();
         let slug = selected_slug.read().clone();
         let start = *starts_on.read();
         let end = *ends_on.read();
@@ -1066,6 +1272,7 @@ pub(crate) fn UnifiedBookingOverlay(
             return;
         }
         closing.set(true);
+        document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
         let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 180));").await;
         on_close.call(());
     };
@@ -1096,55 +1303,28 @@ pub(crate) fn UnifiedBookingOverlay(
                                         }
                                     }
                                 }
-                                if !selected_slug.read().is_empty() && starts_on.read().is_none() && ends_on.read().is_none() && !*manual_dates.read() {
-                                    div { class: "ub-stay-guide",
-                                        div { class: "ub-stay-guide-head",
-                                            strong { "How long would you like to stay?" }
-                                            p { "Choose a trip length and we’ll find the nearest available dates for this RV." }
-                                        }
-                                        div { class: "ub-stay-lengths",
-                                            button { class: if preferred_stay_nights == Some(3) { "active" } else { "" }, r#type: "button", onclick: move |_| preferred_nights.set(Some(3)), strong { "3 nights" } small { "Quick getaway" } }
-                                            button { class: if preferred_stay_nights == Some(7) { "active" } else { "" }, r#type: "button", onclick: move |_| preferred_nights.set(Some(7)), strong { "7 nights" } small { "Full week" } }
-                                        }
-                                        if let Some(stay_nights) = preferred_stay_nights {
-                                            div { class: "ub-next-available",
-                                                strong { "Choose the nearest or a later opening" }
-                                                if availability_pending {
-                                                    p { "Checking live availability for {stay_nights} nights…" }
-                                                } else if availability_error.is_some() {
-                                                    p { "Nearest dates could not be loaded. Choose dates manually below." }
-                                                } else if suggested_stays.is_empty() {
-                                                    p { "No {stay_nights}-night opening in the next three months. Choose dates manually to look further ahead." }
-                                                } else {
-                                                    div { class: "ub-next-available-list",
-                                                        for (index, (start, end)) in suggested_stays.clone().into_iter().enumerate() {
-                                                            {
-                                                                let label = format!("{} – {}", start.format("%b %-d"), end.format("%b %-d"));
-                                                                rsx! { button { r#type: "button", aria_label: "Select available dates {start} to {end}", onclick: move |_| { visible_month.set(month_start(start)); starts_on.set(Some(start)); ends_on.set(Some(end)); }, small { if index == 0 { "NEAREST" } else { "LATER" } } strong { "{label}" } } }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        button { class: "ub-manual-dates", r#type: "button", onclick: move |_| { preferred_nights.set(None); manual_dates.set(true); }, "Choose dates manually" }
-                                    }
-                                } else {
-                                    div { class: "cat-month-nav",
-                                        button { r#type: "button", aria_label: "Previous month", disabled: *visible_month.read() <= initial_month, onclick: move |_| { let current = *visible_month.read(); if let Some(previous) = current.checked_sub_months(Months::new(1)) { visible_month.set(previous.max(initial_month)); } }, Icon { name: "chevron-left", size: 18, color: "var(--vl-ink)" } }
-                                        span { "Choose delivery and return" }
-                                        button { r#type: "button", aria_label: "Next month", onclick: move |_| { let current = *visible_month.read(); visible_month.set(add_months(current, 1)); }, Icon { name: "chevron-right", size: 18, color: "var(--vl-ink)" } }
-                                    }
-                                    div { class: "cat-calendar-months ub-calendar", for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending } } }
+                                div { class: "cat-month-nav",
+                                    button { r#type: "button", aria_label: "Previous month", disabled: *visible_month.read() <= initial_month, onclick: move |_| { let current = *visible_month.read(); if let Some(previous) = current.checked_sub_months(Months::new(1)) { visible_month.set(previous.max(initial_month)); } }, Icon { name: "chevron-left", size: 18, color: "var(--vl-ink)" } }
+                                    span { "Choose delivery and return" }
+                                    button { r#type: "button", aria_label: "Next month", onclick: move |_| { let current = *visible_month.read(); visible_month.set(add_months(current, 1)); }, Icon { name: "chevron-right", size: 18, color: "var(--vl-ink)" } }
                                 }
+                                div { class: "cat-calendar-months ub-calendar", for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending } } }
                                 div { class: "ub-guests", span { "Guests" } button { r#type: "button", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" } strong { "{guests}" } button { r#type: "button", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" } }
                             }
                         }
                         BookingStep { number: 2, title: "Choose your RV", summary: selected_name.clone(), complete: !selected_slug.read().is_empty(), open: *open_step.read() == 2, on_toggle: move |_| open_step.set(if *open_step.peek() == 2 { 0 } else { 2 }),
                             div { class: "ub-step-content",
-                                p { class: "ub-choice-guidance",
-                                    if trip_ready { "All models are shown. Available RVs continue with these dates; any booked RV opens its calendar for new dates." }
-                                    else { "Choose any RV first to see its live calendar, or choose dates first." }
+                                div { class: "ub-rv-toolbar",
+                                    p { class: "ub-choice-guidance",
+                                        if trip_ready { "All models are shown. Available RVs continue with these dates; any booked RV opens its calendar for new dates." }
+                                        else { "Choose any RV first to see its live calendar, or choose dates first." }
+                                    }
+                                    div { class: "ub-rv-guests", role: "group", aria_label: "Number of guests",
+                                        span { "Guests" }
+                                        button { r#type: "button", aria_label: "Remove one guest", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" }
+                                        strong { aria_live: "polite", "{guests}" }
+                                        button { r#type: "button", aria_label: "Add one guest", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" }
+                                    }
                                 }
                                 if all_rentals_error.is_some() { p { class: "ub-error", "RV models could not be loaded. Check your connection and try again." } }
                                 else if all_rentals.read().is_none() { p { class: "ub-muted", "Loading RV models…" } }
@@ -1266,20 +1446,37 @@ pub(crate) fn UnifiedBookingOverlay(
                                     div { class: "ub-field-grid", input { r#type: "email", autocomplete: "email", value: "{auth_email}", placeholder: "Email", oninput: move |event| auth_email.set(event.value()) } input { r#type: "password", autocomplete: if *auth_register.read() { "new-password" } else { "current-password" }, value: "{auth_password}", placeholder: "Password", oninput: move |event| auth_password.set(event.value()) } }
                                     if !auth_error.read().is_empty() { p { class: "ub-error", "{auth_error}" } }
                                     div { class: "ub-auth-actions", button { class: "ub-primary", r#type: "button", disabled: *auth_busy.read(), onclick: move |_| { let email = auth_email.read().clone(); let password = auth_password.read().clone(); let register = *auth_register.read(); async move { auth_busy.set(true); auth_error.set(String::new()); match api::login(&email, &password, register).await { Ok(tokens) => match api::save_session(&tokens) { Ok(()) => { booking_email.set(tokens.user.email.clone()); user.set(Some(tokens.user)); }, Err(message) => auth_error.set(message) }, Err(_) => auth_error.set("Check your email and password, then try again.".into()) } auth_busy.set(false); } }, if *auth_busy.read() { "Please wait…" } else if *auth_register.read() { "Create account" } else { "Sign in" } } button { r#type: "button", onclick: move |_| { let current = *auth_register.read(); auth_register.set(!current); }, if *auth_register.read() { "I already have an account" } else { "Create an account" } } }
+                                } } else if let Some(created) = pending_payment.read().as_ref() { div { class: "ub-stripe-payment",
+                                    div { class: "ub-stripe-payment-head",
+                                        div { Icon { name: "shield-check", size: 20, color: "var(--vl-forest)" } div { h3 { "Secure test payment" } p { "Booking {created.booking.booking_number} is reserved while Stripe Checkout is open." } } }
+                                        span { "TEST MODE" }
+                                    }
+                                    if payment_phase.read().as_str() == "checking" { p { class: "ub-stripe-state", "Checking webhook-backed booking status…" } }
+                                    if payment_phase.read().as_str() == "mounting" { p { class: "ub-stripe-state", "Loading secure checkout…" } }
+                                    if payment_availability == api::PaymentAvailability::TestReady { div { id: "vl-embedded-checkout", class: "ub-embedded-checkout", aria_label: "Stripe test checkout" } }
+                                    if matches!(payment_phase.read().as_str(), "confirming" | "delayed") { div { class: "ub-confirming-payment", Icon { name: "loader-circle", size: 17, color: "var(--vl-forest)" } span { strong { "Confirming payment…" } small { "Stripe webhook confirmation is the source of truth. Do not submit a second payment." } } } }
+                                    if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
+                                    if payment_phase.read().as_str() == "error" { button { class: "ub-primary", r#type: "button", onclick: move |_| { booking_error.set(String::new()); payment_phase.set("idle".into()); let next = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next); }, "Retry secure Checkout" } }
+                                    if matches!(payment_phase.read().as_str(), "blocked" | "delayed") {
+                                        button { class: "ub-primary", r#type: "button", disabled: payment_phase.read().as_str() == "checking", onclick: { let created = created.clone(); move |_| { let created = created.clone(); async move { payment_phase.set("checking".into()); booking_error.set(String::new()); match api::booking_status(&created.booking.booking_id, &created.access_token).await { Ok(status) if status.confirmed || status.status == "confirmed" => { let mut confirmed = created.clone(); confirmed.booking.status = status.status; confirmed.booking.payment_status = status.payment_status; let _ = api::save_json("vl_last_booking", &confirmed); api::remove_saved(SAVED_PENDING_PAYMENT); pending_payment.set(None); payment_phase.set("confirmed".into()); navigator.push(Route::Confirmed {}); }, Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => { api::remove_saved(SAVED_PENDING_PAYMENT); pending_payment.set(None); payment_phase.set("expired".into()); booking_error.set("This reservation is no longer active. Availability and price are being checked before a new attempt.".into()); let next = quote_refresh_nonce.peek().wrapping_add(1); quote_refresh_nonce.set(next); }, Ok(_) => { booking_error.set("Stripe has not confirmed this payment yet. Do not create a second booking.".into()); if payment_availability == api::PaymentAvailability::TestReady { payment_phase.set("idle".into()); let next = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next); } else { payment_phase.set("blocked".into()); } }, Err(error) => { booking_error.set(format!("Payment status could not be checked: {}", error.message)); payment_phase.set("delayed".into()); } } } } }, "Check payment status" }
+                                    }
+                                    if payment_availability == api::PaymentAvailability::Blocked { button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); payment_phase.set("idle".into()); }, "Retry test configuration" } }
                                 } } else { div { class: "ub-fields",
                                     div { class: "ub-field-grid", input { value: "{first_name}", placeholder: "First name", oninput: move |event| first_name.set(event.value()) } input { value: "{last_name}", placeholder: "Last name", oninput: move |event| last_name.set(event.value()) } }
                                     div { class: "ub-field-grid", input { r#type: "email", value: "{booking_email}", placeholder: "Email", oninput: move |event| booking_email.set(event.value()) } input { r#type: "tel", value: "{phone}", placeholder: "Phone", oninput: move |event| phone.set(event.value()) } }
                                     textarea { value: "{notes}", placeholder: "Notes (optional)", oninput: move |event| notes.set(event.value()) }
-                                    label { class: "ub-terms", input { r#type: "checkbox", checked: *accepted.read(), onchange: move |event| accepted.set(event.checked()) } span { "I accept the rental terms and understand this is a test booking with no card charge." } }
+                                    label { class: "ub-terms", input { r#type: "checkbox", checked: *accepted.read(), disabled: !booking_can_submit, onchange: move |event| accepted.set(event.checked()) } span { if payment_availability == api::PaymentAvailability::TestReady { "I accept the rental terms and authorize this Stripe test-mode payment." } else { "I accept the rental terms and understand this is a test booking with no card charge." } } }
+                                    if payment_availability == api::PaymentAvailability::Loading { p { class: "ub-muted", role: "status", "Checking whether this environment uses Stripe test payments…" } }
+                                    if payment_availability == api::PaymentAvailability::Blocked { p { class: "ub-error", role: "alert", if payment_config_error.read().is_empty() { "Checkout is blocked because the returned Stripe mode, key, or account is not the approved test configuration." } else { "Payment configuration could not be verified. Retry before creating a reservation." } } button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); }, "Retry payment configuration" } }
                                     if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
-                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none(), onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); async move { if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nDelivery address: {}\nDelivery distance: {} km one way\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim(), delivery_address.read(), delivery_km.read().clone().unwrap_or_default()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(created) => { let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); let _ = api::save_json("vl_last_booking", &created); navigator.push(Route::Confirmed {}); }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating booking…" } else { "Confirm test booking" } }
+                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nDelivery address: {}\nDelivery distance: {} km one way\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim(), delivery_address.read(), delivery_km.read().clone().unwrap_or_default()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(created) => { let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_json(SAVED_PENDING_PAYMENT, &created); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_json("vl_last_booking", &created); navigator.push(Route::Confirmed {}); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
                                 } }
                             }
                         }
                     }
                     aside { class: "ub-summary",
                         h3 { aria_live: "polite", if *quote_busy.read() { if let Some(value) = preview_total { AnimatedMoney { id: "ub-trip-price", amount: value } } else { "Updating…" } } else if let Some(value) = quote.read().as_ref() { AnimatedMoney { id: "ub-trip-price", amount: pricing::quote_trip_price(value) } } else if let Some(value) = preview_total { AnimatedMoney { id: "ub-trip-price", amount: value } } else { "Complete delivery" } }
-                        p { if *quote_busy.read() { "Updating the exact trip price…" } else if quote.read().is_some() { "Trip price with preparation, protection, delivery, selected extras and taxes. Damage deposit is separate." } else if preview_total.is_some() { "Known trip costs are shown. Exact taxes are updating; the damage deposit is separate." } else { "Your trip price appears after the delivery address is calculated." } }
+                        p { if *quote_busy.read() { "Updating the exact trip price…" } else if quote.read().is_some() { "Trip price with preparation, protection, delivery, selected extras and taxes. The refundable damage deposit is separate." } else if preview_total.is_some() { "Known trip costs are shown. Exact taxes are updating; the refundable damage deposit is separate." } else { "Your trip price appears after the delivery address is calculated." } }
                         button { class: "ub-summary-dates", r#type: "button", disabled: !trip_ready, onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); },
                             span { "Dates" }
                             b { if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())} · {nights} nights" } else { "Choose dates" } }
@@ -1289,8 +1486,8 @@ pub(crate) fn UnifiedBookingOverlay(
                             if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
                         } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
                         div { class: "ub-deposit-card",
-                            div { span { "REFUNDABLE DAMAGE DEPOSIT" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
-                            p { "Paid separately {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. It is not included in the trip price or the {pricing::BOOKING_DEPOSIT_PERCENT}% booking payment." }
+                            div { span { "DAMAGE AUTHORIZATION HOLD" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                            p { "Authorized on the customer’s card {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. It is not charged or included in the trip price or the {pricing::BOOKING_DEPOSIT_PERCENT}% booking payment." }
                         }
                         div { class: "ub-payment-note",
                             b { "Payment timing" }
@@ -1298,7 +1495,7 @@ pub(crate) fn UnifiedBookingOverlay(
                         }
                         if !quote_error.read().is_empty() { p { class: "ub-error", "{quote_error}" } }
                         div { class: "ub-summary-trip", span { "Dates" } b { if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())}" } else { "Not selected" } } span { "RV" } b { "{selected_name}" } span { "Delivery" } b { if address_ready { "Calculated" } else { "Required" } } }
-                        div { class: "ub-test-note", Icon { name: "shield-check", size: 17, color: "var(--vl-forest)" } span { "Test mode: no card is collected and no charge is made." } }
+                        div { class: "ub-test-note", Icon { name: "shield-check", size: 17, color: "var(--vl-forest)" } span { match payment_availability { api::PaymentAvailability::TestReady => "Stripe test mode: test cards only. Live payments remain disabled.", api::PaymentAvailability::Disabled => "Test mode: no card is collected and no charge is made.", api::PaymentAvailability::Loading => "Checking the test payment configuration…", api::PaymentAvailability::Blocked => "Payment configuration is blocked until the approved Stripe test account is verified.", } } }
                     }
                 }
             }
@@ -1610,6 +1807,22 @@ mod saved_address_tests {
     }
 
     #[test]
+    fn a_saved_payment_always_reopens_the_confirmation_step() {
+        assert_eq!(initial_booking_step(1, true), 5);
+        assert_eq!(initial_booking_step(4, false), 4);
+        assert_eq!(initial_booking_step(9, false), 5);
+    }
+
+    #[test]
+    fn embedded_checkout_script_returns_the_async_mount_result() {
+        let script = embedded_checkout_script("\"pk_test_example\"", "\"secret_example\"");
+
+        assert!(script.trim_start().starts_with("return await (async () =>"));
+        assert!(script.contains("window.Stripe(\"pk_test_example\")"));
+        assert!(script.contains("clientSecret: \"secret_example\""));
+    }
+
+    #[test]
     fn rental_selection_keeps_dates_only_when_server_marks_it_available() {
         assert!(rental_selection_keeps_dates(true, Some(true)));
         assert!(!rental_selection_keeps_dates(true, Some(false)));
@@ -1633,36 +1846,5 @@ mod saved_address_tests {
             NaiveDate::from_ymd_opt(2030, 8, 11).unwrap(),
             &blocked,
         ));
-    }
-
-    #[test]
-    fn next_available_dates_skip_bookings_and_allow_same_day_turnover() {
-        let blocked_return = NaiveDate::from_ymd_opt(2030, 7, 20).unwrap();
-        let blocked = vec![(
-            booking_moment(NaiveDate::from_ymd_opt(2030, 7, 15).unwrap(), 14).unwrap(),
-            booking_moment(blocked_return, 11).unwrap(),
-        )];
-
-        let suggestions = next_available_stays(
-            NaiveDate::from_ymd_opt(2030, 7, 14).unwrap(),
-            NaiveDate::from_ymd_opt(2030, 8, 1).unwrap(),
-            3,
-            &blocked,
-            2,
-        );
-
-        assert_eq!(
-            suggestions,
-            vec![
-                (
-                    blocked_return,
-                    NaiveDate::from_ymd_opt(2030, 7, 23).unwrap()
-                ),
-                (
-                    NaiveDate::from_ymd_opt(2030, 7, 21).unwrap(),
-                    NaiveDate::from_ymd_opt(2030, 7, 24).unwrap(),
-                ),
-            ]
-        );
     }
 }

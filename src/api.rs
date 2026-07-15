@@ -702,9 +702,38 @@ pub struct Booking {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CreatedBooking {
     pub booking: Booking,
+    #[serde(default)]
     pub access_token: String,
     #[serde(default)]
     pub notification_email_sent: bool,
+    #[serde(default, alias = "checkout_client_secret")]
+    pub client_secret: Option<String>,
+    #[serde(default)]
+    pub checkout_session_id: Option<String>,
+    #[serde(default)]
+    pub payment_enabled: bool,
+    #[serde(default)]
+    pub payment_expires_at: Option<String>,
+    #[serde(default)]
+    pub checkout_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct BookingPaymentStatus {
+    #[serde(default)]
+    pub booking_id: String,
+    #[serde(default)]
+    pub booking_number: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub payment_status: String,
+    #[serde(default)]
+    pub confirmed: bool,
+    #[serde(default)]
+    pub payment_expires_at: Option<String>,
+    #[serde(default)]
+    pub obligations: Vec<AdminPaymentObligation>,
 }
 
 #[derive(Deserialize)]
@@ -712,30 +741,520 @@ pub struct BookingsResponse {
     pub bookings: Vec<Booking>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct AdminBooking {
+    #[serde(default)]
     pub booking_id: String,
+    #[serde(default)]
     pub booking_number: String,
+    #[serde(default)]
     pub rental_slug: String,
+    #[serde(default)]
     pub rental_name: String,
+    #[serde(default)]
     pub guests: i32,
+    #[serde(default)]
     pub first_name: String,
+    #[serde(default)]
     pub last_name: String,
+    #[serde(default)]
     pub email: String,
+    #[serde(default)]
     pub phone: String,
+    #[serde(default)]
     pub status: String,
+    #[serde(default)]
     pub payment_status: String,
+    #[serde(default)]
     pub starts_at: String,
+    #[serde(default)]
     pub ends_at: String,
+    #[serde(default = "default_currency")]
     pub currency: String,
+    #[serde(default)]
     pub total: String,
+    #[serde(default)]
     pub amount_due_now: String,
+    #[serde(default)]
     pub created_at: String,
+    #[serde(default)]
+    pub admin_notes: String,
+    #[serde(default)]
+    pub balance_due_at: Option<String>,
+    #[serde(default)]
+    pub payment_expires_at: Option<String>,
+    #[serde(default)]
+    pub payment_obligations: Vec<AdminPaymentObligation>,
+    #[serde(default)]
+    pub timeline: Vec<AdminTimelineEvent>,
+}
+
+fn default_currency() -> String {
+    "CAD".into()
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct PaymentConfig {
+    #[serde(default, alias = "payments_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub publishable_key: String,
+    #[serde(default)]
+    pub account_id: String,
+}
+
+pub const EXPECTED_STRIPE_ACCOUNT_ID: &str = "acct_1SpY7K2MR4C4rvKM";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaymentAvailability {
+    Loading,
+    Disabled,
+    TestReady,
+    Blocked,
+}
+
+pub fn payment_availability(
+    config: Option<&PaymentConfig>,
+    configuration_failed: bool,
+) -> PaymentAvailability {
+    if configuration_failed {
+        return PaymentAvailability::Blocked;
+    }
+    let Some(config) = config else {
+        return PaymentAvailability::Loading;
+    };
+    if !config.enabled {
+        return PaymentAvailability::Disabled;
+    }
+    if config.mode == "test"
+        && config.publishable_key.starts_with("pk_test_")
+        && config.account_id == EXPECTED_STRIPE_ACCOUNT_ID
+    {
+        PaymentAvailability::TestReady
+    } else {
+        PaymentAvailability::Blocked
+    }
+}
+
+fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminDashboard {
+    #[serde(default)]
+    pub active_bookings: i64,
+    #[serde(default, alias = "pending_payment")]
+    pub pending_payments: i64,
+    #[serde(default, alias = "payment_failures")]
+    pub payment_errors: i64,
+    #[serde(default, alias = "deliveries_today")]
+    pub upcoming_deliveries: i64,
+    #[serde(default)]
+    pub overdue_actions: i64,
+    #[serde(default)]
+    pub attention: Vec<AdminAttentionItem>,
+    #[serde(default)]
+    pub today: Vec<AdminScheduleItem>,
+    #[serde(default)]
+    pub confirmed: i64,
+    #[serde(default)]
+    pub returns_today: i64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminAttentionItem {
+    #[serde(default, alias = "kind")]
+    pub item_type: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, alias = "message")]
+    pub detail: String,
+    #[serde(default)]
+    pub booking_id: Option<String>,
+    #[serde(default)]
+    pub severity: String,
+    #[serde(default)]
+    pub booking_number: String,
+    #[serde(default)]
+    pub due_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminScheduleItem {
+    #[serde(default)]
+    pub booking_id: String,
+    #[serde(default)]
+    pub booking_number: String,
+    #[serde(default)]
+    pub rental_name: String,
+    #[serde(default)]
+    pub customer_name: String,
+    #[serde(default)]
+    pub action: String,
+    #[serde(default)]
+    pub scheduled_at: String,
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default)]
+    pub last_name: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub starts_at: String,
+    #[serde(default)]
+    pub ends_at: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminPaymentObligation {
+    #[serde(default, alias = "id", alias = "obligation_id")]
+    pub payment_obligation_id: String,
+    #[serde(default)]
+    pub payment_id: Option<String>,
+    #[serde(default)]
+    pub booking_id: String,
+    #[serde(default)]
+    pub booking_number: String,
+    #[serde(default)]
+    pub customer_name: String,
+    #[serde(default, alias = "obligation_type")]
+    pub payment_type: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default = "default_currency")]
+    pub currency: String,
+    #[serde(default)]
+    pub amount: String,
+    #[serde(default)]
+    pub amount_paid: String,
+    #[serde(default)]
+    pub amount_capturable: String,
+    #[serde(default)]
+    pub amount_authorized: String,
+    #[serde(default)]
+    pub amount_captured: String,
+    #[serde(default)]
+    pub amount_refunded: String,
+    #[serde(default)]
+    pub due_at: Option<String>,
+    #[serde(default)]
+    pub capture_before: Option<String>,
+    #[serde(default)]
+    pub hosted_url: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub last_error_code: Option<String>,
+    #[serde(default)]
+    pub last_error_message: Option<String>,
+    #[serde(default)]
+    pub provider_reference: Option<String>,
+    #[serde(default)]
+    pub provider_object_type: Option<String>,
+    #[serde(default)]
+    pub extended_authorization_status: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub attempt_count: i32,
+    #[serde(default)]
+    pub sequence_number: i32,
+    #[serde(default)]
+    pub last_provider_status: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
+    #[serde(default)]
+    pub financial_operation: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminFinancialOperation {
+    #[serde(default)]
+    pub operation_id: String,
+    #[serde(default)]
+    pub booking_id: String,
+    #[serde(default)]
+    pub obligation_id: Option<String>,
+    #[serde(default)]
+    pub payment_id: Option<String>,
+    #[serde(default)]
+    pub operation_type: String,
+    #[serde(default)]
+    pub sequence_number: i32,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default = "default_currency")]
+    pub currency: String,
+    #[serde(default)]
+    pub amount: String,
+    #[serde(default)]
+    pub provider_reference: Option<String>,
+    #[serde(default)]
+    pub attempt_count: i32,
+    #[serde(default)]
+    pub last_provider_status: Option<String>,
+    #[serde(default)]
+    pub last_error_code: Option<String>,
+    #[serde(default)]
+    pub last_error_message: Option<String>,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+impl From<AdminFinancialOperation> for AdminPaymentObligation {
+    fn from(operation: AdminFinancialOperation) -> Self {
+        Self {
+            payment_obligation_id: operation.operation_id,
+            payment_id: operation.payment_id,
+            booking_id: operation.booking_id,
+            payment_type: operation.operation_type,
+            status: operation.status,
+            currency: operation.currency,
+            amount: operation.amount,
+            provider_reference: operation.provider_reference,
+            attempt_count: operation.attempt_count,
+            sequence_number: operation.sequence_number,
+            last_provider_status: operation.last_provider_status,
+            last_error_code: operation.last_error_code,
+            last_error_message: operation.last_error_message,
+            updated_at: operation.updated_at,
+            financial_operation: true,
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminBookingDetail {
+    pub booking: AdminBooking,
+    #[serde(default)]
+    pub admin_notes: String,
+    #[serde(default)]
+    pub payment_expires_at: Option<String>,
+    #[serde(default)]
+    pub balance_due_at: Option<String>,
+    #[serde(default)]
+    pub delivered_at: Option<String>,
+    #[serde(default)]
+    pub returned_at: Option<String>,
+    #[serde(default)]
+    pub cancelled_at: Option<String>,
+    #[serde(default)]
+    pub cancellation_reason: Option<String>,
+    #[serde(default, alias = "payment_obligations")]
+    pub obligations: Vec<AdminPaymentObligation>,
+    #[serde(default)]
+    pub financial_operations: Vec<AdminFinancialOperation>,
+    #[serde(default)]
+    pub damage_claims: Vec<AdminDamageClaim>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminDamageClaim {
+    #[serde(default)]
+    pub damage_claim_id: String,
+    #[serde(default)]
+    pub payment_id: String,
+    #[serde(default)]
+    pub claimed_amount: String,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub submitted_at: Option<String>,
+    #[serde(default)]
+    pub captured_at: Option<String>,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+    #[serde(default)]
+    pub evidence: Vec<AdminDamageEvidence>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminDamageEvidence {
+    #[serde(default)]
+    pub evidence_id: String,
+    #[serde(default)]
+    pub damage_claim_id: String,
+    #[serde(default)]
+    pub original_filename: String,
+    #[serde(default)]
+    pub mime_type: String,
+    #[serde(default)]
+    pub byte_size: i64,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminDamageEvidenceAccess {
+    #[serde(default)]
+    pub evidence_id: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub expires_at: String,
+    #[serde(default)]
+    pub access_token: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminProviderCleanup {
+    #[serde(default)]
+    pub object_type: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub attention_required: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminActionResult {
+    pub booking: AdminBookingDetail,
+    #[serde(default)]
+    pub provider_status: Option<String>,
+    #[serde(default)]
+    pub provider_cleanup: Vec<AdminProviderCleanup>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminTimelineEvent {
+    #[serde(default)]
+    pub event_type: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub detail: String,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminAuditEvent {
+    #[serde(default, alias = "id")]
+    pub audit_event_id: String,
+    #[serde(default)]
+    pub action: String,
+    #[serde(default)]
+    pub actor_email: String,
+    #[serde(default)]
+    pub booking_id: Option<String>,
+    #[serde(default)]
+    pub booking_number: Option<String>,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub actor_user_id: Option<String>,
+    #[serde(default)]
+    pub entity_type: String,
+    #[serde(default)]
+    pub entity_id: String,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default)]
+    pub request_id: String,
 }
 
 #[derive(Deserialize)]
 struct AdminBookingsResponse {
     bookings: Vec<AdminBooking>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AdminDashboardResponse {
+    Wrapped { dashboard: AdminDashboard },
+    Direct(AdminDashboard),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AdminBookingDetailResponse {
+    Wrapped { booking: AdminBookingDetail },
+    Detail(AdminBookingDetail),
+    BasicWrapped { booking: AdminBooking },
+    Direct(AdminBooking),
+}
+
+#[derive(Deserialize)]
+struct AdminPaymentsResponse {
+    #[serde(default, alias = "payments")]
+    payment_obligations: Vec<AdminPaymentObligation>,
+    #[serde(default)]
+    financial_operations: Vec<AdminFinancialOperation>,
+}
+
+#[derive(Deserialize)]
+struct AdminAuditEventsResponse {
+    #[serde(default, alias = "events")]
+    audit_events: Vec<AdminAuditEvent>,
+}
+
+#[derive(Serialize)]
+struct ManualBookingPayload<'a> {
+    request_id: &'a str,
+    rental_slug: &'a str,
+    starts_on: &'a str,
+    ends_on: &'a str,
+    guests: i32,
+    first_name: &'a str,
+    last_name: &'a str,
+    email: &'a str,
+    phone: &'a str,
+    delivery_address: &'a str,
+    notes: Option<&'a str>,
+    admin_notes: &'a str,
+}
+
+#[derive(Serialize)]
+struct CustomerUpdatePayload<'a> {
+    request_id: &'a str,
+    first_name: &'a str,
+    last_name: &'a str,
+    email: &'a str,
+    phone: &'a str,
+}
+
+#[derive(Serialize)]
+struct NotesUpdatePayload<'a> {
+    request_id: &'a str,
+    admin_notes: &'a str,
+}
+
+#[derive(Serialize)]
+struct AdminActionPayload<'a> {
+    request_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refund_amount: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    amount: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    evidence_ids: Option<&'a [String]>,
+}
+
+#[derive(Deserialize)]
+struct PaymentConfigResponse {
+    #[serde(default)]
+    payment: Option<PaymentConfig>,
+    #[serde(flatten)]
+    config: PaymentConfig,
 }
 
 #[derive(Serialize)]
@@ -976,6 +1495,42 @@ pub async fn create_quote(draft: &TripDraft) -> Result<QuoteResponse, ApiError> 
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
+pub async fn payment_config() -> Result<PaymentConfig, ApiError> {
+    let response = Request::get(&format!("{API_BASE}/api/v1/payments/config"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<PaymentConfigResponse>()
+        .await
+        .map(|value| value.payment.unwrap_or(value.config))
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn booking_status(
+    booking_id: &str,
+    booking_token: &str,
+) -> Result<BookingPaymentStatus, ApiError> {
+    let response = Request::get(&format!(
+        "{API_BASE}/api/v1/bookings/{}/payment-status",
+        urlencoding::encode(booking_id)
+    ))
+    .header("x-booking-token", booking_token)
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<BookingPaymentStatus>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
 pub async fn create_booking(
     quote_id: &str,
     first_name: &str,
@@ -1131,6 +1686,426 @@ pub async fn admin_bookings() -> Result<Vec<AdminBooking>, ApiError> {
         .await
         .map(|value| value.bookings)
         .map_err(|error| ApiError::client(error.to_string()))
+}
+
+fn admin_access_token() -> Result<String, ApiError> {
+    access_token().ok_or_else(|| ApiError {
+        status: 401,
+        code: "unauthorized".into(),
+        message: "Admin sign-in is required".into(),
+    })
+}
+
+pub async fn admin_dashboard() -> Result<AdminDashboard, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!("{API_BASE}/api/v1/admin/dashboard"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminDashboardResponse>()
+        .await
+        .map(|value| match value {
+            AdminDashboardResponse::Wrapped { dashboard }
+            | AdminDashboardResponse::Direct(dashboard) => dashboard,
+        })
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_booking(booking_id: &str) -> Result<AdminBookingDetail, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!(
+        "{API_BASE}/api/v1/admin/bookings/{}",
+        urlencoding::encode(booking_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminBookingDetailResponse>()
+        .await
+        .map(|value| match value {
+            AdminBookingDetailResponse::Wrapped { booking } => booking,
+            AdminBookingDetailResponse::Detail(detail) => detail,
+            AdminBookingDetailResponse::BasicWrapped { booking }
+            | AdminBookingDetailResponse::Direct(booking) => AdminBookingDetail {
+                booking,
+                ..AdminBookingDetail::default()
+            },
+        })
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_payments() -> Result<Vec<AdminPaymentObligation>, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!("{API_BASE}/api/v1/admin/payments?limit=500"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminPaymentsResponse>()
+        .await
+        .map(|value| {
+            let mut rows = value.payment_obligations;
+            rows.extend(
+                value
+                    .financial_operations
+                    .into_iter()
+                    .map(AdminPaymentObligation::from),
+            );
+            rows
+        })
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_audit_events() -> Result<Vec<AdminAuditEvent>, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!("{API_BASE}/api/v1/admin/audit-events?limit=500"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminAuditEventsResponse>()
+        .await
+        .map(|value| value.audit_events)
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_audit_csv() -> Result<String, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!("{API_BASE}/api/v1/admin/audit-events.csv"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .text()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub fn download_csv(filename: &str, csv: &str) -> Result<(), String> {
+    use wasm_bindgen::JsCast;
+
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or("This browser cannot start the CSV download")?;
+    let link = document
+        .create_element("a")
+        .map_err(|_| "The CSV download link could not be created")?;
+    link.set_attribute(
+        "href",
+        &format!("data:text/csv;charset=utf-8,{}", urlencoding::encode(csv)),
+    )
+    .map_err(|_| "The CSV download could not be prepared")?;
+    link.set_attribute("download", filename)
+        .map_err(|_| "The CSV filename could not be set")?;
+    link.set_attribute("hidden", "")
+        .map_err(|_| "The CSV download could not be prepared")?;
+    let body = document
+        .body()
+        .ok_or("This page cannot start the CSV download")?;
+    body.append_child(&link)
+        .map_err(|_| "The CSV download could not be started")?;
+    link.dyn_ref::<web_sys::HtmlElement>()
+        .ok_or("The CSV download link is unavailable")?
+        .click();
+    link.remove();
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn create_manual_admin_booking(
+    rental_slug: &str,
+    starts_on: &str,
+    ends_on: &str,
+    guests: i32,
+    first_name: &str,
+    last_name: &str,
+    email: &str,
+    phone: &str,
+    delivery_address: &str,
+    notes: &str,
+) -> Result<CreatedBooking, ApiError> {
+    let token = admin_access_token()?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = Request::post(&format!("{API_BASE}/api/v1/admin/bookings/manual"))
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"))
+        .json(&ManualBookingPayload {
+            request_id: &request_id,
+            rental_slug,
+            starts_on,
+            ends_on,
+            guests,
+            first_name,
+            last_name,
+            email,
+            phone,
+            delivery_address,
+            notes: None,
+            admin_notes: notes,
+        })
+        .map_err(|error| ApiError::client(error.to_string()))?
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<CreatedBooking>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn update_admin_booking_customer(
+    booking_id: &str,
+    first_name: &str,
+    last_name: &str,
+    email: &str,
+    phone: &str,
+) -> Result<AdminBookingDetail, ApiError> {
+    let token = admin_access_token()?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = Request::patch(&format!(
+        "{API_BASE}/api/v1/admin/bookings/{}/customer",
+        urlencoding::encode(booking_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&CustomerUpdatePayload {
+        request_id: &request_id,
+        first_name,
+        last_name,
+        email,
+        phone,
+    })
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    admin_booking_action_response(response).await
+}
+
+pub async fn update_admin_booking_notes(
+    booking_id: &str,
+    notes: &str,
+) -> Result<AdminBookingDetail, ApiError> {
+    let token = admin_access_token()?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = Request::patch(&format!(
+        "{API_BASE}/api/v1/admin/bookings/{}/notes",
+        urlencoding::encode(booking_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&NotesUpdatePayload {
+        request_id: &request_id,
+        admin_notes: notes,
+    })
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    admin_booking_action_response(response).await
+}
+
+async fn admin_booking_action_response(
+    response: gloo_net::http::Response,
+) -> Result<AdminBookingDetail, ApiError> {
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminBookingDetailResponse>()
+        .await
+        .map(|value| match value {
+            AdminBookingDetailResponse::Wrapped { booking }
+            | AdminBookingDetailResponse::Detail(booking) => booking,
+            AdminBookingDetailResponse::BasicWrapped { booking }
+            | AdminBookingDetailResponse::Direct(booking) => AdminBookingDetail {
+                booking,
+                ..AdminBookingDetail::default()
+            },
+        })
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_booking_action(
+    booking_id: &str,
+    action: &str,
+    amount: Option<&str>,
+    reason: Option<&str>,
+    evidence_ids: Option<&[String]>,
+) -> Result<AdminActionResult, ApiError> {
+    let token = admin_access_token()?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let path = match action {
+        "delivered" => "mark-delivered",
+        "returned" => "mark-returned",
+        "cancel" => "cancel",
+        "release" => "damage-deposit/refund",
+        "capture" => "damage-deposit/settle",
+        _ => return Err(ApiError::client("Unsupported admin action")),
+    };
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/bookings/{}/{}",
+        urlencoding::encode(booking_id),
+        path
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&AdminActionPayload {
+        request_id: &request_id,
+        refund_amount: (action == "cancel").then_some(amount).flatten(),
+        amount: (action == "capture").then_some(amount).flatten(),
+        reason,
+        evidence_ids,
+    })
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminActionResult>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn resend_admin_payment_link(obligation_id: &str) -> Result<(), ApiError> {
+    let token = admin_access_token()?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/payment-obligations/{}/resend-link",
+        urlencoding::encode(obligation_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&serde_json::json!({ "request_id": request_id }))
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    Ok(())
+}
+
+pub async fn refresh_admin_payment_status(
+    payment_id: &str,
+) -> Result<AdminPaymentObligation, ApiError> {
+    let token = admin_access_token()?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/payments/{}/refresh-status",
+        urlencoding::encode(payment_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&serde_json::json!({ "request_id": request_id }))
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminPaymentObligation>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn upload_admin_damage_evidence(
+    booking_id: &str,
+    file: &web_sys::File,
+) -> Result<String, ApiError> {
+    let token = admin_access_token()?;
+    let form = web_sys::FormData::new()
+        .map_err(|_| ApiError::client("The evidence upload could not be prepared"))?;
+    form.append_with_blob_and_filename("photo", file, &file.name())
+        .map_err(|_| ApiError::client("The selected evidence photo could not be attached"))?;
+    form.append_with_str("request_id", &uuid::Uuid::new_v4().to_string())
+        .map_err(|_| ApiError::client("The evidence request could not be prepared"))?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/bookings/{}/damage-evidence",
+        urlencoding::encode(booking_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .body(form)
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    #[derive(Deserialize)]
+    struct EvidenceResponse {
+        #[serde(default, alias = "id")]
+        evidence_id: String,
+    }
+    let value = response
+        .json::<EvidenceResponse>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if value.evidence_id.is_empty() {
+        return Err(ApiError::client(
+            "The evidence upload did not return an evidence ID",
+        ));
+    }
+    Ok(value.evidence_id)
+}
+
+pub async fn admin_damage_evidence_access(
+    evidence_id: &str,
+) -> Result<AdminDamageEvidenceAccess, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!(
+        "{API_BASE}/api/v1/admin/damage-evidence/{}/access",
+        urlencoding::encode(evidence_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    let access = response
+        .json::<AdminDamageEvidenceAccess>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if access.evidence_id.is_empty() || access.url.is_empty() {
+        return Err(ApiError::client(
+            "The private evidence access response was incomplete",
+        ));
+    }
+    Ok(access)
 }
 
 pub async fn create_admin_availability_block(
@@ -1546,6 +2521,209 @@ mod delivery_draft_tests {
         assert_eq!(response.bookings[0].guests, 4);
         assert_eq!(response.bookings[0].email, "guest@example.com");
         assert_eq!(response.bookings[0].rental_slug, "jayco26");
+    }
+
+    #[test]
+    fn payment_config_accepts_flat_and_wrapped_test_mode_contracts() {
+        let flat: PaymentConfigResponse = serde_json::from_str(
+            r#"{"payments_enabled":true,"mode":"test","publishable_key":"pk_test_example","account_id":"acct_test"}"#,
+        )
+        .unwrap();
+        let wrapped: PaymentConfigResponse = serde_json::from_str(
+            r#"{"payment":{"enabled":false,"mode":"test","publishable_key":"","account_id":"acct_test"}}"#,
+        )
+        .unwrap();
+
+        assert!(flat.payment.unwrap_or(flat.config).enabled);
+        assert!(!wrapped.payment.unwrap_or(wrapped.config).enabled);
+    }
+
+    #[test]
+    fn payment_availability_blocks_unexpected_mode_key_or_account() {
+        let ready = PaymentConfig {
+            enabled: true,
+            mode: "test".into(),
+            publishable_key: "pk_test_example".into(),
+            account_id: EXPECTED_STRIPE_ACCOUNT_ID.into(),
+        };
+        assert_eq!(
+            payment_availability(Some(&ready), false),
+            PaymentAvailability::TestReady
+        );
+
+        for blocked in [
+            PaymentConfig {
+                mode: "live".into(),
+                ..ready.clone()
+            },
+            PaymentConfig {
+                publishable_key: "pk_live_example".into(),
+                ..ready.clone()
+            },
+            PaymentConfig {
+                account_id: "acct_unexpected".into(),
+                ..ready.clone()
+            },
+        ] {
+            assert_eq!(
+                payment_availability(Some(&blocked), false),
+                PaymentAvailability::Blocked
+            );
+        }
+        assert_eq!(
+            payment_availability(None, true),
+            PaymentAvailability::Blocked
+        );
+    }
+
+    #[test]
+    fn disabled_payment_config_preserves_legacy_no_card_mode() {
+        let disabled = PaymentConfig {
+            enabled: false,
+            mode: "test".into(),
+            publishable_key: String::new(),
+            account_id: EXPECTED_STRIPE_ACCOUNT_ID.into(),
+        };
+
+        assert_eq!(
+            payment_availability(Some(&disabled), false),
+            PaymentAvailability::Disabled
+        );
+        assert_eq!(
+            payment_availability(None, false),
+            PaymentAvailability::Loading
+        );
+    }
+
+    #[test]
+    fn pending_booking_accepts_embedded_checkout_fields() {
+        let created: CreatedBooking = serde_json::from_str(
+            r#"{"booking":{"booking_id":"booking-1","booking_number":"VL-1","status":"pending_payment","payment_status":"unpaid","starts_at":"2030-07-15T21:00:00Z","ends_at":"2030-07-18T18:00:00Z","currency":"CAD","total":"1000.00","amount_due_now":"300.00"},"access_token":"private-token","checkout_session_id":"cs_test_1","checkout_client_secret":"cs_test_secret_1","payment_expires_at":"2030-01-01T00:30:00Z"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(created.client_secret.as_deref(), Some("cs_test_secret_1"));
+        assert_eq!(created.booking.status, "pending_payment");
+    }
+
+    #[test]
+    fn manual_booking_keeps_hosted_checkout_and_notification_result() {
+        let created: CreatedBooking = serde_json::from_str(
+            r#"{"booking":{"booking_id":"booking-1","booking_number":"VL-1","status":"pending_payment","payment_status":"unpaid","starts_at":"2030-07-15T21:00:00Z","ends_at":"2030-07-18T18:00:00Z","currency":"CAD","total":"1000.00","amount_due_now":"300.00"},"access_token":"private-token","notification_email_sent":false,"checkout_session_id":"cs_test_1","checkout_url":"https://checkout.stripe.com/c/pay/cs_test_1","payment_expires_at":"2030-01-01T02:00:00Z"}"#,
+        )
+        .unwrap();
+
+        assert!(!created.notification_email_sent);
+        assert_eq!(
+            created.checkout_url.as_deref(),
+            Some("https://checkout.stripe.com/c/pay/cs_test_1")
+        );
+    }
+
+    #[test]
+    fn manual_booking_sends_empty_admin_notes_as_a_string() {
+        let payload = ManualBookingPayload {
+            request_id: "00000000-0000-0000-0000-000000000000",
+            rental_slug: "jayco26",
+            starts_on: "2030-07-15",
+            ends_on: "2030-07-18",
+            guests: 4,
+            first_name: "Test",
+            last_name: "Guest",
+            email: "guest@example.com",
+            phone: "2505550100",
+            delivery_address: "Kelowna, BC",
+            notes: None,
+            admin_notes: "",
+        };
+        let value = serde_json::to_value(payload).unwrap();
+
+        assert_eq!(value["admin_notes"], "");
+        assert!(value["notes"].is_null());
+    }
+
+    #[test]
+    fn admin_action_accepts_nested_detail_and_obligation_contract() {
+        let response: AdminBookingDetailResponse = serde_json::from_str(
+            r#"{"booking":{"booking":{"booking_id":"booking-1","booking_number":"VL-1","rental_slug":"jayco26","rental_name":"Jayco 26","guests":4,"first_name":"Test","last_name":"Guest","email":"guest@example.com","phone":"250-555-0100","status":"completed","payment_status":"paid","starts_at":"2030-07-15T21:00:00Z","ends_at":"2030-07-18T18:00:00Z","currency":"CAD","total":"1497.00","amount_due_now":"449.10","created_at":"2030-01-01T00:00:00Z"},"admin_notes":"Inspected","obligations":[{"obligation_id":"obligation-1","booking_id":"booking-1","obligation_type":"damage_hold","amount":"1000.00","currency":"CAD","status":"authorized","amount_authorized":"1000.00"}]},"provider_status":"requires_capture"}"#,
+        )
+        .unwrap();
+
+        let AdminBookingDetailResponse::Wrapped { booking } = response else {
+            panic!("expected wrapped booking detail");
+        };
+        assert_eq!(booking.obligations[0].payment_type, "damage_hold");
+        assert_eq!(booking.admin_notes, "Inspected");
+    }
+
+    #[test]
+    fn admin_action_preserves_provider_attention_from_a_success_response() {
+        let response: AdminActionResult = serde_json::from_str(
+            r#"{"booking":{"booking":{"booking_id":"booking-1","booking_number":"VL-1","rental_slug":"jayco26","rental_name":"Jayco 26","guests":4,"first_name":"Test","last_name":"Guest","email":"guest@example.com","phone":"250-555-0100","status":"cancelled","payment_status":"paid","starts_at":"2030-07-15T21:00:00Z","ends_at":"2030-07-18T18:00:00Z","currency":"CAD","total":"1497.00","amount_due_now":"449.10","created_at":"2030-01-01T00:00:00Z"},"obligations":[],"financial_operations":[]},"provider_status":"failed","provider_cleanup":[{"object_type":"invoice","provider_reference":"in_test","status":"failed","attention_required":true,"message":"Stripe invoice could not be voided"}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(response.provider_status.as_deref(), Some("failed"));
+        assert!(response.provider_cleanup[0].attention_required);
+        assert_eq!(response.booking.booking.status, "cancelled");
+    }
+
+    #[test]
+    fn admin_detail_accepts_private_damage_evidence_summaries_without_storage_fields() {
+        let detail: AdminBookingDetail = serde_json::from_str(
+            r#"{"booking":{"booking_id":"booking-1","booking_number":"VL-1","rental_slug":"jayco26","rental_name":"Jayco 26","guests":4,"first_name":"Test","last_name":"Guest","email":"guest@example.com","phone":"250-555-0100","status":"completed","payment_status":"paid","starts_at":"2030-07-15T21:00:00Z","ends_at":"2030-07-18T18:00:00Z","currency":"CAD","total":"1497.00","amount_due_now":"449.10","created_at":"2030-01-01T00:00:00Z"},"obligations":[],"financial_operations":[],"damage_claims":[{"damage_claim_id":"claim-1","payment_id":"payment-1","claimed_amount":"125.00","reason":"Awning damage","status":"submitted","submitted_at":"2030-07-19T18:00:00Z","captured_at":null,"created_at":"2030-07-19T17:00:00Z","updated_at":"2030-07-19T18:00:00Z","evidence":[{"evidence_id":"evidence-1","damage_claim_id":"claim-1","original_filename":"awning.webp","mime_type":"image/webp","byte_size":2048,"created_at":"2030-07-19T17:30:00Z"}]}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            detail.damage_claims[0].evidence[0].evidence_id,
+            "evidence-1"
+        );
+        assert_eq!(detail.damage_claims[0].claimed_amount, "125.00");
+    }
+
+    #[test]
+    fn evidence_access_accepts_signed_and_tokenized_preview_contracts() {
+        let signed: AdminDamageEvidenceAccess = serde_json::from_str(
+            r#"{"evidence_id":"evidence-1","url":"https://storage.example/signed","expires_at":"2030-07-19T18:15:00Z"}"#,
+        )
+        .unwrap();
+        let local: AdminDamageEvidenceAccess = serde_json::from_str(
+            r#"{"evidence_id":"evidence-2","url":"https://api.example/api/v1/admin/damage-evidence/evidence-2/content","expires_at":"2030-07-19T18:15:00Z","access_token":"one-time-token"}"#,
+        )
+        .unwrap();
+
+        assert!(signed.access_token.is_none());
+        assert_eq!(local.access_token.as_deref(), Some("one-time-token"));
+    }
+
+    #[test]
+    fn admin_payments_include_durable_refund_parts() {
+        let response: AdminPaymentsResponse = serde_json::from_str(
+            r#"{"payments":[],"financial_operations":[{"operation_id":"operation-1","booking_id":"booking-1","payment_id":"payment-1","operation_type":"refund","sequence_number":2,"status":"submitted","amount":"300.00","currency":"CAD","attempt_count":1,"last_provider_status":"pending","created_at":"2030-01-01T00:00:00Z","updated_at":"2030-01-01T00:00:01Z"}]}"#,
+        )
+        .unwrap();
+        let operation = response.financial_operations.into_iter().next().unwrap();
+        let row = AdminPaymentObligation::from(operation);
+
+        assert!(row.financial_operation);
+        assert_eq!(row.payment_type, "refund");
+        assert_eq!(row.status, "submitted");
+        assert_eq!(row.amount, "300.00");
+        assert_eq!(row.sequence_number, 2);
+        assert_eq!(row.last_provider_status.as_deref(), Some("pending"));
+        assert_eq!(row.payment_id.as_deref(), Some("payment-1"));
+    }
+
+    #[test]
+    fn payment_status_contract_is_webhook_backed() {
+        let status: BookingPaymentStatus = serde_json::from_str(
+            r#"{"booking_id":"booking-1","booking_number":"VL-1","status":"confirmed","payment_status":"paid","confirmed":true,"payment_expires_at":null,"obligations":[]}"#,
+        )
+        .unwrap();
+
+        assert!(status.confirmed);
+        assert_eq!(status.payment_status, "paid");
     }
 
     #[test]

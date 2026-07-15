@@ -93,9 +93,9 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
                 GridCell { label: "Guests", value: format!("{} guests", draft.as_ref().map(|value| value.guests).unwrap_or_default()) }
                 GridCell { label: "Trip price", value: format!("CA${}", booking.map(|value| value.total.as_str()).unwrap_or("0.00")) }
                 GridCell { label: "Booking payment", value: format!("CA${}", booking.map(|value| value.amount_due_now.as_str()).unwrap_or("0.00")) }
-                GridCell { label: "Damage deposit", value: pricing::money(pricing::DAMAGE_DEPOSIT) }
+                GridCell { label: "Refundable damage deposit", value: pricing::money(pricing::DAMAGE_DEPOSIT) }
             }
-            div { class: "cf-payment-note", "Damage deposit is separate and due 48 hours before delivery. Future payment reminders include a direct payment link by email." }
+            div { class: "cf-payment-note", "The separate refundable CA$1,000 damage deposit is charged 48 hours before delivery. After return and inspection, it is refunded to the original payment method less any documented damage. The secure payment link is sent by email." }
             div { class: "cf-divider" }
             div { class: "cf-host",
                 div { class: "cf-host-l",
