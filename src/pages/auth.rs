@@ -27,6 +27,7 @@ pub fn AuthCallback() -> Element {
 
 #[component]
 pub fn Account() -> Element {
+    let rentals_href = api::frontend_path("/#home-rentals");
     let nav = use_navigator();
     let user = api::current_user();
     let has_user = user.is_some();
@@ -60,7 +61,7 @@ pub fn Account() -> Element {
             } else if !load_error.read().is_empty() {
                 div { class: "account-empty", p { class: "auth-error", role: "alert", "{load_error}" } }
             } else if bookings.read().is_empty() {
-                div { class: "account-empty", h2 { "No bookings yet" } p { "Your confirmed rentals will appear here." } a { class: "btn-forest", href: "/#home-rentals", "Browse rentals" } }
+                div { class: "account-empty", h2 { "No bookings yet" } p { "Your confirmed rentals will appear here." } a { class: "btn-forest", href: rentals_href, "Browse rentals" } }
             } else {
                 div { class: "account-bookings",
                     for booking in bookings.read().iter() {

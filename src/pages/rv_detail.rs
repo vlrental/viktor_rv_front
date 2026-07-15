@@ -8,13 +8,27 @@ use dioxus::prelude::*;
 
 use super::booking_overlay::UnifiedBookingOverlay;
 use crate::data::{rv_gallery, rv_listings, Listing, PHONE};
-use crate::{api, components::Icon, pricing};
+use crate::{api, components::Icon, pricing, Route};
 
 const CSS: Asset = asset!("/assets/css/rv_detail.css");
 const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 
 #[component]
 pub fn RvDetail(slug: String) -> Element {
+    let confirmation_slug = slug.clone();
+    let confirmed_booking = use_signal(move || {
+        let saved =
+            api::load_json::<api::CreatedBooking>("vl_post_payment_booking").filter(|created| {
+                created.booking.rental_slug == confirmation_slug
+                    && created.booking.status == "confirmed"
+            });
+        if saved.is_some() {
+            api::remove_saved("vl_post_payment_booking");
+        }
+        saved
+    });
+    let rentals_href = api::frontend_path("/#home-rentals");
+    let missing_rv_href = rentals_href.clone();
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let catalog_search = super::catalog::normalized_catalog_search(
         api::load_json::<api::CatalogSearchDraft>("vl_catalog_search"),
@@ -37,7 +51,7 @@ pub fn RvDetail(slug: String) -> Element {
             document::Link { rel: "stylesheet", href: CSS }
             div { class: "rvd-body",
                 div { class: "rvd-min-pill", "This RV could not be found or is no longer available." }
-                a { class: "rvd-reserve", href: "/#home-rentals", "Browse available RVs" }
+                a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" }
             }
         };
     };
@@ -47,9 +61,21 @@ pub fn RvDetail(slug: String) -> Element {
         div { class: "rvd-body",
             // Breadcrumb
             div { class: "rvd-crumb",
-                a { href: "/#home-rentals", "RV Rentals" }
+                a { href: rentals_href, "RV Rentals" }
                 Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" }
                 b { "{l.title}" }
+            }
+            if let Some(created) = confirmed_booking.read().as_ref() {
+                section { class: "rvd-booking-confirmed", role: "status",
+                    div { class: "rvd-booking-confirmed-icon", Icon { name: "check", size: 22, color: "var(--vl-white)" } }
+                    div {
+                        span { "BOOKING CONFIRMED" }
+                        h2 { "Your {l.title} is booked" }
+                        p { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." }
+                        small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } }
+                    }
+                    Link { class: "rvd-booking-confirmed-link", to: Route::Account {}, "View my booking" }
+                }
             }
             if let Some(result) = details.read().as_ref() {
                 match result {
@@ -1125,7 +1151,7 @@ fn BookingCalendarOverlay(
                                 div { class: "rvd-calendar-range", "{starts_on} → {ends_on} · {nights}-night adventure" }
                                 div { class: "rvd-calendar-benefits",
                                     span { Icon { name: "zap", size: 13, color: "var(--vl-accent)" } "Instant confirmation" }
-                                    span { Icon { name: "shield-check", size: 13, color: "var(--vl-accent)" } "Authorization hold" }
+                                    span { Icon { name: "shield-check", size: 13, color: "var(--vl-accent)" } "Refundable damage deposit" }
                                     span { Icon { name: "check", size: 13, color: "var(--vl-accent)" } "Transparent pricing" }
                                 }
                             }

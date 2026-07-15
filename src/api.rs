@@ -28,10 +28,18 @@ pub fn google_login_url() -> String {
 }
 
 pub fn frontend_path(path: &str) -> String {
-    format!("{}{}", frontend_base_url(), normalized_auth_path(path))
+    frontend_path_for_base(&frontend_base_url(), path)
 }
 
-fn normalized_auth_path(path: &str) -> &str {
+fn frontend_path_for_base(base_url: &str, path: &str) -> String {
+    format!(
+        "{}{}",
+        base_url.trim_end_matches('/'),
+        normalized_frontend_path(path)
+    )
+}
+
+fn normalized_frontend_path(path: &str) -> &str {
     if path.starts_with('/') && !path.starts_with("//") {
         path
     } else {
@@ -128,6 +136,12 @@ pub struct AuthUser {
     pub user_id: String,
     pub email: String,
     pub role: String,
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default)]
+    pub last_name: String,
+    #[serde(default)]
+    pub phone: String,
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct AuthTokens {
@@ -185,6 +199,9 @@ pub fn finish_google_sign_in() -> Result<Option<String>, String> {
             user_id: required("user_id")?,
             email: required("email")?,
             role: required("role")?,
+            first_name: String::new(),
+            last_name: String::new(),
+            phone: String::new(),
         },
     };
     save_session(&tokens)?;
@@ -2772,9 +2789,61 @@ mod delivery_draft_tests {
 
     #[test]
     fn oauth_return_path_cannot_become_an_external_redirect() {
-        assert_eq!(normalized_auth_path("/account"), "/account");
-        assert_eq!(normalized_auth_path("//evil.example"), "/account");
-        assert_eq!(normalized_auth_path("https://evil.example"), "/account");
+        assert_eq!(normalized_frontend_path("/account"), "/account");
+        assert_eq!(normalized_frontend_path("//evil.example"), "/account");
+        assert_eq!(normalized_frontend_path("https://evil.example"), "/account");
+    }
+
+    #[test]
+    fn frontend_links_keep_the_github_pages_repository_prefix() {
+        let base = "https://gaponovalexey.github.io/viktor_rv_front/";
+
+        assert_eq!(
+            frontend_path_for_base(base, "/#home-rentals"),
+            "https://gaponovalexey.github.io/viktor_rv_front/#home-rentals"
+        );
+        assert_eq!(
+            frontend_path_for_base(base, "/admin"),
+            "https://gaponovalexey.github.io/viktor_rv_front/admin"
+        );
+    }
+
+    #[test]
+    fn ui_source_does_not_bypass_the_router_base_with_root_absolute_links() {
+        fn rust_files(path: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(path).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    rust_files(&path, files);
+                } else if path.extension().and_then(|value| value.to_str()) == Some("rs") {
+                    files.push(path);
+                }
+            }
+        }
+
+        let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&source_root, &mut files);
+        let forbidden = ["href:", " \"/"].concat();
+        let offenders = files
+            .into_iter()
+            .filter_map(|path| {
+                let source = std::fs::read_to_string(&path).unwrap();
+                source.contains(&forbidden).then(|| {
+                    path.strip_prefix(&source_root)
+                        .unwrap()
+                        .display()
+                        .to_string()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            offenders.is_empty(),
+            "root-absolute UI links bypass the configured site base: {}",
+            offenders.join(", ")
+        );
     }
 
     #[test]

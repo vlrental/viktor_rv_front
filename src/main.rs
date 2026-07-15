@@ -74,6 +74,150 @@ pub enum Route {
         Admin {},
 }
 
+const SITE_URL: &str = "https://vlrental.ca";
+
+#[derive(Clone, PartialEq)]
+struct SeoMetadata {
+    title: String,
+    description: String,
+    canonical: String,
+    robots: &'static str,
+}
+
+impl SeoMetadata {
+    fn indexed(title: impl Into<String>, description: impl Into<String>, path: &str) -> Self {
+        Self {
+            title: title.into(),
+            description: description.into(),
+            canonical: format!("{SITE_URL}{path}"),
+            robots: "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1",
+        }
+    }
+
+    fn private(title: impl Into<String>, description: impl Into<String>, path: &str) -> Self {
+        Self {
+            title: title.into(),
+            description: description.into(),
+            canonical: format!("{SITE_URL}{path}"),
+            robots: "noindex,nofollow",
+        }
+    }
+}
+
+fn seo_metadata(route: &Route) -> SeoMetadata {
+    match route {
+        Route::Home {} => SeoMetadata::indexed(
+            "RV Rentals in Kelowna & Okanagan | VL Rental",
+            "Rent clean, fully equipped RVs in Kelowna and the Okanagan. Delivery and setup are available across approved destinations. Browse trailers and book online.",
+            "/",
+        ),
+        Route::Catalog {} => {
+            let mut metadata = SeoMetadata::indexed(
+                "RV Rentals in Kelowna & Okanagan | VL Rental",
+                "Browse VL Rental travel trailers and fifth wheels available for delivery throughout the Okanagan.",
+                "/",
+            );
+            metadata.robots = "noindex,follow";
+            metadata
+        }
+        Route::RvDetail { slug } => data::rv_listings()
+            .into_iter()
+            .find(|listing| listing.slug == slug)
+            .map(|listing| {
+                SeoMetadata::indexed(
+                    format!("{} Rental in Kelowna | VL Rental", listing.title),
+                    format!(
+                        "Rent the {} from VL Rental with delivery and setup available in Kelowna and approved Okanagan destinations. View details and request your dates.",
+                        listing.title
+                    ),
+                    &format!("/rv/{}", listing.slug),
+                )
+            })
+            .unwrap_or_else(|| {
+                SeoMetadata::private(
+                    "RV Not Found | VL Rental",
+                    "The requested RV listing could not be found.",
+                    "/rv",
+                )
+            }),
+        Route::Contact {} => SeoMetadata::indexed(
+            "Contact VL Rental | Kelowna RV Rentals",
+            "Contact VL Rental for RV availability, delivery questions, and booking help in Kelowna and the Okanagan.",
+            "/contact",
+        ),
+        Route::About {} => SeoMetadata::indexed(
+            "About VL Rental | Okanagan RV Rentals",
+            "Learn about VL Rental, a Kelowna-based RV rental service offering delivered and set-up travel trailers across approved Okanagan destinations.",
+            "/about",
+        ),
+        Route::Attractions {} => SeoMetadata::indexed(
+            "Okanagan Attractions for Your RV Trip | VL Rental",
+            "Plan your Okanagan RV stay with ideas for family attractions, outdoor activities, and places to explore near Kelowna.",
+            "/attractions",
+        ),
+        Route::Restaurants {} => SeoMetadata::indexed(
+            "Okanagan Restaurants Near Your RV Stay | VL Rental",
+            "Discover restaurants and local food options to enjoy during your RV stay in Kelowna and the Okanagan.",
+            "/restaurants",
+        ),
+        Route::CoolerTrailers {} => SeoMetadata::indexed(
+            "Cooler Trailer Rentals in Kelowna | VL Rental",
+            "Explore cooler trailer rental options from VL Rental for events and trips in Kelowna and the Okanagan.",
+            "/cooler-trailers",
+        ),
+        Route::Delivery {} => SeoMetadata::indexed(
+            "RV Delivery & Setup in the Okanagan | VL Rental",
+            "See how VL Rental delivers and sets up RVs across approved destinations within 150 km of the Kelowna base.",
+            "/delivery",
+        ),
+        Route::RvSales {} => SeoMetadata::indexed(
+            "RVs for Sale in Kelowna | VL Rental",
+            "View RV sales information from VL Rental in Kelowna, British Columbia.",
+            "/rv-sales",
+        ),
+        Route::Terms {} => SeoMetadata::indexed(
+            "Rental Terms | VL Rental",
+            "Read the terms and conditions for VL Rental RV bookings, delivery, payments, cancellations, and customer responsibilities.",
+            "/terms",
+        ),
+        Route::Checkout {} => SeoMetadata::private(
+            "Checkout | VL Rental",
+            "Complete your VL Rental booking.",
+            "/checkout",
+        ),
+        Route::Confirmed {} => SeoMetadata::private(
+            "Booking Confirmation | VL Rental",
+            "VL Rental booking confirmation.",
+            "/confirmed",
+        ),
+        Route::Login {} => SeoMetadata::private(
+            "Sign In | VL Rental",
+            "Sign in to your VL Rental account.",
+            "/login",
+        ),
+        Route::Register {} => SeoMetadata::private(
+            "Create Account | VL Rental",
+            "Create a VL Rental account.",
+            "/register",
+        ),
+        Route::AuthCallback {} => SeoMetadata::private(
+            "Signing In | VL Rental",
+            "Completing secure sign in.",
+            "/auth/callback",
+        ),
+        Route::Account {} => SeoMetadata::private(
+            "My Account | VL Rental",
+            "Manage your VL Rental account and bookings.",
+            "/account",
+        ),
+        Route::Admin {} => SeoMetadata::private(
+            "Administration | VL Rental",
+            "VL Rental administration.",
+            "/admin",
+        ),
+    }
+}
+
 #[component]
 fn App() -> Element {
     rsx! {
@@ -85,6 +229,7 @@ fn App() -> Element {
 #[component]
 fn SiteShell() -> Element {
     rsx! {
+        SeoHead {}
         AuthSessionBridge {}
         div { class: "site-shell",
             Header {}
@@ -92,6 +237,96 @@ fn SiteShell() -> Element {
             Footer {}
         }
     }
+}
+
+#[component]
+fn SeoHead() -> Element {
+    let route = use_route::<Route>();
+    let metadata = seo_metadata(&route);
+
+    use_effect(use_reactive((&metadata,), move |(metadata,)| {
+        let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+            return;
+        };
+
+        document.set_title(&metadata.title);
+        if let Ok(Some(root)) = document.query_selector("html") {
+            let _ = root.set_attribute("lang", "en-CA");
+        }
+
+        let upsert_meta = |selector: &str, attribute: &str, key: &str, content: &str| {
+            let element = document
+                .query_selector(selector)
+                .ok()
+                .flatten()
+                .or_else(|| {
+                    let element = document.create_element("meta").ok()?;
+                    element.set_attribute(attribute, key).ok()?;
+                    let head = document.query_selector("head").ok().flatten()?;
+                    head.append_child(&element).ok()?;
+                    Some(element)
+                });
+
+            if let Some(element) = element {
+                let _ = element.set_attribute("content", content);
+            }
+        };
+
+        upsert_meta(
+            "meta[name='description']",
+            "name",
+            "description",
+            &metadata.description,
+        );
+        upsert_meta("meta[name='robots']", "name", "robots", metadata.robots);
+        upsert_meta(
+            "meta[property='og:title']",
+            "property",
+            "og:title",
+            &metadata.title,
+        );
+        upsert_meta(
+            "meta[property='og:description']",
+            "property",
+            "og:description",
+            &metadata.description,
+        );
+        upsert_meta(
+            "meta[property='og:url']",
+            "property",
+            "og:url",
+            &metadata.canonical,
+        );
+        upsert_meta(
+            "meta[name='twitter:title']",
+            "name",
+            "twitter:title",
+            &metadata.title,
+        );
+        upsert_meta(
+            "meta[name='twitter:description']",
+            "name",
+            "twitter:description",
+            &metadata.description,
+        );
+
+        let canonical = document
+            .query_selector("link[rel='canonical']")
+            .ok()
+            .flatten()
+            .or_else(|| {
+                let element = document.create_element("link").ok()?;
+                element.set_attribute("rel", "canonical").ok()?;
+                let head = document.query_selector("head").ok().flatten()?;
+                head.append_child(&element).ok()?;
+                Some(element)
+            });
+        if let Some(canonical) = canonical {
+            let _ = canonical.set_attribute("href", &metadata.canonical);
+        }
+    }));
+
+    rsx! {}
 }
 
 #[component]
@@ -129,4 +364,42 @@ fn AuthSessionBridge() -> Element {
         }
     });
     rsx! {}
+}
+
+#[cfg(test)]
+mod seo_tests {
+    use super::*;
+
+    #[test]
+    fn public_rv_pages_have_unique_indexable_metadata() {
+        for listing in data::rv_listings() {
+            let metadata = seo_metadata(&Route::RvDetail {
+                slug: listing.slug.to_string(),
+            });
+
+            assert!(metadata.robots.starts_with("index,follow"));
+            assert_eq!(
+                metadata.canonical,
+                format!("{SITE_URL}/rv/{}", listing.slug)
+            );
+            assert!(metadata.title.contains(listing.title));
+        }
+    }
+
+    #[test]
+    fn account_and_transaction_pages_are_not_indexed() {
+        let private_routes = [
+            Route::Checkout {},
+            Route::Confirmed {},
+            Route::Login {},
+            Route::Register {},
+            Route::AuthCallback {},
+            Route::Account {},
+            Route::Admin {},
+        ];
+
+        for route in private_routes {
+            assert_eq!(seo_metadata(&route).robots, "noindex,nofollow");
+        }
+    }
 }

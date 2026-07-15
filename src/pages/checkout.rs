@@ -6,6 +6,8 @@ const CSS: Asset = asset!("/assets/css/checkout.css");
 
 #[component]
 pub fn Checkout() -> Element {
+    let rentals_href = api::frontend_path("/#home-rentals");
+    let browse_rentals_href = rentals_href.clone();
     let quote = api::load_json::<api::QuoteResponse>("vl_active_quote");
     let saved_draft = api::load_json::<api::TripDraft>("vl_trip_draft");
     let recovery_slug = saved_draft
@@ -124,7 +126,7 @@ pub fn Checkout() -> Element {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "co-body",
             div { class: "co-breadcrumb",
-                a { class: "co-breadcrumb-a", href: "/#home-rentals", "RV Rentals" }
+                a { class: "co-breadcrumb-a", href: rentals_href, "RV Rentals" }
                 Icon { name: "chevron-right", size: 15, color: "var(--vl-muted)" }
                 span { class: "co-breadcrumb-b", "Confirm booking" }
             }
@@ -210,7 +212,7 @@ pub fn Checkout() -> Element {
                     if let Some(slug) = recovery_slug {
                         Link { class: "co-pay", to: Route::RvDetail { slug }, "Enter delivery address" }
                     } else {
-                        a { class: "co-pay", href: "/#home-rentals", "Browse available RVs" }
+                        a { class: "co-pay", href: browse_rentals_href, "Browse available RVs" }
                     }
                 }
             }

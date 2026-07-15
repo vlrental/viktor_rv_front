@@ -13,7 +13,7 @@ fn term_sections() -> Vec<TermSection> {
     vec![
         TermSection {
             id: "tm-s1",
-            title: "1. Pricing, Booking Payments & Damage Authorization Hold",
+            title: "1. Pricing, Booking Payments & Refundable Damage Deposit",
             body: "The trip price is shown separately from the refundable CA$1,000 damage deposit. It includes the nightly rental, the mandatory one-time CA$97 RV Preparation Fee, mandatory Stationary Plus Protection at CA$50 per booked night, delivery and setup, selected extras, and applicable GST and PST. For trips booked more than 30 days ahead, 30% of the trip price is due to confirm and the remaining balance is due 30 days before delivery. For trips booked within 30 days, the full trip price is due when booking. The separate CA$1,000 damage deposit is charged through Stripe 48 hours before delivery and is not included in the 30% calculation. Delivery is not permitted until the deposit is paid. After the RV is returned and inspected, VL Rental will refund the deposit to the original payment method when there is no valid damage claim, or retain part or all of it for documented damage. Any unused portion is submitted for refund as soon as practical and no later than seven days after return. Stripe and the customer's bank control refund processing time. Stripe's original payment-processing fees are not returned to VL Rental and are not deducted from the customer's approved deposit refund. Customers receive an email with a direct secure link whenever a payment becomes due.",
         },
         TermSection {

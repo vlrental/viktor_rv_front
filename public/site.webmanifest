@@ -1,0 +1,30 @@
+{
+    "name": "VL Rental — Okanagan RV Rentals",
+    "short_name": "VL Rental",
+    "description": "Delivery-only RV rentals in Kelowna and the Okanagan.",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#F5F3EE",
+    "theme_color": "#10271B",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "maskable-icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

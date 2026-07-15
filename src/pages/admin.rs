@@ -169,6 +169,40 @@ fn is_future_booking(booking: &api::AdminBooking, now: DateTime<Utc>) -> bool {
         .unwrap_or(false)
 }
 
+fn admin_calendar_date(timestamp: &str) -> Option<NaiveDate> {
+    DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|value| value.with_timezone(&Vancouver).date_naive())
+        .or_else(|| NaiveDate::parse_from_str(timestamp.get(0..10)?, "%Y-%m-%d").ok())
+}
+
+fn admin_calendar_short_date(day: NaiveDate) -> String {
+    day.format("%b %-d").to_string()
+}
+
+fn admin_calendar_weekday(day: NaiveDate) -> String {
+    day.format("%a").to_string()
+}
+
+fn admin_calendar_day_number(day: NaiveDate) -> String {
+    day.format("%-d").to_string()
+}
+
+fn booking_occupies_day(booking: &api::AdminBooking, day: NaiveDate) -> bool {
+    if matches!(booking.status.as_str(), "cancelled" | "expired") {
+        return false;
+    }
+    admin_calendar_date(&booking.starts_at)
+        .zip(admin_calendar_date(&booking.ends_at))
+        .is_some_and(|(start, end)| start <= day && day <= end)
+}
+
+fn block_occupies_day(block: &api::AdminAvailabilityBlock, day: NaiveDate) -> bool {
+    admin_calendar_date(&block.starts_at)
+        .zip(admin_calendar_date(&block.ends_at))
+        .is_some_and(|(start, end)| start <= day && day <= end)
+}
+
 fn is_admin_role(role: &str) -> bool {
     role == "admin"
 }
@@ -468,7 +502,7 @@ pub fn Admin() -> Element {
                         div {
                             p { class: "admin-kicker", "VL RENTAL · ADMIN CENTER" }
                             h1 { "Operations at a glance" }
-                            p { "Bookings, payments, delivery readiness and damage holds stay together on this page." }
+                            p { "Bookings, payments, delivery readiness and refundable damage deposits stay together on this page." }
                         }
                         div { class: "admin-hero-actions",
                             span { class: if payments_ready { "admin-mode-badge enabled" } else { "admin-mode-badge" },
@@ -491,7 +525,7 @@ pub fn Admin() -> Element {
                         article { span { "CONFIRMED" } strong { "{metric_active}" } small { "active and upcoming" } }
                         article { span { "AWAITING PAYMENT" } strong { "{metric_pending}" } small { "reserved, not confirmed" } }
                         article { span { "PAYMENT ERRORS" } strong { "{metric_failures}" } small { "need attention" } }
-                        article { span { "OVERDUE ACTIONS" } strong { "{dashboard_value.overdue_actions}" } small { "hold or return decisions" } }
+                        article { span { "OVERDUE ACTIONS" } strong { "{dashboard_value.overdue_actions}" } small { "deposit or return decisions" } }
                     }
 
                     nav { class: "admin-tabs admin-center-tabs", role: "tablist", aria_label: "Admin center sections",
@@ -540,7 +574,7 @@ pub fn Admin() -> Element {
                             "overview" => rsx! { OverviewTab { dashboard: dashboard_value, bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking } },
                             "bookings" => rsx! { BookingsTab { bookings: bookings.read().clone(), rentals: rentals.read().clone(), loading: loading(), on_open_booking: open_booking } },
                             "payments" => rsx! { PaymentsTab { payments: payments.read().clone(), bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
-                            "calendar" => rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
+                            "calendar" => rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
                             "audit" => rsx! { AuditTab { events: audit.read().clone(), loading: loading() } },
                             _ => rsx! {},
                         }
@@ -744,10 +778,26 @@ fn PaymentsTab(
         })
         .cloned()
         .collect::<Vec<_>>();
+    let due_count = payments
+        .iter()
+        .filter(|payment| matches!(payment.status.as_str(), "due" | "past_due"))
+        .count();
+    let scheduled_count = payments
+        .iter()
+        .filter(|payment| payment.status == "scheduled")
+        .count();
+    let failed_count = payments
+        .iter()
+        .filter(|payment| matches!(payment.status.as_str(), "failed" | "expired"))
+        .count();
+    let paid_count = payments
+        .iter()
+        .filter(|payment| matches!(payment.status.as_str(), "succeeded" | "paid" | "released"))
+        .count();
     rsx! {
         section { class: "admin-panel admin-full-panel",
             div { class: "admin-panel-head admin-list-head",
-                div { h2 { "Payments" } p { "Initial payment, balance, damage hold and refunds." } }
+                div { h2 { "Payments" } p { "Initial payment, balance, refundable damage deposit and refunds." } }
                 select { class: "admin-compact-filter", value: "{filter}", onchange: move |event| filter.set(event.value()),
                     option { value: "all", "All payment states" }
                     option { value: "attention", "Needs attention" }
@@ -758,12 +808,18 @@ fn PaymentsTab(
                     option { value: "submitted", "Sent to Stripe" }
                     option { value: "succeeded", "Paid" }
                     option { value: "failed", "Failed" }
-                    option { value: "authorized", "Authorized holds" }
+                    option { value: "authorized", "Deposit authorized (legacy)" }
                     option { value: "released", "Released" }
                     option { value: "captured", "Damage captured" }
                     option { value: "cancelled", "Cancelled" }
                     option { value: "expired", "Expired" }
                 }
+            }
+            div { class: "admin-payment-metrics",
+                article { span { "DUE NOW" } strong { "{due_count}" } }
+                article { span { "SCHEDULED" } strong { "{scheduled_count}" } }
+                article { class: if failed_count > 0 { "needs-attention" } else { "" }, span { "NEEDS ATTENTION" } strong { "{failed_count}" } }
+                article { span { "PAID / REFUNDED" } strong { "{paid_count}" } }
             }
             if !message.read().is_empty() { p { class: "admin-success admin-inline-message", "{message}" } }
             if loading { AdminLoading {} }
@@ -809,9 +865,12 @@ fn CalendarTab(
     bookings: Vec<api::AdminBooking>,
     blocks: Vec<api::AdminAvailabilityBlock>,
     rentals: Vec<api::Rental>,
+    on_open_booking: EventHandler<String>,
     on_refresh: EventHandler<()>,
 ) -> Element {
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
+    let mut window_start = use_signal(|| today);
+    let mut fleet_filter = use_signal(|| "all".to_string());
     let mut panel_open = use_signal(|| false);
     let mut rental_slug = use_signal(|| {
         rentals
@@ -824,21 +883,56 @@ fn CalendarTab(
     let mut reason = use_signal(|| "Owner use".to_string());
     let mut busy = use_signal(|| false);
     let mut message = use_signal(String::new);
-    let upcoming = bookings
+    let mut upcoming = bookings
         .iter()
         .filter(|booking| is_future_booking(booking, Utc::now()))
-        .take(12)
         .cloned()
         .collect::<Vec<_>>();
+    upcoming.sort_by(|left, right| left.starts_at.cmp(&right.starts_at));
+    let days = (0..14)
+        .map(|offset| *window_start.read() + Duration::days(offset))
+        .collect::<Vec<_>>();
+    let visible_rentals = rentals
+        .iter()
+        .filter(|rental| fleet_filter() == "all" || rental.slug == fleet_filter())
+        .cloned()
+        .collect::<Vec<_>>();
+    let window_end = days.last().copied().unwrap_or(*window_start.read());
     rsx! {
         div { class: "admin-calendar-layout",
             section { class: "admin-panel admin-calendar-panel",
-                div { class: "admin-panel-head", div { h2 { "Calendar" } p { "Bookings and owner blocks share one operational timeline." } } button { class: "admin-primary-small", r#type: "button", onclick: move |_| panel_open.set(true), Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" } }
+                div { class: "admin-panel-head admin-calendar-head", div { h2 { "Fleet calendar" } p { "Return at 11:00 AM and the next delivery at 2:00 PM can share one date." } } div { class: "admin-calendar-actions",
+                    select { class: "admin-compact-filter", aria_label: "Filter calendar by RV", value: "{fleet_filter}", onchange: move |event| fleet_filter.set(event.value()), option { value: "all", "All RVs" } for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } }
+                    button { r#type: "button", aria_label: "Previous two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current - Duration::days(14)); }, Icon { name: "chevron-left", size: 16, color: "currentColor" } }
+                    button { r#type: "button", onclick: move |_| window_start.set(today), "Today" }
+                    button { r#type: "button", aria_label: "Next two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current + Duration::days(14)); }, Icon { name: "chevron-right", size: 16, color: "currentColor" } }
+                    button { class: "admin-primary-small", r#type: "button", onclick: move |_| panel_open.set(true), Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" }
+                } }
                 div { class: "admin-calendar-legend", span { class: "booking", "Customer booking" } span { class: "block", "Closed by admin" } }
-                div { class: "admin-calendar-timeline",
+                div { class: "admin-fleet-scroll",
+                    div { class: "admin-fleet-calendar", style: "--admin-calendar-days: {days.len()}",
+                        div { class: "admin-fleet-corner", strong { "RV / DATE" } small { "{admin_calendar_short_date(*window_start.read())} – {admin_calendar_short_date(window_end)}" } }
+                        for day in days.iter() { div { key: "head-{day}", class: if *day == today { "admin-fleet-day is-today" } else { "admin-fleet-day" }, span { "{admin_calendar_weekday(*day)}" } strong { "{admin_calendar_day_number(*day)}" } } }
+                        for rental in visible_rentals.iter() {
+                            div { key: "rental-{rental.slug}", class: "admin-fleet-rental", strong { "{rental.name}" } small { "Delivery only" } }
+                            for day in days.iter() { div { key: "cell-{rental.slug}-{day}", class: if *day == today { "admin-fleet-cell is-today" } else { "admin-fleet-cell" },
+                                for booking in bookings.iter().filter(|booking| booking.rental_slug == rental.slug && booking_occupies_day(booking, *day)) {
+                                    button { class: "admin-calendar-chip booking", r#type: "button", title: "{booking.first_name} {booking.last_name} · {booking.booking_number}", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) },
+                                        if admin_calendar_date(&booking.ends_at) == Some(*day) { small { "11 AM" } }
+                                        if admin_calendar_date(&booking.starts_at) == Some(*day) { small { "2 PM" } }
+                                        span { "{booking.last_name}" }
+                                    }
+                                }
+                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) { span { class: "admin-calendar-chip block", title: "{block.reason}", small { "CLOSED" } span { "{block.reason}" } } }
+                            } }
+                        }
+                    }
+                }
+                div { class: "admin-calendar-agenda",
+                    h3 { "Upcoming schedule" }
                     if upcoming.is_empty() && blocks.is_empty() { div { class: "admin-empty", "No upcoming bookings or closed dates." } }
-                    for booking in upcoming.iter() { article { class: "booking", div { time { "{display_date(&booking.starts_at)} → {display_date(&booking.ends_at)}" } strong { "{booking.rental_name}" } span { "{booking.first_name} {booking.last_name} · {booking.booking_number}" } } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } } }
-                    for block in blocks.iter() { article { class: "block", div { time { "{display_date(&block.starts_at)} → {display_date(&block.ends_at)}" } strong { "{block.rental_name}" } span { "{block.reason}" } } button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } }
+                    for booking in upcoming.iter().filter(|booking| fleet_filter() == "all" || booking.rental_slug == fleet_filter()) { button { class: "booking", r#type: "button", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) }, div { time { "{display_date(&booking.starts_at)} 2 PM → {display_date(&booking.ends_at)} 11 AM" } strong { "{booking.rental_name}" } span { "{booking.first_name} {booking.last_name} · {booking.booking_number}" } } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } } }
+                    for block in blocks.iter().filter(|block| fleet_filter() == "all" || block.rental_slug == fleet_filter()) { article { class: "block", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" } } button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } }
                 }
                 if !message.read().is_empty() { p { class: "admin-inline-message", "{message}" } }
             }
@@ -996,7 +1090,7 @@ fn BookingDrawer(
                         h3 { "Payment schedule" }
                         if detail.obligations.is_empty() { div { class: "admin-empty", "No payment obligations are available yet." } }
                         else { div { class: "admin-obligation-list", for obligation in detail.obligations.iter() { article { key: "{obligation.payment_obligation_id}",
-                            div { strong { "{payment_label(&obligation.payment_type)}" } if let Some(due) = obligation.due_at.as_ref() { small { "Due {display_moment(due)}" } } if let Some(deadline) = obligation.capture_before.as_ref() { small { "Capture before {display_moment(deadline)}" } } }
+                            div { strong { "{payment_label(&obligation.payment_type)}" } if let Some(due) = obligation.due_at.as_ref() { small { "Due {display_moment(due)}" } } if let Some(deadline) = obligation.capture_before.as_ref() { small { "Decision deadline {display_moment(deadline)}" } } }
                             span { "{display_money(&obligation.currency, &obligation.amount)}" }
                             b { class: "admin-status admin-pay-{obligation.status}", "{payment_label(&obligation.status)}" }
                         } } } }
@@ -1323,5 +1417,25 @@ mod tests {
             ),
             Some("Choose valid delivery and return dates.")
         );
+    }
+
+    #[test]
+    fn fleet_calendar_keeps_return_and_next_delivery_on_the_same_day() {
+        let turnover_day = NaiveDate::from_ymd_opt(2030, 7, 14).unwrap();
+        let returning = api::AdminBooking {
+            status: "confirmed".into(),
+            starts_at: "2030-07-10T21:00:00Z".into(),
+            ends_at: "2030-07-14T18:00:00Z".into(),
+            ..api::AdminBooking::default()
+        };
+        let arriving = api::AdminBooking {
+            status: "confirmed".into(),
+            starts_at: "2030-07-14T21:00:00Z".into(),
+            ends_at: "2030-07-18T18:00:00Z".into(),
+            ..api::AdminBooking::default()
+        };
+
+        assert!(booking_occupies_day(&returning, turnover_day));
+        assert!(booking_occupies_day(&arriving, turnover_day));
     }
 }

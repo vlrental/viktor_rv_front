@@ -25,6 +25,8 @@ pub fn Header() -> Element {
     let mut session_version = use_signal(|| 0_u32);
     let _session_version = *session_version.read();
     let current_user = api::current_user();
+    let rentals_href = api::frontend_path("/#home-rentals");
+    let book_now_href = rentals_href.clone();
     let overlay = matches!(route, Route::Home {});
     let class = if overlay {
         "site-header overlay"
@@ -66,7 +68,7 @@ pub fn Header() -> Element {
                 span { class: "brand-word", "VL Rental" }
             }
             nav { class: if *mobile_open.read() { "nav-menu is-open" } else { "nav-menu" },
-                a { class: "nav-link", href: "/#home-rentals", onclick: move |_| mobile_open.set(false), "RV Rentals" }
+                a { class: "nav-link", href: rentals_href, onclick: move |_| mobile_open.set(false), "RV Rentals" }
                 Link { class: "nav-link", to: Route::CoolerTrailers {}, onclick: move |_| mobile_open.set(false), "Cooler Trailers" }
                 Link { class: "nav-link", to: Route::Delivery {}, onclick: move |_| mobile_open.set(false), "Delivery" }
                 Link { class: "nav-link", to: Route::RvSales {}, onclick: move |_| mobile_open.set(false), "RV Sales" }
@@ -159,7 +161,7 @@ pub fn Header() -> Element {
                         span { "Admin dashboard" }
                     }
                 }
-                a { class: "nav-cta", href: "/#home-rentals", "Book now" }
+                a { class: "nav-cta", href: book_now_href, "Book now" }
             }
         }
     }

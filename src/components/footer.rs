@@ -8,6 +8,7 @@ const LOGO: Asset = asset!("/assets/img/logo.png");
 
 #[component]
 pub fn Footer() -> Element {
+    let rentals_href = api::frontend_path("/#home-rentals");
     let mut email = use_signal(String::new);
     let mut status = use_signal(String::new);
     let mut busy = use_signal(|| false);
@@ -70,7 +71,7 @@ pub fn Footer() -> Element {
                 }
                 div { class: "f-col",
                     div { class: "f-head", "RENTALS" }
-                    a { class: "f-link", href: "/#home-rentals", "RV Rentals" }
+                    a { class: "f-link", href: rentals_href, "RV Rentals" }
                     Link { class: "f-link", to: Route::CoolerTrailers {}, "Cooler Trailers" }
                 }
                 div { class: "f-col",

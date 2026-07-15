@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::components::Icon;
+use crate::{api, components::Icon};
 
 const CSS: Asset = asset!("/assets/css/cooler_trailers.css");
 const IMG_COOLER_HERO: Asset = asset!("/assets/img/cooler-hero.jpg");
@@ -43,6 +43,7 @@ const BULLETS: [&str; 3] = [
 
 #[component]
 pub fn CoolerTrailers() -> Element {
+    let rentals_href = api::frontend_path("/#home-rentals");
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
         section { class: "clt-hero",
@@ -64,7 +65,7 @@ pub fn CoolerTrailers() -> Element {
                         }
                     }
                 }
-                a { class: "clt-btn", href: "/#home-rentals",
+                a { class: "clt-btn", href: rentals_href,
                     span { "Explore RV rentals" }
                     Icon { name: "arrow-right", size: 17, color: "var(--vl-white)" }
                 }

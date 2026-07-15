@@ -320,3 +320,15 @@
     .rvd-address-suggestion-copy strong, .rvd-address-suggestion-copy small { white-space: normal; }
     .rvd-addon-picker-grid { grid-template-columns: 1fr; }
 }
+.rvd-booking-confirmed { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 15px; margin: 14px 0 22px; padding: 17px 19px; border: 1px solid #A9C8B1; border-radius: 15px; background: linear-gradient(135deg, #EAF4EC, #F8FBF8); box-shadow: 0 10px 30px #123A2512; }
+.rvd-booking-confirmed-icon { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 50%; background: var(--vl-forest); }
+.rvd-booking-confirmed > div:nth-child(2) { display: grid; gap: 3px; }
+.rvd-booking-confirmed span { color: var(--vl-forest); font: 750 9px var(--font-mono); letter-spacing: .11em; }
+.rvd-booking-confirmed h2 { color: var(--vl-ink); font: 500 25px/1.1 var(--font-heading); }
+.rvd-booking-confirmed p, .rvd-booking-confirmed small { color: var(--vl-muted); font-size: 10px; line-height: 1.45; }
+.rvd-booking-confirmed-link { padding: 11px 14px; border-radius: 9px; background: var(--vl-forest); color: var(--vl-white); font-size: 10px; font-weight: 750; white-space: nowrap; }
+
+@media (max-width: 700px) {
+  .rvd-booking-confirmed { grid-template-columns: auto minmax(0, 1fr); margin-inline: 14px; padding: 15px; }
+  .rvd-booking-confirmed-link { grid-column: 1 / -1; text-align: center; }
+}
