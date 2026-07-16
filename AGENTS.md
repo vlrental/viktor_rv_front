@@ -17,7 +17,8 @@
 ## Cross-repository implementation authorization
 
 - For Viktor RV tasks, the user grants standing authorization to inspect and modify both the frontend and backend repositories as needed to complete the requested work, without asking separately before crossing repository boundaries.
-- This standing authorization covers repository code, configuration, documentation, and tests. It does not by itself authorize a production deployment or restart, DNS/domain changes, live-payment activation, secret changes, or production database writes; those actions still require a direct user request.
+- This standing authorization covers repository code, configuration, documentation, tests, and the non-destructive Supabase schema migrations required by requested Viktor RV implementation work. It does not by itself authorize a production application deployment or restart, DNS/domain changes, live-payment activation, secret changes, destructive database operations, production data deletion, or broad production-data rewrites; those actions still require a direct user request.
+- Execute in-scope work end to end with the available tools instead of handing the user terminal commands or routine manual steps. Ask the user to act only when authentication, permissions, a third-party approval, or a genuinely destructive/high-impact decision cannot be completed safely by the agent.
 
 ## Project design
 
@@ -33,6 +34,9 @@
 - Never print, paste, log, or return the full `.env.prod`, `DATABASE_URL`, database password, service-role key, or other secrets. Check only exact project-ref matches, variable presence, safe parsed host/user metadata, or query results that do not expose credentials.
 - Distinguish access surfaces: a working `DATABASE_URL` proves PostgreSQL access only; Supabase MCP/Management API access is separate; Storage upload and signed-URL E2E require backend-only `SUPABASE_URL` plus the preferred `SUPABASE_SECRET_KEY=sb_secret_...` (or legacy `SUPABASE_SERVICE_ROLE_KEY`). New secret keys are sent only as the `apikey` header, never as a Bearer JWT. A connector permission error does not prove that database access is unavailable.
 - The backend local `.env` normally targets local PostgreSQL and must not be mistaken for production Supabase. Use `.env.prod` only for read-only production inspection unless the user directly authorizes a production database write or migration.
+- For every requested Supabase schema, function, trigger, index, RLS, grant, or migration change, create and test the versioned SQL locally first, then apply the same non-destructive change to the correct production project `pwhlkpwlansarstmstge` and verify the remote result before reporting completion. Do not stop after creating local tables or migration files unless the user explicitly asks for local-only work.
+- The user has given standing direct authorization for these non-destructive Supabase migrations as part of requested implementation work. Destructive DDL, production data deletion, irreversible backfills, broad production data rewrites, project deletion, secret rotation, and billing or organization changes still require separate task-specific confirmation.
+- Run Supabase and database commands yourself whenever credentials and tools are available; do not respond with commands for the user to copy. If the preferred connector is unavailable, use the backend-only production `DATABASE_URL` through a safe PostgreSQL client, keep secrets out of output, and verify the expected schema plus relevant security checks afterward.
 
 ## Page architecture
 
