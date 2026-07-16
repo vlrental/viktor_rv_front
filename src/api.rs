@@ -2221,7 +2221,7 @@ pub async fn admin_rental_reviews(
     rental_slug: &str,
     offset: i64,
 ) -> Result<AdminRentalReviewsResponse, ApiError> {
-    let token = admin_access_token()?;
+    let mut token = admin_access_token()?;
     let mut url = format!("{API_BASE}/api/v1/admin/reviews?limit=50&offset={offset}");
     if !search.trim().is_empty() {
         url.push_str("&search=");
@@ -2231,11 +2231,21 @@ pub async fn admin_rental_reviews(
         url.push_str("&rental_slug=");
         url.push_str(&urlencoding::encode(rental_slug.trim()));
     }
-    let response = Request::get(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .send()
-        .await
-        .map_err(|error| ApiError::client(error.to_string()))?;
+    let send = |token: String| {
+        let url = url.clone();
+        async move {
+            Request::get(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    };
+    let mut response = send(token.clone()).await?;
+    if response.status() == 401 {
+        token = refresh_session().await?.access_token;
+        response = send(token).await?;
+    }
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2246,15 +2256,26 @@ pub async fn admin_rental_reviews(
 }
 
 pub async fn admin_delete_rental_review(review_id: &str) -> Result<(), ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::delete(&format!(
+    let mut token = admin_access_token()?;
+    let path = format!(
         "{API_BASE}/api/v1/admin/reviews/{}",
         urlencoding::encode(review_id)
-    ))
-    .header("Authorization", &format!("Bearer {token}"))
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let send = |token: String| {
+        let path = path.clone();
+        async move {
+            Request::delete(&path)
+                .header("Authorization", &format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    };
+    let mut response = send(token.clone()).await?;
+    if response.status() == 401 {
+        token = refresh_session().await?.access_token;
+        response = send(token).await?;
+    }
     if !response.ok() {
         return Err(response_error(response).await);
     }

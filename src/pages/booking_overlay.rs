@@ -1842,6 +1842,31 @@ pub(crate) fn UnifiedBookingOverlay(
     }
 }
 
+fn set_review_like_count(
+    reviews: &mut api::RentalReviewsResponse,
+    review_id: &str,
+    like_count: i64,
+) {
+    if let Some(review) = reviews
+        .reviews
+        .iter_mut()
+        .find(|review| review.rental_review_id == review_id)
+    {
+        review.like_count = like_count.max(0);
+    }
+}
+
+fn set_review_like_membership(
+    context: &mut api::RentalReviewContext,
+    review_id: &str,
+    liked: bool,
+) {
+    context.liked_review_ids.retain(|id| id != review_id);
+    if liked {
+        context.liked_review_ids.push(review_id.to_string());
+    }
+}
+
 #[component]
 fn RentalChoice(
     rental: api::Rental,
@@ -1871,6 +1896,7 @@ fn RentalChoice(
     let mut reviews = use_signal(|| None::<api::RentalReviewsResponse>);
     let mut review_context = use_signal(|| None::<api::RentalReviewContext>);
     let mut like_busy = use_signal(std::collections::HashSet::<String>::new);
+    let mut like_error = use_signal(String::new);
     let live_summary = reviews.read().as_ref().map(|value| value.summary.clone());
     let rating = live_summary
         .as_ref()
@@ -1916,7 +1942,7 @@ fn RentalChoice(
                     p { "{rental.summary}" }
                     div { b { "CA${rental.base_rate}" } span { " / {rental.price_unit}" } }
                 }
-                button { class: "ub-rv-rating", r#type: "button", aria_label: "Read {review_label} for {rental.name}", onclick: { let slug = slug.clone(); move |event| { event.stop_propagation(); reviews_open.set(true); if reviews.peek().is_none() && !*reviews_busy.peek() { reviews_busy.set(true); reviews_error.set(String::new()); let slug_for_reviews = slug.clone(); spawn(async move { match api::rental_reviews(&slug_for_reviews).await { Ok(value) => reviews.set(Some(value)), Err(message) => reviews_error.set(message) } reviews_busy.set(false); }); }; if api::access_token().is_some() && review_context.peek().is_none() { let slug_for_context = slug.clone(); spawn(async move { if let Ok(context) = api::rental_review_context(&slug_for_context).await { review_context.set(Some(context)); } }); } } },
+                button { class: "ub-rv-rating", r#type: "button", aria_label: "Read {review_label} for {rental.name}", onclick: { let slug = slug.clone(); move |event| { event.stop_propagation(); reviews_open.set(true); like_error.set(String::new()); if reviews.peek().is_none() && !*reviews_busy.peek() { reviews_busy.set(true); reviews_error.set(String::new()); let slug_for_reviews = slug.clone(); spawn(async move { match api::rental_reviews(&slug_for_reviews).await { Ok(value) => reviews.set(Some(value)), Err(message) => reviews_error.set(message) } reviews_busy.set(false); }); }; if api::access_token().is_some() && review_context.peek().is_none() { let slug_for_context = slug.clone(); spawn(async move { if let Ok(context) = api::rental_review_context(&slug_for_context).await { review_context.set(Some(context)); } }); } } },
                     RatingStars { rating: rounded_rating }
                     b { "{rating}" }
                     span { "({review_count})" }
@@ -1932,6 +1958,7 @@ fn RentalChoice(
                             else if !reviews_error.read().is_empty() { p { class: "ub-error", role: "alert", "{reviews_error}" } }
                             else if let Some(value) = reviews.read().as_ref() {
                                 div { class: "ub-review-summary", b { if let Some(average) = value.summary.average_rating.as_ref() { "{average}" } else { "New" } } span { "out of 5 · {value.summary.review_count} verified reviews" } }
+                                if !like_error.read().is_empty() { p { class: "ub-review-action-error", role: "alert", "{like_error}" } }
                                 if let Some(context) = review_context.read().as_ref() {
                                     if let Some(booking_id) = context.reviewable_booking_id.as_ref() {
                                         ReviewForm { booking_id: booking_id.clone(), rental_name: rental.name.clone(), on_published: { let slug = slug.clone(); move |_| { let slug = slug.clone(); spawn(async move { if let Ok(value) = api::rental_reviews(&slug).await { reviews.set(Some(value)); }; if let Ok(context) = api::rental_review_context(&slug).await { review_context.set(Some(context)); } }); } } }
@@ -1952,7 +1979,67 @@ fn RentalChoice(
                                                 if context.own_review_ids.contains(&review.rental_review_id) {
                                                     span { class: "ub-like-own", "Your review · {review.like_count} likes" }
                                                 } else {
-                                                    button { class: if context.liked_review_ids.contains(&review.rental_review_id) { "ub-like active" } else { "ub-like" }, r#type: "button", aria_label: if context.liked_review_ids.contains(&review.rental_review_id) { "Unlike this review" } else { "Like this review" }, disabled: !context.can_like || like_busy.read().contains(&review.rental_review_id), onclick: { let review_id = review.rental_review_id.clone(); let was_liked = context.liked_review_ids.contains(&review.rental_review_id); move |_| { let previous_reviews = reviews.read().clone(); let previous_context = review_context.read().clone(); if let Some(mut current) = previous_reviews.clone() { if let Some(item) = current.reviews.iter_mut().find(|item| item.rental_review_id == review_id) { item.like_count += if was_liked { -1 } else { 1 }; } reviews.set(Some(current)); }; if let Some(mut current) = previous_context.clone() { if was_liked { current.liked_review_ids.retain(|id| id != &review_id); } else { current.liked_review_ids.push(review_id.clone()); } review_context.set(Some(current)); } like_busy.write().insert(review_id.clone()); let review_id_for_request = review_id.clone(); spawn(async move { if api::set_rental_review_like(&review_id_for_request, !was_liked).await.is_err() { reviews.set(previous_reviews); review_context.set(previous_context); } like_busy.write().remove(&review_id_for_request); }); } }, "♥ {review.like_count}" }
+                                                    button {
+                                                        class: if context.liked_review_ids.contains(&review.rental_review_id) { "ub-like active" } else { "ub-like" },
+                                                        r#type: "button",
+                                                        aria_label: if context.liked_review_ids.contains(&review.rental_review_id) { "Unlike this review" } else { "Like this review" },
+                                                        disabled: !context.can_like || like_busy.read().contains(&review.rental_review_id),
+                                                        onclick: {
+                                                            let review_id = review.rental_review_id.clone();
+                                                            let was_liked = context.liked_review_ids.contains(&review.rental_review_id);
+                                                            let displayed_like_count = review.like_count;
+                                                            move |_| {
+                                                                like_error.set(String::new());
+                                                                let previous_like_count = reviews
+                                                                    .read()
+                                                                    .as_ref()
+                                                                    .and_then(|value| value.reviews.iter().find(|item| item.rental_review_id == review_id))
+                                                                    .map(|item| item.like_count)
+                                                                    .unwrap_or(displayed_like_count);
+                                                                if let Some(mut current) = reviews.read().clone() {
+                                                                    set_review_like_count(
+                                                                        &mut current,
+                                                                        &review_id,
+                                                                        previous_like_count + if was_liked { -1 } else { 1 },
+                                                                    );
+                                                                    reviews.set(Some(current));
+                                                                }
+                                                                if let Some(mut current) = review_context.read().clone() {
+                                                                    set_review_like_membership(&mut current, &review_id, !was_liked);
+                                                                    review_context.set(Some(current));
+                                                                }
+                                                                like_busy.write().insert(review_id.clone());
+                                                                let review_id_for_request = review_id.clone();
+                                                                spawn(async move {
+                                                                    match api::set_rental_review_like(&review_id_for_request, !was_liked).await {
+                                                                        Ok(result) => {
+                                                                            if let Some(mut current) = reviews.read().clone() {
+                                                                                set_review_like_count(&mut current, &result.rental_review_id, result.like_count);
+                                                                                reviews.set(Some(current));
+                                                                            }
+                                                                            if let Some(mut current) = review_context.read().clone() {
+                                                                                set_review_like_membership(&mut current, &result.rental_review_id, result.liked);
+                                                                                review_context.set(Some(current));
+                                                                            }
+                                                                        }
+                                                                        Err(_) => {
+                                                                            if let Some(mut current) = reviews.read().clone() {
+                                                                                set_review_like_count(&mut current, &review_id_for_request, previous_like_count);
+                                                                                reviews.set(Some(current));
+                                                                            }
+                                                                            if let Some(mut current) = review_context.read().clone() {
+                                                                                set_review_like_membership(&mut current, &review_id_for_request, was_liked);
+                                                                                review_context.set(Some(current));
+                                                                            }
+                                                                            like_error.set("The like could not be updated. Please try again.".into());
+                                                                        }
+                                                                    }
+                                                                    like_busy.write().remove(&review_id_for_request);
+                                                                });
+                                                            }
+                                                        },
+                                                        "♥ {review.like_count}"
+                                                    }
                                                 }
                                             } else { span { class: "ub-like-own", "♥ {review.like_count}" } }
                                         }
@@ -2253,5 +2340,48 @@ mod saved_address_tests {
             NaiveDate::from_ymd_opt(2030, 8, 11).unwrap(),
             &blocked,
         ));
+    }
+
+    #[test]
+    fn review_like_updates_are_scoped_to_one_review() {
+        let review = |id: &str, like_count| api::RentalReview {
+            rental_review_id: id.into(),
+            rental_slug: "test-rv".into(),
+            rating: 5,
+            title: String::new(),
+            body: "A verified review".into(),
+            reviewer_name: "Guest".into(),
+            like_count,
+            created_at: "2030-08-01T12:00:00Z".into(),
+        };
+        let mut response = api::RentalReviewsResponse {
+            summary: api::RentalReviewSummary {
+                average_rating: Some("5.00".into()),
+                review_count: 2,
+            },
+            reviews: vec![review("first", 3), review("second", 7)],
+        };
+
+        set_review_like_count(&mut response, "first", 4);
+
+        assert_eq!(response.reviews[0].like_count, 4);
+        assert_eq!(response.reviews[1].like_count, 7);
+    }
+
+    #[test]
+    fn review_like_membership_is_deduplicated_and_reversible() {
+        let mut context = api::RentalReviewContext {
+            can_like: true,
+            liked_review_ids: vec!["first".into(), "first".into(), "second".into()],
+            own_review_ids: Vec::new(),
+            reviewable_booking_id: None,
+            review_state: "used".into(),
+        };
+
+        set_review_like_membership(&mut context, "first", true);
+        assert_eq!(context.liked_review_ids, vec!["second", "first"]);
+
+        set_review_like_membership(&mut context, "first", false);
+        assert_eq!(context.liked_review_ids, vec!["second"]);
     }
 }

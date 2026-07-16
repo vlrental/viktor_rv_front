@@ -1303,18 +1303,42 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
         let query = search();
         let rental = rental_filter();
         let page_offset = offset();
-        let _reload = reload_nonce();
+        let reload = reload_nonce();
+        loading.set(true);
+        message.set(String::new());
         spawn(async move {
-            loading.set(true);
-            message.set(String::new());
             match api::admin_rental_reviews(&query, &rental, page_offset).await {
                 Ok(value) => {
-                    reviews.set(value.reviews);
-                    next_offset.set(value.next_offset);
+                    if search.peek().as_str() == query.as_str()
+                        && rental_filter.peek().as_str() == rental.as_str()
+                        && *offset.peek() == page_offset
+                        && *reload_nonce.peek() == reload
+                    {
+                        if value.reviews.is_empty() && page_offset > 0 {
+                            offset.set((page_offset - 50).max(0));
+                            return;
+                        }
+                        reviews.set(value.reviews);
+                        next_offset.set(value.next_offset);
+                    }
                 }
-                Err(error) => message.set(error.message),
+                Err(error)
+                    if search.peek().as_str() == query.as_str()
+                        && rental_filter.peek().as_str() == rental.as_str()
+                        && *offset.peek() == page_offset
+                        && *reload_nonce.peek() == reload =>
+                {
+                    message.set(error.message)
+                }
+                Err(_) => {}
             }
-            loading.set(false);
+            if search.peek().as_str() == query.as_str()
+                && rental_filter.peek().as_str() == rental.as_str()
+                && *offset.peek() == page_offset
+                && *reload_nonce.peek() == reload
+            {
+                loading.set(false);
+            }
         });
     });
 
@@ -1323,7 +1347,7 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
             div { class: "admin-panel-head admin-list-head",
                 div { h2 { "Reviews" } p { "Verified guest comments and engagement. Deletion is permanent." } }
                 div { class: "admin-audit-tools",
-                    label { class: "admin-search", Icon { name: "search", size: 16, color: "var(--vl-muted)" } input { r#type: "search", placeholder: "Guest, booking or comment", value: "{search}", oninput: move |event| { offset.set(0); search.set(event.value()); } } }
+                    label { class: "admin-search", Icon { name: "search", size: 16, color: "var(--vl-muted)" } input { r#type: "search", maxlength: "100", placeholder: "Guest, booking or comment", value: "{search}", oninput: move |event| { offset.set(0); search.set(event.value()); } } }
                     select { class: "admin-compact-filter", aria_label: "Filter reviews by RV", value: "{rental_filter}", onchange: move |event| { offset.set(0); rental_filter.set(event.value()); }, option { value: "", "All RVs" } for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } }
                 }
             }

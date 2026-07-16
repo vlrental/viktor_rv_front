@@ -587,10 +587,11 @@ body:has(.cat-planner-backdrop) {
 .cat-sort-value { overflow: hidden; color: var(--vl-ink); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .cat-sort-chevron { display: grid; place-items: center; flex: 0 0 auto; transition: transform 160ms ease; }
 .cat-sort.is-open .cat-sort-chevron { transform: rotate(180deg); }
-.sort-dropdown-dismiss { position: fixed; z-index: 1; inset: 0; width: 100vw; height: 100vh; border: 0; background: transparent; cursor: default; }
+.sort-dropdown-dismiss { position: fixed; z-index: 1; inset: 0; border: 0; background: transparent; cursor: default; }
 .sort-dropdown-menu {
   position: absolute; z-index: 3; top: calc(100% + 8px); right: 0;
   display: flex; flex-direction: column; width: 258px; max-width: calc(100vw - 36px);
+  max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain;
   padding: 6px; border: 1px solid var(--vl-hair); border-radius: 14px;
   background: var(--vl-white); box-shadow: 0 18px 44px #10231724;
   animation: sort-dropdown-in 140ms ease-out both;
@@ -695,6 +696,7 @@ body:has(.cat-planner-backdrop) {
 .ub-review-summary { display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px; padding: 14px 16px; border-radius: 12px; background: var(--vl-mint); }
 .ub-review-summary b { color: var(--vl-forest); font: 500 30px var(--font-heading); }
 .ub-review-summary span { color: var(--vl-muted); font-size: 11px; }
+.ub-review-action-error { margin: -6px 0 16px; padding: 10px 12px; border-radius: 9px; background: #FFF3F0; color: #8A3525; font-size: 11px; line-height: 16px; }
 .ub-review-item { padding: 17px 0; border-top: 1px solid var(--vl-hair); }
 .ub-review-item > div { display: flex; align-items: center; gap: 8px; }
 .ub-review-item > div b { color: var(--vl-ink); font-size: 10px; }
@@ -703,7 +705,7 @@ body:has(.cat-planner-backdrop) {
 .ub-review-item p { margin-top: 7px; color: var(--vl-muted); font-size: 11px; line-height: 17px; white-space: pre-wrap; }
 .ub-review-item > small { display: block; margin-top: 9px; color: var(--vl-forest); font-size: 9px; font-weight: 700; }
 .ub-review-state { padding: 28px 0; color: var(--vl-muted); text-align: center; }
-.ub-review-policy { margin: 0 0 18px; padding: 12px 14px; border-left: 3px solid var(--vl-accent); background: var(--vl-sand); color: var(--vl-muted); font-size: 11px; line-height: 1.5; }
+.ub-review-policy { margin: 0 0 18px; padding: 12px 14px; border-left: 3px solid var(--vl-accent); background: var(--vl-surface); color: var(--vl-muted); font-size: 11px; line-height: 1.5; }
 .ub-review-foot { display: flex !important; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
 .ub-review-foot small { color: var(--vl-forest); font-size: 9px; font-weight: 700; }
 .ub-like { min-height: 32px; padding: 0 11px; border: 1px solid var(--vl-hair); border-radius: 999px; color: var(--vl-muted); font-size: 10px; font-weight: 750; }
@@ -1522,7 +1524,7 @@ body:has(.admin-overlay) { overflow: hidden; }
 .admin-confirm-modal h3 { color: var(--vl-ink); font: 500 30px/1 var(--font-heading); }
 .admin-confirm-modal header button { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--vl-line); border-radius: 9px; }
 .admin-confirm-modal > p { margin: 13px 0 17px; color: var(--vl-muted); font-size: 11px; line-height: 1.55; }
-.admin-confirm-modal > .admin-action-limit { margin-bottom: 8px; padding: 9px 11px; border-radius: 8px; background: var(--vl-sand); color: var(--vl-forest); font-weight: 750; }
+.admin-confirm-modal > .admin-action-limit { margin-bottom: 8px; padding: 9px 11px; border-radius: 8px; background: var(--vl-surface); color: var(--vl-forest); font-weight: 750; }
 .admin-confirm-modal > label { margin-top: 11px; }
 .admin-confirm-modal footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 19px; }
 .admin-drawer-actions > .admin-inline-message { margin-right: auto; }
