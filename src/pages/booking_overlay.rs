@@ -3,7 +3,12 @@ use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
 use super::catalog::{add_months, month_start, rental_image, CatalogSearchMonth};
-use crate::{api, components::Icon, data::rv_gallery, pricing, AuthSession, Route};
+use crate::{
+    api,
+    components::{Icon, ReviewForm},
+    data::rv_gallery,
+    pricing, AuthSession, Route,
+};
 
 const SAVED_DELIVERY_ADDRESSES: &str = "vl_delivery_addresses";
 const MAX_SAVED_DELIVERY_ADDRESSES: usize = 5;
@@ -1864,6 +1869,8 @@ fn RentalChoice(
     let mut reviews_busy = use_signal(|| false);
     let mut reviews_error = use_signal(String::new);
     let mut reviews = use_signal(|| None::<api::RentalReviewsResponse>);
+    let mut review_context = use_signal(|| None::<api::RentalReviewContext>);
+    let mut like_busy = use_signal(std::collections::HashSet::<String>::new);
     let rating = rental.review_rating.clone().unwrap_or_else(|| "New".into());
     let rounded_rating = rental
         .review_rating
@@ -1901,7 +1908,7 @@ fn RentalChoice(
                     p { "{rental.summary}" }
                     div { b { "CA${rental.base_rate}" } span { " / {rental.price_unit}" } }
                 }
-                button { class: "ub-rv-rating", r#type: "button", aria_label: "Read {review_label} for {rental.name}", onclick: { let slug = slug.clone(); move |event| { event.stop_propagation(); reviews_open.set(true); if reviews.peek().is_none() && !*reviews_busy.peek() { reviews_busy.set(true); reviews_error.set(String::new()); let slug = slug.clone(); spawn(async move { match api::rental_reviews(&slug).await { Ok(value) => reviews.set(Some(value)), Err(message) => reviews_error.set(message) } reviews_busy.set(false); }); } } },
+                button { class: "ub-rv-rating", r#type: "button", aria_label: "Read {review_label} for {rental.name}", onclick: { let slug = slug.clone(); move |event| { event.stop_propagation(); reviews_open.set(true); if reviews.peek().is_none() && !*reviews_busy.peek() { reviews_busy.set(true); reviews_error.set(String::new()); let slug_for_reviews = slug.clone(); spawn(async move { match api::rental_reviews(&slug_for_reviews).await { Ok(value) => reviews.set(Some(value)), Err(message) => reviews_error.set(message) } reviews_busy.set(false); }); }; if api::access_token().is_some() && review_context.peek().is_none() { let slug_for_context = slug.clone(); spawn(async move { if let Ok(context) = api::rental_review_context(&slug_for_context).await { review_context.set(Some(context)); } }); } } },
                     RatingStars { rating: rounded_rating }
                     b { "{rating}" }
                     span { "({rental.review_count})" }
@@ -1917,13 +1924,30 @@ fn RentalChoice(
                             else if !reviews_error.read().is_empty() { p { class: "ub-error", role: "alert", "{reviews_error}" } }
                             else if let Some(value) = reviews.read().as_ref() {
                                 div { class: "ub-review-summary", b { if let Some(average) = value.summary.average_rating.as_ref() { "{average}" } else { "New" } } span { "out of 5 · {value.summary.review_count} verified reviews" } }
+                                if let Some(context) = review_context.read().as_ref() {
+                                    if let Some(booking_id) = context.reviewable_booking_id.as_ref() {
+                                        ReviewForm { booking_id: booking_id.clone(), rental_name: rental.name.clone(), on_published: { let slug = slug.clone(); move |_| { let slug = slug.clone(); spawn(async move { if let Ok(value) = api::rental_reviews(&slug).await { reviews.set(Some(value)); }; if let Ok(context) = api::rental_review_context(&slug).await { review_context.set(Some(context)); } }); } } }
+                                    } else {
+                                        p { class: "ub-review-policy", match context.review_state.as_str() { "used" => "Your review opportunity for this trip has already been used.", "waiting_for_return" => "You can write a review after the RV has been returned.", _ => "Reviews are available after a completed, paid RV trip." } }
+                                    }
+                                } else if api::access_token().is_none() {
+                                    p { class: "ub-review-policy", "Sign in to write a review after return. Likes are available to customers with a paid booking." }
+                                }
                                 if value.reviews.is_empty() { p { class: "ub-review-state", "No guest comments yet." } }
                                 for review in value.reviews.iter() {
                                     article { class: "ub-review-item", key: "{review.rental_review_id}",
                                         div { RatingStars { rating: review.rating } b { "{review.rating}/5" } time { "{review.created_at.get(0..10).unwrap_or(&review.created_at)}" } }
                                         if !review.title.is_empty() { h4 { "{review.title}" } }
                                         p { "{review.body}" }
-                                        small { "{review.reviewer_name} · Verified booking" }
+                                        div { class: "ub-review-foot", small { "{review.reviewer_name} · Verified booking" }
+                                            if let Some(context) = review_context.read().as_ref() {
+                                                if context.own_review_ids.contains(&review.rental_review_id) {
+                                                    span { class: "ub-like-own", "Your review · {review.like_count} likes" }
+                                                } else {
+                                                    button { class: if context.liked_review_ids.contains(&review.rental_review_id) { "ub-like active" } else { "ub-like" }, r#type: "button", aria_label: if context.liked_review_ids.contains(&review.rental_review_id) { "Unlike this review" } else { "Like this review" }, disabled: !context.can_like || like_busy.read().contains(&review.rental_review_id), onclick: { let review_id = review.rental_review_id.clone(); let was_liked = context.liked_review_ids.contains(&review.rental_review_id); move |_| { let previous_reviews = reviews.read().clone(); let previous_context = review_context.read().clone(); if let Some(mut current) = previous_reviews.clone() { if let Some(item) = current.reviews.iter_mut().find(|item| item.rental_review_id == review_id) { item.like_count += if was_liked { -1 } else { 1 }; } reviews.set(Some(current)); }; if let Some(mut current) = previous_context.clone() { if was_liked { current.liked_review_ids.retain(|id| id != &review_id); } else { current.liked_review_ids.push(review_id.clone()); } review_context.set(Some(current)); } like_busy.write().insert(review_id.clone()); let review_id_for_request = review_id.clone(); spawn(async move { if api::set_rental_review_like(&review_id_for_request, !was_liked).await.is_err() { reviews.set(previous_reviews); review_context.set(previous_context); } like_busy.write().remove(&review_id_for_request); }); } }, "♥ {review.like_count}" }
+                                                }
+                                            } else { span { class: "ub-like-own", "♥ {review.like_count}" } }
+                                        }
                                     }
                                 }
                             }
@@ -2187,6 +2211,7 @@ mod saved_address_tests {
             amount_due_now: "421.87".into(),
             review_id: None,
             can_review: false,
+            review_opportunity_used: false,
         };
 
         assert!(booking_payment_amount_is_valid(&booking));

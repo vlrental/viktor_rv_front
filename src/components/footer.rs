@@ -4,7 +4,15 @@ use crate::data::PHONE;
 use crate::Route;
 use crate::{api, components::Icon};
 
-const LOGO: Asset = asset!("/assets/img/logo.png");
+const LOGO: Asset = asset!(
+    "/assets/img/logo.png",
+    AssetOptions::image()
+        .with_size(ImageSize::Manual {
+            width: 120,
+            height: 120,
+        })
+        .with_preload(true)
+);
 
 #[component]
 pub fn Footer() -> Element {

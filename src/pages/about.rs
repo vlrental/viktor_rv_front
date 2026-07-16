@@ -2,8 +2,10 @@ use crate::components::Icon;
 use crate::data::IMG_BULLET_OVERLOOK;
 use dioxus::prelude::*;
 
-const CSS: Asset = asset!("/assets/css/about.css");
-const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
+const IMG_HOST: Asset = asset!(
+    "/assets/img/host-viktor.webp",
+    AssetOptions::image().with_jpg()
+);
 
 /// Ценности компании (правая колонка секции Story).
 const VALUES: [(&str, &str, &str); 4] = [
@@ -60,8 +62,6 @@ const STATS: [(&str, &str); 4] = [
 #[component]
 pub fn About() -> Element {
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
-
         // Hero с фото команды и градиентом
         section { class: "ab-hero",
             div { class: "ab-hero-img", style: "background-image: url('{IMG_BULLET_OVERLOOK}');" }

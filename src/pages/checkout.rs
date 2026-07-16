@@ -2,8 +2,6 @@ use dioxus::prelude::*;
 
 use crate::{api, components::Icon, pricing, AuthSession, Route};
 
-const CSS: Asset = asset!("/assets/css/checkout.css");
-
 #[component]
 pub fn Checkout() -> Element {
     let rentals_href = api::frontend_path("/#home-rentals");
@@ -124,7 +122,6 @@ pub fn Checkout() -> Element {
     };
 
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         div { class: "co-body",
             div { class: "co-breadcrumb",
                 a { class: "co-breadcrumb-a", href: rentals_href, "RV Rentals" }

@@ -10,8 +10,55 @@ use pages::*;
 
 use dioxus::prelude::*;
 
-const _: Asset = asset!(
+const MAIN_CSS: Asset = asset!(
     "/assets/main.css",
+    AssetOptions::css().with_static_head(true)
+);
+// Route styles must be available before client-side navigation. Loading these
+// only from inside each page causes a visible unstyled frame on the first visit
+// to that route; subsequent visits merely hide the issue behind the cache.
+const ABOUT_CSS: Asset = asset!(
+    "/assets/css/about.css",
+    AssetOptions::css().with_static_head(true)
+);
+const ATTRACTIONS_CSS: Asset = asset!(
+    "/assets/css/attractions.css",
+    AssetOptions::css().with_static_head(true)
+);
+const CHECKOUT_CSS: Asset = asset!(
+    "/assets/css/checkout.css",
+    AssetOptions::css().with_static_head(true)
+);
+const CONFIRMED_CSS: Asset = asset!(
+    "/assets/css/confirmed.css",
+    AssetOptions::css().with_static_head(true)
+);
+const CONTACT_CSS: Asset = asset!(
+    "/assets/css/contact.css",
+    AssetOptions::css().with_static_head(true)
+);
+const COOLER_TRAILERS_CSS: Asset = asset!(
+    "/assets/css/cooler_trailers.css",
+    AssetOptions::css().with_static_head(true)
+);
+const DELIVERY_CSS: Asset = asset!(
+    "/assets/css/delivery.css",
+    AssetOptions::css().with_static_head(true)
+);
+const RESTAURANTS_CSS: Asset = asset!(
+    "/assets/css/restaurants.css",
+    AssetOptions::css().with_static_head(true)
+);
+const RV_DETAIL_CSS: Asset = asset!(
+    "/assets/css/rv_detail.css",
+    AssetOptions::css().with_static_head(true)
+);
+const RV_SALES_CSS: Asset = asset!(
+    "/assets/css/rv_sales.css",
+    AssetOptions::css().with_static_head(true)
+);
+const TERMS_CSS: Asset = asset!(
+    "/assets/css/terms.css",
     AssetOptions::css().with_static_head(true)
 );
 const PARALLAX_JS: Asset = asset!("/assets/parallax.js");
@@ -221,6 +268,22 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
 
 #[component]
 fn App() -> Element {
+    // Keep the statically injected route styles reachable as a single bundle
+    // dependency even though page components no longer create dynamic links.
+    let _route_styles = [
+        MAIN_CSS,
+        ABOUT_CSS,
+        ATTRACTIONS_CSS,
+        CHECKOUT_CSS,
+        CONFIRMED_CSS,
+        CONTACT_CSS,
+        COOLER_TRAILERS_CSS,
+        DELIVERY_CSS,
+        RESTAURANTS_CSS,
+        RV_DETAIL_CSS,
+        RV_SALES_CSS,
+        TERMS_CSS,
+    ];
     rsx! {
         document::Script { src: PARALLAX_JS }
         Router::<Route> {}

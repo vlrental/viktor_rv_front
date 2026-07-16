@@ -5,7 +5,15 @@ use crate::components::Icon;
 use crate::data::PHONE;
 use crate::{booking_launch_requires_home, AuthSession, BookingLaunchRequest, Route};
 
-const LOGO: Asset = asset!("/assets/img/logo.png");
+const LOGO: Asset = asset!(
+    "/assets/img/logo.png",
+    AssetOptions::image()
+        .with_size(ImageSize::Manual {
+            width: 120,
+            height: 120,
+        })
+        .with_preload(true)
+);
 
 fn focus_mobile_menu_toggle() {
     document::eval(

@@ -2,8 +2,10 @@ use dioxus::prelude::*;
 
 use crate::{api, components::Icon};
 
-const CSS: Asset = asset!("/assets/css/cooler_trailers.css");
-const IMG_COOLER_HERO: Asset = asset!("/assets/img/cooler-hero.jpg");
+const IMG_COOLER_HERO: Asset = asset!(
+    "/assets/img/cooler-hero.jpg",
+    AssetOptions::image().with_jpg()
+);
 
 /// Карточка «фича» под hero.
 struct Feature {
@@ -45,7 +47,6 @@ const BULLETS: [&str; 3] = [
 pub fn CoolerTrailers() -> Element {
     let rentals_href = api::frontend_path("/#home-rentals");
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         section { class: "clt-hero",
             div { class: "clt-hero-copy",
                 div { class: "clt-soon",

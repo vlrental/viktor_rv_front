@@ -2,18 +2,46 @@ use dioxus::prelude::*;
 
 use crate::components::Icon;
 
-const CSS: Asset = asset!("/assets/css/restaurants.css");
-
-const IMG_WATERFRONT: Asset = asset!("/assets/img/rest-waterfront.webp");
-const IMG_BRICK: Asset = asset!("/assets/img/rest-brick.webp");
-const IMG_JOEY: Asset = asset!("/assets/img/rest-joey.webp");
-const IMG_BERNIES: Asset = asset!("/assets/img/rest-bernies.webp");
-const IMG_ROMA: Asset = asset!("/assets/img/rest-roma.webp");
-const IMG_OLDVINES: Asset = asset!("/assets/img/rest-oldvines.webp");
-const IMG_TERRACE: Asset = asset!("/assets/img/rest-terrace.webp");
-const IMG_KINGTAPS: Asset = asset!("/assets/img/rest-kingtaps.webp");
-const IMG_HUMO: Asset = asset!("/assets/img/rest-humo.webp");
-const IMG_FRANKIE: Asset = asset!("/assets/img/rest-frankie.webp");
+const IMG_WATERFRONT: Asset = asset!(
+    "/assets/img/rest-waterfront.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_BRICK: Asset = asset!(
+    "/assets/img/rest-brick.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_JOEY: Asset = asset!(
+    "/assets/img/rest-joey.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_BERNIES: Asset = asset!(
+    "/assets/img/rest-bernies.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_ROMA: Asset = asset!(
+    "/assets/img/rest-roma.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_OLDVINES: Asset = asset!(
+    "/assets/img/rest-oldvines.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_TERRACE: Asset = asset!(
+    "/assets/img/rest-terrace.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_KINGTAPS: Asset = asset!(
+    "/assets/img/rest-kingtaps.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_HUMO: Asset = asset!(
+    "/assets/img/rest-humo.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_FRANKIE: Asset = asset!(
+    "/assets/img/rest-frankie.webp",
+    AssetOptions::image().with_jpg()
+);
 
 /// Карточка ресторана (данные фрейма Restaurants).
 struct RestaurantCard {
@@ -116,7 +144,6 @@ fn restaurant_cards() -> Vec<RestaurantCard> {
 pub fn Restaurants() -> Element {
     let cards = restaurant_cards();
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         section { class: "rs-hero",
             div { class: "rs-hero-eyebrow", "RESTAURANTS" }
             h1 { class: "rs-hero-title", "Where to eat around the lake" }

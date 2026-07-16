@@ -5,7 +5,11 @@ use dioxus::prelude::*;
 use crate::data::{
     IMG_BULLET, IMG_JAYCO, IMG_OPENRANGE, IMG_OPENRANGE2, IMG_OUTBACK, IMG_ROCKWOOD,
 };
-use crate::{api, components::Icon, Route};
+use crate::{
+    api,
+    components::{Icon, SortDropdown},
+    Route,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CatalogFilters {
@@ -209,23 +213,13 @@ fn CatalogPage() -> Element {
             div { class: "cat-results",
                 div { class: "cat-results-head",
                     div { class: "cat-count", "{match_count} stays that fit your group" }
-                    label { class: "cat-sort",
-                        Icon { name: "arrow-up-down", size: 14, color: "var(--vl-ink)" }
-                        span { "Sort" }
-                        select {
-                            aria_label: "Sort RVs",
-                            value: "{filters.read().sort}",
-                            onchange: move |event| {
-                                let mut next = filters.read().clone();
-                                next.sort = event.value();
-                                filters.set(next);
-                            },
-                            option { value: "recommended", "Recommended" }
-                            option { value: "price-low", "Price: low to high" }
-                            option { value: "price-high", "Price: high to low" }
-                            option { value: "capacity", "Most sleeping space" }
-                        }
-                        Icon { name: "chevron-down", size: 14, color: "var(--vl-ink)" }
+                    SortDropdown {
+                        value: filters.read().sort.clone(),
+                        on_change: move |value| {
+                            let mut next = filters.read().clone();
+                            next.sort = value;
+                            filters.set(next);
+                        },
                     }
                 }
                 div { class: "cat-grid",

@@ -4,8 +4,6 @@ use crate::data::{rv_listings, IMG_BULLET};
 use crate::Route;
 use crate::{api, components::Icon, pricing};
 
-const CSS: Asset = asset!("/assets/css/confirmed.css");
-
 /// Страница подтверждения брони — Pencil-фреймы pivyP (desktop) / V4VB2P (mobile).
 #[component]
 pub fn Confirmed() -> Element {
@@ -13,7 +11,6 @@ pub fn Confirmed() -> Element {
     let draft = api::load_json::<api::TripDraft>("vl_trip_draft");
     if created.is_none() {
         return rsx! {
-            document::Link { rel: "stylesheet", href: CSS }
             div { class: "cf-body",
                 div { class: "cf-inner",
                     h1 { class: "cf-title", "No confirmed booking found" }
@@ -28,7 +25,6 @@ pub fn Confirmed() -> Element {
         .map(|value| value.booking.booking_number.clone())
         .unwrap_or_else(|| "Unavailable".into());
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         div { class: "cf-body",
             div { class: "cf-inner",
                 div { class: "cf-check",

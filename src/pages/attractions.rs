@@ -1,13 +1,29 @@
 use dioxus::prelude::*;
 
-const CSS: Asset = asset!("/assets/css/attractions.css");
-
-const IMG_LAKE: Asset = asset!("/assets/img/attr-lake.webp");
-const IMG_WINE: Asset = asset!("/assets/img/attr-wine.webp");
-const IMG_HIKING: Asset = asset!("/assets/img/attr-hiking.webp");
-const IMG_BEACH: Asset = asset!("/assets/img/attr-beach.webp");
-const IMG_FAMILY: Asset = asset!("/assets/img/attr-family.webp");
-const IMG_FISHING: Asset = asset!("/assets/img/attr-fishing.webp");
+const IMG_LAKE: Asset = asset!(
+    "/assets/img/attr-lake.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_WINE: Asset = asset!(
+    "/assets/img/attr-wine.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_HIKING: Asset = asset!(
+    "/assets/img/attr-hiking.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_BEACH: Asset = asset!(
+    "/assets/img/attr-beach.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_FAMILY: Asset = asset!(
+    "/assets/img/attr-family.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_FISHING: Asset = asset!(
+    "/assets/img/attr-fishing.webp",
+    AssetOptions::image().with_jpg()
+);
 
 /// Карточка достопримечательности (данные фрейма Attractions).
 struct AttractionCard {
@@ -70,7 +86,6 @@ fn attraction_cards() -> Vec<AttractionCard> {
 pub fn Attractions() -> Element {
     let cards = attraction_cards();
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         section { class: "at-hero",
             div { class: "at-hero-eyebrow", "ATTRACTIONS" }
             h1 { class: "at-hero-title", "Explore the Okanagan" }

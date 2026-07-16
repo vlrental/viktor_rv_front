@@ -1,7 +1,5 @@
 use dioxus::prelude::*;
 
-const CSS: Asset = asset!("/assets/css/terms.css");
-
 /// Раздел условий аренды: якорь + заголовок + текст.
 struct TermSection {
     id: &'static str,
@@ -49,8 +47,6 @@ pub fn Terms() -> Element {
     let sections = term_sections();
     let toc = term_sections();
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
-
         // Заголовок страницы: тайтл, сабтайтл, дата обновления
         section { class: "tm-header",
             h1 { class: "tm-title", "Terms & Conditions" }

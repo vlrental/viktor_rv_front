@@ -10,8 +10,10 @@ use super::booking_overlay::UnifiedBookingOverlay;
 use crate::data::{rv_gallery, Listing, PHONE};
 use crate::{api, components::Icon, pricing, Route};
 
-const CSS: Asset = asset!("/assets/css/rv_detail.css");
-const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
+const IMG_HOST: Asset = asset!(
+    "/assets/img/host-viktor.webp",
+    AssetOptions::image().with_jpg()
+);
 
 #[component]
 pub fn RvDetail(slug: String) -> Element {
@@ -48,7 +50,6 @@ pub fn RvDetail(slug: String) -> Element {
         async move { api::rental(&value).await }
     });
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         div { class: "rvd-body",
             if let Some(result) = details.read().as_ref() {
                 match result {

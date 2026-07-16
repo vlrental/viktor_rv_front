@@ -4,28 +4,73 @@ use dioxus::prelude::*;
 
 pub const PHONE: &str = "+1 (250) 878 5874";
 
-pub const IMG_BULLET: Asset = asset!("/assets/img/bullet.webp");
-pub const IMG_JAYCO: Asset = asset!("/assets/img/jayco.webp");
-pub const IMG_OPENRANGE: Asset = asset!("/assets/img/openrange.webp");
-pub const IMG_OPENRANGE2: Asset = asset!("/assets/img/openrange2.webp");
-pub const IMG_OUTBACK: Asset = asset!("/assets/img/outback.webp");
-pub const IMG_ROCKWOOD: Asset = asset!("/assets/img/rockwood.webp");
-pub const IMG_BULLET_LAKESIDE: Asset = asset!("/assets/img/bullet-lakeside.webp");
-pub const IMG_BULLET_MYRA: Asset = asset!("/assets/img/bullet-myra.webp");
-pub const IMG_BULLET_ORCHARD: Asset = asset!("/assets/img/bullet-orchard.webp");
-pub const IMG_BULLET_OVERLOOK: Asset = asset!("/assets/img/bullet-overlook.webp");
-pub const IMG_BULLET_PEACHLAND: Asset = asset!("/assets/img/bullet-peachland.webp");
-pub const IMG_BULLET_VINEYARD: Asset = asset!("/assets/img/bullet-vineyard.webp");
+pub const IMG_BULLET: Asset = asset!("/assets/img/bullet.webp", AssetOptions::image().with_jpg());
+pub const IMG_JAYCO: Asset = asset!("/assets/img/jayco.webp", AssetOptions::image().with_jpg());
+pub const IMG_OPENRANGE: Asset = asset!(
+    "/assets/img/openrange.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_OPENRANGE2: Asset = asset!(
+    "/assets/img/openrange2.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_OUTBACK: Asset = asset!("/assets/img/outback.webp", AssetOptions::image().with_jpg());
+pub const IMG_ROCKWOOD: Asset = asset!(
+    "/assets/img/rockwood.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_BULLET_LAKESIDE: Asset = asset!(
+    "/assets/img/bullet-lakeside.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_BULLET_MYRA: Asset = asset!(
+    "/assets/img/bullet-myra.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_BULLET_ORCHARD: Asset = asset!(
+    "/assets/img/bullet-orchard.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_BULLET_OVERLOOK: Asset = asset!(
+    "/assets/img/bullet-overlook.webp",
+    AssetOptions::image().with_jpg().with_preload(true)
+);
+pub const IMG_BULLET_PEACHLAND: Asset = asset!(
+    "/assets/img/bullet-peachland.webp",
+    AssetOptions::image().with_jpg()
+);
+pub const IMG_BULLET_VINEYARD: Asset = asset!(
+    "/assets/img/bullet-vineyard.webp",
+    AssetOptions::image().with_jpg()
+);
 macro_rules! gallery_assets {
     ($prefix:literal, $base:expr) => {{
         vec![
             $base,
-            asset!(concat!("/assets/img/", $prefix, "-lakeside.webp")),
-            asset!(concat!("/assets/img/", $prefix, "-vineyard.webp")),
-            asset!(concat!("/assets/img/", $prefix, "-myra.webp")),
-            asset!(concat!("/assets/img/", $prefix, "-overlook.webp")),
-            asset!(concat!("/assets/img/", $prefix, "-peachland.webp")),
-            asset!(concat!("/assets/img/", $prefix, "-orchard.webp")),
+            asset!(
+                concat!("/assets/img/", $prefix, "-lakeside.webp"),
+                AssetOptions::image().with_jpg()
+            ),
+            asset!(
+                concat!("/assets/img/", $prefix, "-vineyard.webp"),
+                AssetOptions::image().with_jpg()
+            ),
+            asset!(
+                concat!("/assets/img/", $prefix, "-myra.webp"),
+                AssetOptions::image().with_jpg()
+            ),
+            asset!(
+                concat!("/assets/img/", $prefix, "-overlook.webp"),
+                AssetOptions::image().with_jpg()
+            ),
+            asset!(
+                concat!("/assets/img/", $prefix, "-peachland.webp"),
+                AssetOptions::image().with_jpg()
+            ),
+            asset!(
+                concat!("/assets/img/", $prefix, "-orchard.webp"),
+                AssetOptions::image().with_jpg()
+            ),
         ]
     }};
 }
@@ -33,7 +78,7 @@ macro_rules! gallery_assets {
 macro_rules! original_assets {
     ($prefix:literal; $($index:literal),+ $(,)?) => {
         vec![
-            $(asset!(concat!("/assets/img/", $prefix, "-original-", $index, ".webp"))),+
+            $(asset!(concat!("/assets/img/", $prefix, "-original-", $index, ".webp"), AssetOptions::image().with_jpg())),+
         ]
     };
 }

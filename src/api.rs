@@ -542,7 +542,45 @@ pub struct RentalReview {
     pub title: String,
     pub body: String,
     pub reviewer_name: String,
+    #[serde(default)]
+    pub like_count: i64,
     pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct RentalReviewContext {
+    pub can_like: bool,
+    pub liked_review_ids: Vec<String>,
+    pub own_review_ids: Vec<String>,
+    pub reviewable_booking_id: Option<String>,
+    pub review_state: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct RentalReviewLikeResponse {
+    pub rental_review_id: String,
+    pub like_count: i64,
+    pub liked: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AdminRentalReview {
+    pub rental_review_id: String,
+    pub rental_slug: String,
+    pub rental_name: String,
+    pub booking_number: String,
+    pub reviewer_name: String,
+    pub rating: i32,
+    pub title: String,
+    pub body: String,
+    pub like_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AdminRentalReviewsResponse {
+    pub reviews: Vec<AdminRentalReview>,
+    pub next_offset: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -1085,6 +1123,8 @@ pub struct Booking {
     pub amount_due_now: String,
     #[serde(default)]
     pub review_id: Option<String>,
+    #[serde(default)]
+    pub review_opportunity_used: bool,
     #[serde(default)]
     pub can_review: bool,
 }
@@ -1801,6 +1841,80 @@ pub async fn rental_reviews(slug: &str) -> Result<RentalReviewsResponse, String>
     response.json().await.map_err(|error| error.to_string())
 }
 
+pub async fn rental_review_context(slug: &str) -> Result<RentalReviewContext, ApiError> {
+    let path = format!(
+        "{API_BASE}/api/v1/me/rentals/{}/review-context",
+        urlencoding::encode(slug)
+    );
+    let mut token = access_token().ok_or_else(|| ApiError {
+        status: 401,
+        code: "unauthorized".into(),
+        message: "Sign in required".into(),
+    })?;
+    let mut response = Request::get(&path)
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if response.status() == 401 {
+        token = refresh_session().await?.access_token;
+        response = Request::get(&path)
+            .header("Authorization", &format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|error| ApiError::client(error.to_string()))?;
+    }
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn set_rental_review_like(
+    review_id: &str,
+    liked: bool,
+) -> Result<RentalReviewLikeResponse, ApiError> {
+    let path = format!(
+        "{API_BASE}/api/v1/reviews/{}/like",
+        urlencoding::encode(review_id)
+    );
+    let mut token = access_token().ok_or_else(|| ApiError {
+        status: 401,
+        code: "unauthorized".into(),
+        message: "Sign in required".into(),
+    })?;
+    let send = |token: String| {
+        let path = path.clone();
+        async move {
+            let request = if liked {
+                Request::put(&path)
+            } else {
+                Request::delete(&path)
+            };
+            request
+                .header("Authorization", &format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    };
+    let mut response = send(token.clone()).await?;
+    if response.status() == 401 {
+        token = refresh_session().await?.access_token;
+        response = send(token).await?;
+    }
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
 #[allow(dead_code)]
 pub async fn availability(
     slug: &str,
@@ -2100,6 +2214,51 @@ fn admin_access_token() -> Result<String, ApiError> {
         code: "unauthorized".into(),
         message: "Admin sign-in is required".into(),
     })
+}
+
+pub async fn admin_rental_reviews(
+    search: &str,
+    rental_slug: &str,
+    offset: i64,
+) -> Result<AdminRentalReviewsResponse, ApiError> {
+    let token = admin_access_token()?;
+    let mut url = format!("{API_BASE}/api/v1/admin/reviews?limit=50&offset={offset}");
+    if !search.trim().is_empty() {
+        url.push_str("&search=");
+        url.push_str(&urlencoding::encode(search.trim()));
+    }
+    if !rental_slug.trim().is_empty() {
+        url.push_str("&rental_slug=");
+        url.push_str(&urlencoding::encode(rental_slug.trim()));
+    }
+    let response = Request::get(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_delete_rental_review(review_id: &str) -> Result<(), ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::delete(&format!(
+        "{API_BASE}/api/v1/admin/reviews/{}",
+        urlencoding::encode(review_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    Ok(())
 }
 
 pub async fn admin_rentals() -> Result<Vec<AdminRentalSummary>, ApiError> {

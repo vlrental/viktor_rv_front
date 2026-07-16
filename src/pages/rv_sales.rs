@@ -3,8 +3,6 @@ use dioxus::prelude::*;
 use crate::data::{IMG_BULLET, IMG_OPENRANGE, IMG_ROCKWOOD};
 use crate::{api, components::Icon};
 
-const CSS: Asset = asset!("/assets/css/rv_sales.css");
-
 /// Юнит будущей продажи (пока «Coming soon» — цена по запросу).
 struct SaleItem {
     title: &'static str,
@@ -75,7 +73,6 @@ pub fn RvSales() -> Element {
         }
     };
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
 
         // Заголовок страницы
         section { class: "sale-header",

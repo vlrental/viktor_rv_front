@@ -563,17 +563,19 @@ pub fn Admin() -> Element {
                             ("rvs", "RVs", "caravan"),
                             ("payments", "Payments", "credit-card"),
                             ("calendar", "Calendar", "calendar-days"),
+                            ("reviews", "Reviews", "message-square-heart"),
                             ("audit", "Audit", "scroll-text"),
                         ] {
-                            button { key: "{tab}", class: match (active_tab() == tab, matches!(tab, "payments" | "calendar" | "audit")) { (true, true) => "active admin-tab-secondary", (false, true) => "admin-tab-secondary", (true, false) => "active", (false, false) => "" }, r#type: "button", role: "tab", aria_selected: active_tab() == tab, onclick: move |_| active_tab.set(tab.into()),
+                            button { key: "{tab}", class: match (active_tab() == tab, matches!(tab, "payments" | "calendar" | "reviews" | "audit")) { (true, true) => "active admin-tab-secondary", (false, true) => "admin-tab-secondary", (true, false) => "active", (false, false) => "" }, r#type: "button", role: "tab", aria_selected: active_tab() == tab, onclick: move |_| active_tab.set(tab.into()),
                                 Icon { name: icon, size: 16, color: "currentColor" }
                                 "{label}"
                             }
                         }
-                        select { class: "admin-mobile-more", aria_label: "More admin sections", value: if matches!(active_tab().as_str(), "payments" | "calendar" | "audit") { active_tab() } else { "more".into() }, onchange: move |event| { let value = event.value(); if matches!(value.as_str(), "payments" | "calendar" | "audit") { active_tab.set(value); } },
+                        select { class: "admin-mobile-more", aria_label: "More admin sections", value: if matches!(active_tab().as_str(), "payments" | "calendar" | "reviews" | "audit") { active_tab() } else { "more".into() }, onchange: move |event| { let value = event.value(); if matches!(value.as_str(), "payments" | "calendar" | "reviews" | "audit") { active_tab.set(value); } },
                             option { value: "more", disabled: true, "More" }
                             option { value: "payments", "Payments" }
                             option { value: "calendar", "Calendar" }
+                            option { value: "reviews", "Reviews" }
                             option { value: "audit", "Audit log" }
                         }
                     }
@@ -606,6 +608,7 @@ pub fn Admin() -> Element {
                             "rvs" => rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: loading(), on_open_rental: open_rental, on_add_rental: move |_| { selected_rental.set(None); rv_editor_new.set(true); rv_editor_open.set(true); } } },
                             "payments" => rsx! { PaymentsTab { payments: payments.read().clone(), bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
                             "calendar" => rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
+                            "reviews" => rsx! { ReviewsTab { rentals: admin_rentals.read().clone() } },
                             "audit" => rsx! { AuditTab { events: audit.read().clone(), loading: loading() } },
                             _ => rsx! {},
                         }
@@ -1277,6 +1280,86 @@ fn CalendarTab(
                     div { class: "admin-date-grid", label { "Close from · 2:00 PM" input { r#type: "date", min: "{today}", value: "{starts_on}", onchange: move |event| starts_on.set(event.value()) } } label { "Open again · 11:00 AM" input { r#type: "date", min: "{today}", value: "{ends_on}", onchange: move |event| ends_on.set(event.value()) } } }
                     label { "Reason (admin only)" input { value: "{reason}", maxlength: 300, oninput: move |event| reason.set(event.value()) } }
                     button { class: "admin-submit", r#type: "button", disabled: busy() || rental_slug().is_empty(), onclick: move |_| { let values = (rental_slug(), starts_on(), ends_on(), reason()); async move { if values.2 <= values.1 { message.set("The reopening date must be later than the closing date.".into()); return; } busy.set(true); match api::create_admin_availability_block(&values.0, &values.1, &values.2, &values.3).await { Ok(_) => { message.set("Dates closed for customers.".into()); panel_open.set(false); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } }, if busy() { "Saving…" } else { "Close dates" } }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
+    let mut reviews = use_signal(Vec::<api::AdminRentalReview>::new);
+    let mut search = use_signal(String::new);
+    let mut rental_filter = use_signal(String::new);
+    let mut offset = use_signal(|| 0_i64);
+    let mut next_offset = use_signal(|| None::<i64>);
+    let mut loading = use_signal(|| true);
+    let mut message = use_signal(String::new);
+    let mut delete_target = use_signal(|| None::<api::AdminRentalReview>);
+    let mut delete_busy = use_signal(|| false);
+    let mut reload_nonce = use_signal(|| 0_u32);
+
+    use_effect(move || {
+        let query = search();
+        let rental = rental_filter();
+        let page_offset = offset();
+        let _reload = reload_nonce();
+        spawn(async move {
+            loading.set(true);
+            message.set(String::new());
+            match api::admin_rental_reviews(&query, &rental, page_offset).await {
+                Ok(value) => {
+                    reviews.set(value.reviews);
+                    next_offset.set(value.next_offset);
+                }
+                Err(error) => message.set(error.message),
+            }
+            loading.set(false);
+        });
+    });
+
+    rsx! {
+        section { class: "admin-panel admin-full-panel admin-reviews-panel",
+            div { class: "admin-panel-head admin-list-head",
+                div { h2 { "Reviews" } p { "Verified guest comments and engagement. Deletion is permanent." } }
+                div { class: "admin-audit-tools",
+                    label { class: "admin-search", Icon { name: "search", size: 16, color: "var(--vl-muted)" } input { r#type: "search", placeholder: "Guest, booking or comment", value: "{search}", oninput: move |event| { offset.set(0); search.set(event.value()); } } }
+                    select { class: "admin-compact-filter", aria_label: "Filter reviews by RV", value: "{rental_filter}", onchange: move |event| { offset.set(0); rental_filter.set(event.value()); }, option { value: "", "All RVs" } for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } }
+                }
+            }
+            if !message.read().is_empty() { p { class: "admin-inline-message", role: "alert", "{message}" } }
+            if loading() { AdminLoading {} }
+            else if reviews.read().is_empty() { div { class: "admin-empty", "No reviews match this search." } }
+            else {
+                div { class: "admin-table-wrap admin-reviews-table-wrap", table { class: "admin-bookings-table admin-reviews-table",
+                    thead { tr { th { "Guest / booking" } th { "RV" } th { "Rating" } th { "Comment" } th { "Likes" } th { "Published" } th { "" } } }
+                    tbody { for review in reviews.read().iter() { tr { key: "{review.rental_review_id}",
+                        td { strong { "{review.reviewer_name}" } small { "{review.booking_number}" } }
+                        td { "{review.rental_name}" }
+                        td { span { class: "admin-review-rating", "★ {review.rating}/5" } }
+                        td { if !review.title.is_empty() { strong { "{review.title}" } } p { class: "admin-review-body", "{review.body}" } }
+                        td { "♥ {review.like_count}" }
+                        td { "{display_moment(&review.created_at)}" }
+                        td { button { class: "admin-review-delete", r#type: "button", aria_label: "Delete review by {review.reviewer_name}", onclick: { let review = review.clone(); move |_| delete_target.set(Some(review.clone())) }, Icon { name: "trash-2", size: 15, color: "currentColor" } "Delete" } }
+                    } } }
+                } }
+                div { class: "admin-review-pagination",
+                    button { r#type: "button", disabled: offset() == 0 || loading(), onclick: move |_| offset.set((offset() - 50).max(0)), "Previous" }
+                    span { "Showing {offset() + 1}–{offset() + reviews.read().len() as i64}" }
+                    button { r#type: "button", disabled: next_offset.read().is_none() || loading(), onclick: move |_| if let Some(next) = *next_offset.read() { offset.set(next); }, "Next" }
+                }
+            }
+        }
+        if let Some(target) = delete_target.read().clone() {
+            div { class: "admin-overlay admin-modal-backdrop", role: "presentation", onclick: move |_| if !delete_busy() { delete_target.set(None); },
+                section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", aria_label: "Delete review permanently", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if !delete_busy() { delete_target.set(None); } },
+                    header { h3 { "Delete review permanently?" } button { r#type: "button", aria_label: "Close delete confirmation", disabled: delete_busy(), onclick: move |_| delete_target.set(None), Icon { name: "x", size: 18, color: "currentColor" } } }
+                    p { "The review and all of its likes will be removed. The customer cannot publish another review for this booking." }
+                    p { class: "admin-action-limit", "This cannot be undone." }
+                    footer {
+                        button { r#type: "button", disabled: delete_busy(), onclick: move |_| delete_target.set(None), "Cancel" }
+                        button { class: "danger", r#type: "button", disabled: delete_busy(), onclick: { let review_id = target.rental_review_id.clone(); move |_| { let review_id = review_id.clone(); async move { delete_busy.set(true); message.set(String::new()); match api::admin_delete_rental_review(&review_id).await { Ok(()) => { delete_target.set(None); reload_nonce.set(reload_nonce().wrapping_add(1)); }, Err(error) => message.set(error.message) } delete_busy.set(false); } } }, if delete_busy() { "Deleting…" } else { "Delete permanently" } }
+                    }
                 }
             }
         }

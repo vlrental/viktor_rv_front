@@ -4,8 +4,10 @@ use crate::components::Icon;
 use crate::data::PHONE;
 use crate::Route;
 
-const CSS: Asset = asset!("/assets/css/delivery.css");
-const IMG_DELIVERY_HERO: Asset = asset!("/assets/img/delivery-hero.jpg");
+const IMG_DELIVERY_HERO: Asset = asset!(
+    "/assets/img/delivery-hero.jpg",
+    AssetOptions::image().with_jpg()
+);
 
 /// Шаг «как это работает» под hero.
 struct Step {
@@ -39,7 +41,6 @@ const STEPS: [Step; 3] = [
 #[component]
 pub fn Delivery() -> Element {
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
         section { class: "dv-hero",
             div {
                 class: "dv-hero-img",

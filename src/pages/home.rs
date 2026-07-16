@@ -8,11 +8,14 @@ use super::catalog::{
     CatalogFilteredEmpty, CatalogFilters, CatalogLoadingState, Filters,
 };
 use crate::api;
-use crate::components::Icon;
+use crate::components::{Icon, SortDropdown};
 use crate::data::IMG_HERO_RV;
 use crate::{BookingLaunchRequest, Route};
 
-const IMG_CTA_PARALLAX: Asset = asset!("/assets/img/generated/okanagan-rv-parallax.webp");
+const IMG_CTA_PARALLAX: Asset = asset!(
+    "/assets/img/generated/okanagan-rv-parallax.webp",
+    AssetOptions::image().with_jpg()
+);
 const CLEANUP_HERO_VIDEO: &str = r#"
 if (window.__vlHeroRevealTimer) {
     window.clearTimeout(window.__vlHeroRevealTimer);
@@ -420,26 +423,14 @@ fn PopularRvs(
                     Icon { name: "sparkles", size: 16, color: "var(--vl-accent)" }
                     span { "{match_label}" }
                 }
-                label { class: "cat-sort",
-                    Icon { name: "arrow-up-down", size: 14, color: "var(--vl-ink)" }
-                    span { "Sort" }
-                    select {
-                        aria_label: "Sort RVs",
-                        value: "{filters.read().sort}",
-                        onchange: move |event| {
-                            let mut next = filters.read().clone();
-                            next.sort = event.value();
-                            filters.set(next);
-                        },
-                        option { value: "recommended", "Recommended" }
-                        if has_dates {
-                            option { value: "date-fit", "Best fit for your dates" }
-                        }
-                        option { value: "price-low", "Price: low to high" }
-                        option { value: "price-high", "Price: high to low" }
-                        option { value: "capacity", "Most sleeping space" }
-                    }
-                    Icon { name: "chevron-down", size: 14, color: "var(--vl-ink)" }
+                SortDropdown {
+                    value: filters.read().sort.clone(),
+                    show_date_fit: has_dates,
+                    on_change: move |value| {
+                        let mut next = filters.read().clone();
+                        next.sort = value;
+                        filters.set(next);
+                    },
                 }
             }
             div { class: "home-catalog-layout",

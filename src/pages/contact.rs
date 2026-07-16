@@ -2,8 +2,6 @@ use crate::data::PHONE;
 use crate::{api, components::Icon};
 use dioxus::prelude::*;
 
-const CSS: Asset = asset!("/assets/css/contact.css");
-
 /// Страница «Contact» — Pencil: desktop `v1lkS`, mobile `Kzp7R`.
 #[component]
 pub fn Contact() -> Element {
@@ -42,8 +40,6 @@ pub fn Contact() -> Element {
         }
     };
     rsx! {
-        document::Link { rel: "stylesheet", href: CSS }
-
         // Тёмная шапка страницы
         section { class: "ct-header",
             div { class: "eyebrow gold", "WE'RE HERE TO HELP" }
