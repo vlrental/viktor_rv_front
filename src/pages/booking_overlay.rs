@@ -286,6 +286,10 @@ return await (async () => {{
     )
 }
 
+fn checkout_status_poll_due(iteration: u16, checkout_complete: bool) -> bool {
+    checkout_complete || iteration.is_multiple_of(4)
+}
+
 fn rental_selection_keeps_dates(trip_ready: bool, available_for_dates: Option<bool>) -> bool {
     trip_ready && available_for_dates == Some(true)
 }
@@ -1248,7 +1252,7 @@ pub(crate) fn UnifiedBookingOverlay(
             }
 
             let mut submitted = false;
-            for _ in 0..800_u16 {
+            for poll_iteration in 0..800_u16 {
                 if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
                     return;
                 }
@@ -1267,6 +1271,49 @@ pub(crate) fn UnifiedBookingOverlay(
                 .join::<bool>()
                 .await
                 .unwrap_or(false);
+                if checkout_status_poll_due(poll_iteration, submitted) {
+                    let status_result =
+                        api::booking_status(&created.booking.booking_id, &created.access_token)
+                            .await;
+                    if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                        return;
+                    }
+                    match status_result {
+                        Ok(status) if status.confirmed || status.status == "confirmed" => {
+                            let mut confirmed = created.clone();
+                            confirmed.booking.status = status.status;
+                            confirmed.booking.payment_status = status.payment_status;
+                            if confirmed.booking.rental_slug.is_empty() {
+                                confirmed.booking.rental_slug = selected_slug.peek().clone();
+                            }
+                            let _ = api::save_sensitive_json("vl_last_booking", &confirmed);
+                            let _ =
+                                api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &confirmed);
+                            api::remove_sensitive_saved(SAVED_PENDING_PAYMENT);
+                            pending_payment.set(None);
+                            payment_overlay_open.set(false);
+                            payment_phase.set("confirmed".into());
+                            let return_slug = if confirmed.booking.rental_slug.is_empty() {
+                                selected_slug.peek().clone()
+                            } else {
+                                confirmed.booking.rental_slug.clone()
+                            };
+                            navigator.push(Route::RvDetail { slug: return_slug });
+                            return;
+                        }
+                        Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => {
+                            api::remove_sensitive_saved(SAVED_PENDING_PAYMENT);
+                            pending_payment.set(None);
+                            payment_phase.set("expired".into());
+                            booking_error.set(
+                                "This payment reservation expired. Check availability and create a new booking."
+                                    .into(),
+                            );
+                            return;
+                        }
+                        Ok(_) | Err(_) => {}
+                    }
+                }
                 if submitted {
                     break;
                 }
@@ -2680,6 +2727,14 @@ mod saved_address_tests {
         assert!(script.contains("clientSecret: \"secret_example\""));
         assert!(script.contains("window.__vlEmbeddedCheckout.destroy()"));
         assert!(UNMOUNT_EMBEDDED_CHECKOUT.contains(".destroy()"));
+    }
+
+    #[test]
+    fn checkout_status_is_polled_without_waiting_for_stripe_on_complete() {
+        assert!(checkout_status_poll_due(0, false));
+        assert!(!checkout_status_poll_due(1, false));
+        assert!(checkout_status_poll_due(4, false));
+        assert!(checkout_status_poll_due(1, true));
     }
 
     #[test]
