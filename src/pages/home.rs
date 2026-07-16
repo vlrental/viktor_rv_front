@@ -1,7 +1,9 @@
 use chrono::NaiveDate;
 use dioxus::prelude::*;
 
-use super::booking_overlay::UnifiedBookingOverlay;
+use super::booking_overlay::{
+    has_saved_pending_payment, should_open_booking_overlay, UnifiedBookingOverlay,
+};
 use super::catalog::{
     bump_search_version, catalog_date_label, filtered_catalog_for_guests,
     normalized_catalog_search, ApiListingCard, CatalogEmptyState, CatalogErrorState,
@@ -72,8 +74,10 @@ pub fn Home() -> Element {
     let mut search_ends_on = use_signal(|| search_date(initial_search.ends_on.as_deref()));
     let mut search_guests = use_signal(|| 1_i32);
     let resume_after_auth = resumed_booking_value.is_some();
-    let mut search_open = use_signal(move || resume_after_auth);
-    let mut search_initial_step = use_signal(move || if resume_after_auth { 5_u8 } else { 1_u8 });
+    let has_pending_payment = has_saved_pending_payment();
+    let reopen_booking = should_open_booking_overlay(resume_after_auth, has_pending_payment);
+    let mut search_open = use_signal(move || reopen_booking);
+    let mut search_initial_step = use_signal(move || if reopen_booking { 5_u8 } else { 1_u8 });
     use_effect(move || {
         if *booking_launch_request.0.read() {
             let search = applied_search.read();

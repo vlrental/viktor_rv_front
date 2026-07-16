@@ -70,8 +70,13 @@ pub fn Account() -> Element {
                             h2 { "#{booking.booking_number}" }
                             p { "Delivery/setup: {local_booking_moment(&booking.starts_at)} · Return: {local_booking_moment(&booking.ends_at)}" }
                             p { "Trip price: {booking.currency} {booking.total}" }
-                            p { "Booking payment: {booking.currency} {booking.amount_due_now}" }
-                            p { "Refundable damage deposit: {pricing::money(pricing::DAMAGE_DEPOSIT)} · separate · charged 48 hours before delivery" }
+                            if booking.payment_option == "all_in" {
+                                p { "Paid in one transaction: {booking.currency} {booking.paid_transaction_total.as_deref().unwrap_or(&booking.total)}" }
+                                p { "Refundable damage deposit: {pricing::money(pricing::DAMAGE_DEPOSIT)} · paid · refundable after return and inspection" }
+                            } else {
+                                p { "Booking payment: {booking.currency} {booking.amount_due_now}" }
+                                p { "Refundable damage deposit: {pricing::money(pricing::DAMAGE_DEPOSIT)} · separate · charged 48 hours before delivery" }
+                            }
                             if booking.can_review {
                                 button { class: "account-review-open", r#type: "button", onclick: { let booking_id = booking.booking_id.clone(); move |_| review_booking.set(Some(booking_id.clone())) }, "Leave a verified review" }
                             } else if booking.review_opportunity_used || booking.review_id.is_some() {

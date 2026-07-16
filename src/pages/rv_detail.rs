@@ -5,7 +5,9 @@ use chrono::{DateTime, Datelike, Duration, LocalResult, Months, NaiveDate, TimeZ
 use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
-use super::booking_overlay::UnifiedBookingOverlay;
+use super::booking_overlay::{
+    has_saved_pending_payment, should_open_booking_overlay, UnifiedBookingOverlay,
+};
 use crate::data::{rv_gallery, Listing, PHONE};
 use crate::{
     api,
@@ -61,7 +63,7 @@ pub fn RvDetail(slug: String) -> Element {
                         if let Some(created) = confirmed_booking.read().as_ref() {
                             section { class: "rvd-booking-confirmed", role: "status",
                                 div { class: "rvd-booking-confirmed-icon", Icon { name: "check", size: 22, color: "var(--vl-white)" } }
-                                div { span { "BOOKING CONFIRMED" } h2 { "Your {value.rental.name} is booked" } p { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." } small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } } }
+                                div { span { "BOOKING CONFIRMED" } h2 { "Your {value.rental.name} is booked" } p { if created.payment_option == "all_in" { "Reservation {created.booking.booking_number}. {created.all_in_offer.as_ref().map(|offer| offer.currency.as_str()).unwrap_or(created.booking.currency.as_str())} ${created.all_in_offer.as_ref().map(|offer| offer.total_due_today.as_str()).unwrap_or(created.booking.total.as_str())} paid the trip and refundable deposit in one transaction." } else { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." } } small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } } }
                                 Link { class: "rvd-booking-confirmed-link", to: Route::Account {}, "View my booking" }
                             }
                         }
@@ -304,8 +306,9 @@ fn DynamicBookingCard(
     mut ends_on: Signal<String>,
     review_summary: api::RentalReviewSummary,
 ) -> Element {
-    let mut booking_open = use_signal(|| false);
-    let mut booking_step = use_signal(|| 1_u8);
+    let has_pending_payment = has_saved_pending_payment();
+    let mut booking_open = use_signal(move || has_pending_payment);
+    let mut booking_step = use_signal(move || if has_pending_payment { 5_u8 } else { 1_u8 });
     let mut planner_starts_on = use_signal(|| selected_date(&starts_on));
     let mut planner_ends_on = use_signal(|| selected_date(&ends_on));
     let planner_guests = use_signal(|| 1_i32);
@@ -686,6 +689,8 @@ fn BookingCard(
     let resumed_booking = use_signal(api::take_booking_auth_continuation);
     let resumed_booking_value = resumed_booking.peek().clone();
     let resume_after_auth = resumed_booking_value.is_some();
+    let has_pending_payment = has_saved_pending_payment();
+    let reopen_booking = should_open_booking_overlay(resume_after_auth, has_pending_payment);
     let resumed_start = resumed_booking_value.as_ref().and_then(|continuation| {
         NaiveDate::parse_from_str(&continuation.draft.starts_on, "%Y-%m-%d").ok()
     });
@@ -704,8 +709,8 @@ fn BookingCard(
         .as_ref()
         .map(|continuation| continuation.radius_km.clamp(10, 150))
         .unwrap_or(150);
-    let mut booking_open = use_signal(move || resume_after_auth);
-    let mut booking_initial_step = use_signal(move || if resume_after_auth { 5_u8 } else { 1_u8 });
+    let mut booking_open = use_signal(move || reopen_booking);
+    let mut booking_initial_step = use_signal(move || if reopen_booking { 5_u8 } else { 1_u8 });
     let planner_starts_on = use_signal(move || resumed_start.or_else(|| selected_date(&starts_on)));
     let planner_ends_on = use_signal(move || resumed_end.or_else(|| selected_date(&ends_on)));
     let planner_guests = use_signal(move || resumed_guests);

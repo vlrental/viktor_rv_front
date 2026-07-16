@@ -55,6 +55,15 @@ pub fn Confirmed() -> Element {
 #[component]
 fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraft>) -> Element {
     let booking = created.as_ref().map(|value| &value.booking);
+    let all_in_offer = created
+        .as_ref()
+        .filter(|value| value.payment_option == "all_in")
+        .and_then(|value| value.all_in_offer.as_ref());
+    let payment_label: &'static str = if all_in_offer.is_some() {
+        "Paid in one transaction"
+    } else {
+        "Booking payment"
+    };
     let rental_listing = draft.as_ref().and_then(|value| {
         rv_listings()
             .into_iter()
@@ -88,10 +97,10 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
                 GridCell { label: "Return", value: draft.as_ref().map(|value| format!("{} at 11:00 AM", value.ends_on)).unwrap_or_default() }
                 GridCell { label: "Guests", value: format!("{} guests", draft.as_ref().map(|value| value.guests).unwrap_or_default()) }
                 GridCell { label: "Trip price", value: format!("CA${}", booking.map(|value| value.total.as_str()).unwrap_or("0.00")) }
-                GridCell { label: "Booking payment", value: format!("CA${}", booking.map(|value| value.amount_due_now.as_str()).unwrap_or("0.00")) }
-                GridCell { label: "Refundable damage deposit", value: pricing::money(pricing::DAMAGE_DEPOSIT) }
+                GridCell { label: payment_label, value: format!("{} ${}", all_in_offer.map(|offer| offer.currency.as_str()).unwrap_or("CA"), all_in_offer.map(|offer| offer.total_due_today.as_str()).unwrap_or_else(|| booking.map(|value| value.amount_due_now.as_str()).unwrap_or("0.00"))) }
+                GridCell { label: "Refundable damage deposit", value: all_in_offer.map(|offer| format!("{} ${} · paid", offer.currency, offer.refundable_deposit)).unwrap_or_else(|| pricing::money(pricing::DAMAGE_DEPOSIT)) }
             }
-            div { class: "cf-payment-note", "The separate refundable CA$1,000 damage deposit is charged 48 hours before delivery. After return and inspection, it is refunded to the original payment method less any documented damage. The secure payment link is sent by email." }
+            div { class: "cf-payment-note", if all_in_offer.is_some() { "The trip price and refundable damage deposit were paid together. No balance or deposit payment is due later. After return and inspection, the deposit is refunded to the original payment method less any documented damage." } else { "The separate refundable CA$1,000 damage deposit is charged 48 hours before delivery. After return and inspection, it is refunded to the original payment method less any documented damage. The secure payment link is sent by email." } }
             div { class: "cf-divider" }
             div { class: "cf-host",
                 div { class: "cf-host-l",

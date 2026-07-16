@@ -882,6 +882,21 @@ body:has(.cat-planner-backdrop) {
 .ub-payment-price-now strong { white-space: nowrap; font: 750 14px var(--font-mono); }
 .ub-payment-price-now small { color: #C9D8CD; font-size: 8px; line-height: 1.4; }
 .ub-payment-price-row.is-deposit { border-bottom: 0; }
+.ub-all-in { display: grid; gap: 10px; margin-top: 16px; padding: 16px; border: 1px solid #D7B45B; border-radius: 14px; background: linear-gradient(145deg, #173D2D 0%, #0C2A1E 100%); color: var(--vl-white); box-shadow: 0 12px 30px #0A261A21; }
+.ub-all-in-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ub-all-in-head span { color: #F3D688; font: 750 10px var(--font-mono); letter-spacing: .08em; }
+.ub-all-in-head b { padding: 4px 7px; border: 1px solid #E4C87373; border-radius: 999px; color: #F6E5B5; font: 700 7px var(--font-mono); letter-spacing: .06em; }
+.ub-all-in > p { color: #D7E4DA; font-size: 9px; line-height: 1.45; }
+.ub-all-in-row, .ub-all-in-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ub-all-in-row { padding-top: 8px; border-top: 1px solid #FFFFFF1F; color: #D5E2D8; font-size: 9px; }
+.ub-all-in-row strong { white-space: nowrap; color: var(--vl-white); font: 650 9px var(--font-mono); }
+.ub-all-in-total { padding-top: 10px; border-top: 1px solid #D7B45B80; color: #F7E9C1; font-size: 11px; font-weight: 750; }
+.ub-all-in-total strong { white-space: nowrap; color: #F7D77E; font: 750 14px var(--font-mono); }
+.ub-all-in > button { min-height: 42px; padding: 10px 12px; border-radius: 10px; background: #E2BE62; color: #173124; font-size: 10px; font-weight: 800; box-shadow: inset 0 0 0 1px #FFE49B66; }
+.ub-all-in > button:hover, .ub-all-in > button:focus-visible { background: #F0D077; }
+.ub-all-in > button:disabled { cursor: wait; opacity: .72; }
+.ub-all-in.is-selected > button:disabled { cursor: default; opacity: 1; background: #F1D789; }
+.ub-all-in > small { color: #BCD0C1; font-size: 7.5px; line-height: 1.45; }
 .ub-change-booking-payment { display: grid; grid-template-columns: auto auto; margin-top: 16px; width: 100%; }
 .ub-change-booking-payment small { grid-column: 1 / -1; color: var(--vl-muted); font-size: 8px; font-weight: 500; line-height: 1.4; text-align: center; }
 .ub-payment-secondary { margin: 10px 0 0 10px; color: var(--vl-forest); font-size: 10px; font-weight: 750; text-decoration: underline; }
@@ -935,6 +950,9 @@ body:has(.cat-planner-backdrop) {
   .ub-payment-price-summary h3 { display: none; }
   .ub-payment-price-row { padding: 8px 0; }
   .ub-payment-price-now { margin: 0 0 8px; padding: 12px; }
+  .ub-all-in { margin-top: 10px; padding: 13px; }
+  .ub-all-in-row { padding-top: 6px; }
+  .ub-all-in > button { min-height: 40px; }
   .ub-payment-dialog-summary { display: none; }
   .ub-payment-dialog-body { flex: 0 0 auto; overflow: visible; padding: 12px; }
   .ub-embedded-checkout { min-height: 420px; }

@@ -40,6 +40,18 @@ delete window.__vlBookingMoneyValues;
 
 type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
 
+pub(crate) fn has_saved_pending_payment() -> bool {
+    api::load_sensitive_json::<api::CreatedBooking>(SAVED_PENDING_PAYMENT)
+        .is_some_and(|created| created.client_secret.is_some() && !created.access_token.is_empty())
+}
+
+pub(crate) fn should_open_booking_overlay(
+    resume_after_auth: bool,
+    has_pending_payment: bool,
+) -> bool {
+    resume_after_auth || has_pending_payment
+}
+
 #[derive(Clone)]
 struct DatedRentalMatches {
     starts_on: Option<NaiveDate>,
@@ -202,6 +214,26 @@ fn booking_payment_amount_is_valid(booking: &api::Booking) -> bool {
     };
     let thirty_percent = (total * i64::from(pricing::BOOKING_DEPOSIT_PERCENT) + 50) / 100;
     due_now == total || due_now == thirty_percent
+}
+
+fn created_payment_amount_is_valid(created: &api::CreatedBooking) -> bool {
+    if created.payment_option != "all_in" {
+        return booking_payment_amount_is_valid(&created.booking);
+    }
+    let Some(offer) = created.all_in_offer.as_ref() else {
+        return false;
+    };
+    let (Some(trip), Some(deposit), Some(total)) = (
+        money_cents(&offer.trip_price),
+        money_cents(&offer.refundable_deposit),
+        money_cents(&offer.total_due_today),
+    ) else {
+        return false;
+    };
+    trip == money_cents(&created.booking.total).unwrap_or_default()
+        && deposit > 0
+        && trip.checked_add(deposit) == Some(total)
+        && offer.currency == created.booking.currency
 }
 
 fn booking_payment_percent(booking: &api::Booking) -> Option<i32> {
@@ -1033,6 +1065,8 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut payment_overlay_open = use_signal(move || has_pending_payment);
     let mut payment_phase = use_signal(|| "idle".to_string());
     let mut payment_attempt_nonce = use_signal(|| 0_u32);
+    let mut all_in_busy = use_signal(|| false);
+    let mut all_in_error = use_signal(String::new);
     let mut edit_booking_confirm_open = use_signal(|| false);
     let mut edit_booking_busy = use_signal(|| false);
     let mut edit_booking_error = use_signal(String::new);
@@ -1138,7 +1172,7 @@ pub(crate) fn UnifiedBookingOverlay(
         let Some(created) = pending else {
             return;
         };
-        if !booking_payment_amount_is_valid(&created.booking) {
+        if !created_payment_amount_is_valid(&created) {
             payment_phase.set("blocked".into());
             booking_error.set(
                 "Checkout was blocked because the payment amount does not match the immutable booking total. No second booking was created."
@@ -2188,10 +2222,17 @@ pub(crate) fn UnifiedBookingOverlay(
                         div { class: "ub-payment-dialog-content",
                             div { class: "ub-payment-dialog-body",
                                 div { class: "ub-payment-dialog-summary",
-                                    span { "DUE NOW · {booking_payment_percent(&created.booking).unwrap_or(0)}% OF TRIP PRICE" }
-                                    strong { "{created.booking.currency} ${created.booking.amount_due_now}" }
-                                    small { if booking_payment_percent(&created.booking) == Some(100) { "The full trip price is charged today." } else { "The remaining 70% is not charged today." } }
+                                    if created.payment_option == "all_in" {
+                                        span { "DUE NOW · TRIP + REFUNDABLE DEPOSIT" }
+                                        strong { "{created.all_in_offer.as_ref().map(|offer| offer.currency.as_str()).unwrap_or(created.booking.currency.as_str())} ${created.all_in_offer.as_ref().map(|offer| offer.total_due_today.as_str()).unwrap_or(created.booking.total.as_str())}" }
+                                        small { "One transaction pays the full trip price and the refundable damage deposit today." }
+                                    } else {
+                                        span { "DUE NOW · {booking_payment_percent(&created.booking).unwrap_or(0)}% OF TRIP PRICE" }
+                                        strong { "{created.booking.currency} ${created.booking.amount_due_now}" }
+                                        small { if booking_payment_percent(&created.booking) == Some(100) { "The full trip price is charged today." } else { "The remaining 70% is not charged today." } }
+                                    }
                                 }
+                                if payment_phase.read().as_str() == "switching" { p { class: "ub-stripe-state", "Replacing the unpaid Checkout securely…" } }
                                 if payment_phase.read().as_str() == "checking" { p { class: "ub-stripe-state", "Checking webhook-backed booking status…" } }
                                 if payment_phase.read().as_str() == "mounting" { p { class: "ub-stripe-state", "Loading secure Checkout…" } }
                                 if payment_availability == api::PaymentAvailability::TestReady { div { id: "vl-embedded-checkout", class: "ub-embedded-checkout", aria_label: "Stripe test checkout" } }
@@ -2203,9 +2244,35 @@ pub(crate) fn UnifiedBookingOverlay(
                             aside { class: "ub-payment-price-summary", aria_label: "Payment schedule",
                                 h3 { "What you will pay" }
                                 div { class: "ub-payment-price-row is-total", span { "Full trip price" } strong { "{created.booking.currency} ${created.booking.total}" } }
-                                div { class: "ub-payment-price-now", div { span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } strong { "{created.booking.currency} ${created.booking.amount_due_now}" } } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total} — charged today" } }
-                                if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "ub-payment-price-row", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } strong { "{created.booking.currency} ${remaining}" } } }
-                                div { class: "ub-payment-price-row is-deposit", span { "Refundable damage deposit" small { "Separate payment {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. Not included in the trip price." } } strong { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                                if created.payment_option == "all_in" {
+                                    if let Some(offer) = created.all_in_offer.as_ref() {
+                                        div { class: "ub-all-in is-selected",
+                                            div { class: "ub-all-in-head", span { "PAY EVERYTHING NOW" } b { "SELECTED" } }
+                                            p { "One Stripe transaction today. No balance or deposit payment later." }
+                                            div { class: "ub-all-in-row", span { "Full trip price" } strong { "{offer.currency} ${offer.trip_price}" } }
+                                            div { class: "ub-all-in-row", span { "Refundable damage deposit" } strong { "{offer.currency} ${offer.refundable_deposit}" } }
+                                            div { class: "ub-all-in-total", span { "Total paid today" } strong { "{offer.currency} ${offer.total_due_today}" } }
+                                            button { r#type: "button", disabled: true, "Included in this Checkout" }
+                                            small { "The deposit remains refundable after return and inspection, less any documented damage." }
+                                        }
+                                    }
+                                } else {
+                                    div { class: "ub-payment-price-now", div { span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } strong { "{created.booking.currency} ${created.booking.amount_due_now}" } } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total} — charged today" } }
+                                    if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "ub-payment-price-row", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } strong { "{created.booking.currency} ${remaining}" } } }
+                                    div { class: "ub-payment-price-row is-deposit", span { "Refundable damage deposit" small { "Separate payment {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. Not included in the trip price." } } strong { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                                    if let Some(offer) = created.all_in_offer.as_ref() {
+                                        div { class: "ub-all-in",
+                                            div { class: "ub-all-in-head", span { "PAY EVERYTHING NOW" } b { "ONE PAYMENT" } }
+                                            p { "Pay the full trip price and refundable deposit together today." }
+                                            div { class: "ub-all-in-row", span { "Full trip price" } strong { "{offer.currency} ${offer.trip_price}" } }
+                                            div { class: "ub-all-in-row", span { "Refundable damage deposit" } strong { "{offer.currency} ${offer.refundable_deposit}" } }
+                                            div { class: "ub-all-in-total", span { "Total today" } strong { "{offer.currency} ${offer.total_due_today}" } }
+                                            button { r#type: "button", disabled: *all_in_busy.read(), onclick: move |_| { let created = pending_payment.read().clone(); async move { let Some(mut created) = created else { return; }; all_in_busy.set(true); all_in_error.set(String::new()); booking_error.set(String::new()); payment_phase.set("switching".into()); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); document::eval(UNMOUNT_EMBEDDED_CHECKOUT); match api::switch_booking_to_all_in(&created.booking.booking_id, &created.access_token).await { Ok(response) => { created.client_secret = Some(response.checkout_client_secret); created.checkout_session_id = Some(response.checkout_session_id); created.payment_option = response.payment_option; created.all_in_offer = Some(response.offer); let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); pending_payment.set(Some(created)); }, Err(error) => all_in_error.set(error.message) } all_in_busy.set(false); payment_phase.set("idle".into()); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); } }, if *all_in_busy.read() { "Preparing one payment…" } else { "Pay {offer.currency} ${offer.total_due_today} now" } }
+                                            small { "The CA$1,000 deposit is still refundable after return and inspection, less any documented damage." }
+                                        }
+                                    }
+                                }
+                                if !all_in_error.read().is_empty() { p { class: "ub-error", role: "alert", "{all_in_error}" } }
                                 button { class: "ub-change-booking ub-change-booking-payment", r#type: "button", onclick: move |_| { edit_booking_error.set(String::new()); edit_booking_confirm_open.set(true); }, Icon { name: "pencil", size: 15, color: "var(--vl-forest)" } span { "Change booking details" } small { "Cancels this unpaid payment session, releases the dates, and recalculates your updated trip." } }
                             }
                         }
@@ -2719,6 +2786,13 @@ mod saved_address_tests {
     }
 
     #[test]
+    fn a_saved_payment_reopens_the_booking_overlay_after_refresh() {
+        assert!(should_open_booking_overlay(false, true));
+        assert!(should_open_booking_overlay(true, false));
+        assert!(!should_open_booking_overlay(false, false));
+    }
+
+    #[test]
     fn embedded_checkout_script_returns_the_async_mount_result() {
         let script = embedded_checkout_script("\"pk_test_example\"", "\"secret_example\"");
 
@@ -2752,6 +2826,9 @@ mod saved_address_tests {
             currency: "CAD".into(),
             total: "1406.24".into(),
             amount_due_now: "421.87".into(),
+            payment_option: "scheduled".into(),
+            refundable_deposit_paid: false,
+            paid_transaction_total: None,
             balance_due_at: None,
             payment_expires_at: None,
             review_id: None,
@@ -2764,6 +2841,28 @@ mod saved_address_tests {
         assert!(booking_payment_amount_is_valid(&booking));
         booking.amount_due_now = "344.71".into();
         assert!(!booking_payment_amount_is_valid(&booking));
+
+        booking.amount_due_now = "421.87".into();
+        let mut created = api::CreatedBooking {
+            booking,
+            access_token: "private-token".into(),
+            notification_email_sent: false,
+            client_secret: Some("cs_test_secret".into()),
+            checkout_session_id: Some("cs_test_all_in".into()),
+            payment_enabled: true,
+            payment_expires_at: None,
+            checkout_url: None,
+            payment_option: "all_in".into(),
+            all_in_offer: Some(api::AllInPaymentOffer {
+                trip_price: "1406.24".into(),
+                refundable_deposit: "1000.00".into(),
+                total_due_today: "2406.24".into(),
+                currency: "CAD".into(),
+            }),
+        };
+        assert!(created_payment_amount_is_valid(&created));
+        created.all_in_offer.as_mut().unwrap().total_due_today = "2406.25".into();
+        assert!(!created_payment_amount_is_valid(&created));
     }
 
     #[test]
@@ -2781,6 +2880,9 @@ mod saved_address_tests {
             currency: "CAD".into(),
             total: "1965.44".into(),
             amount_due_now: "589.63".into(),
+            payment_option: "scheduled".into(),
+            refundable_deposit_paid: false,
+            paid_transaction_total: None,
             balance_due_at: Some("2030-07-31T21:00:00Z".into()),
             payment_expires_at: None,
             review_id: None,

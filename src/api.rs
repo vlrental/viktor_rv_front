@@ -1183,6 +1183,12 @@ pub struct Booking {
     pub currency: String,
     pub total: String,
     pub amount_due_now: String,
+    #[serde(default = "default_payment_option")]
+    pub payment_option: String,
+    #[serde(default)]
+    pub refundable_deposit_paid: bool,
+    #[serde(default)]
+    pub paid_transaction_total: Option<String>,
     #[serde(default)]
     pub balance_due_at: Option<String>,
     #[serde(default)]
@@ -1212,6 +1218,30 @@ pub struct CreatedBooking {
     pub payment_expires_at: Option<String>,
     #[serde(default)]
     pub checkout_url: Option<String>,
+    #[serde(default = "default_payment_option")]
+    pub payment_option: String,
+    #[serde(default)]
+    pub all_in_offer: Option<AllInPaymentOffer>,
+}
+
+fn default_payment_option() -> String {
+    "scheduled".into()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AllInPaymentOffer {
+    pub trip_price: String,
+    pub refundable_deposit: String,
+    pub total_due_today: String,
+    pub currency: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AllInCheckoutResponse {
+    pub payment_option: String,
+    pub checkout_session_id: String,
+    pub checkout_client_secret: String,
+    pub offer: AllInPaymentOffer,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -1228,6 +1258,10 @@ pub struct BookingPaymentStatus {
     pub confirmed: bool,
     #[serde(default)]
     pub payment_expires_at: Option<String>,
+    #[serde(default = "default_payment_option")]
+    pub payment_option: String,
+    #[serde(default)]
+    pub all_in_offer: Option<AllInPaymentOffer>,
     #[serde(default)]
     pub obligations: Vec<AdminPaymentObligation>,
 }
@@ -2131,6 +2165,27 @@ pub async fn expire_pending_booking_for_edit(
         return Err(response_error(response).await);
     }
     Ok(())
+}
+
+pub async fn switch_booking_to_all_in(
+    booking_id: &str,
+    booking_token: &str,
+) -> Result<AllInCheckoutResponse, ApiError> {
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/bookings/{}/payment-option/all-in",
+        urlencoding::encode(booking_id)
+    ))
+    .header("x-booking-token", booking_token)
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AllInCheckoutResponse>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
 }
 
 pub async fn create_booking(
