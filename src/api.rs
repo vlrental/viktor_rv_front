@@ -193,16 +193,20 @@ fn auth_parameters(fragment: &str, search: &str) -> Option<HashMap<String, Strin
                 ))
             })
             .collect::<HashMap<_, _>>();
-        parameters
-            .keys()
-            .any(|key| {
-                matches!(
-                    key.as_str(),
-                    "vl_google_auth" | "code" | "access_token" | "refresh_token"
-                )
-            })
-            .then_some(parameters)
+        let marked_one_time_code = parameters
+            .get("vl_google_auth")
+            .is_some_and(|value| value == "1");
+        let contains_legacy_tokens =
+            parameters.contains_key("access_token") || parameters.contains_key("refresh_token");
+        (marked_one_time_code || contains_legacy_tokens).then_some(parameters)
     })
+}
+
+fn valid_google_login_code(code: &str) -> bool {
+    let Some(secret) = code.strip_prefix("rv_oauth_code_") else {
+        return false;
+    };
+    secret.len() == 64 && secret.bytes().all(|value| value.is_ascii_hexdigit())
 }
 
 pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
@@ -223,6 +227,18 @@ pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
         .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?
         .replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&safe_path))
         .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?;
+    if values.contains_key("access_token") || values.contains_key("refresh_token") {
+        return Err("Google returned an outdated sign-in response. Please try again.".to_string());
+    }
+    if values
+        .get("error")
+        .is_some_and(|value| value == "cancelled")
+    {
+        return Err("Google sign in was cancelled. Please try again.".to_string());
+    }
+    if values.contains_key("error") {
+        return Err("Google sign in could not be completed. Please try again.".to_string());
+    }
     let required = |key: &str| {
         values
             .get(key)
@@ -231,6 +247,9 @@ pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
             .ok_or_else(|| "Google did not return a valid sign-in session.".to_string())
     };
     let code = required("code")?;
+    if !valid_google_login_code(&code) {
+        return Err("Google did not return a valid sign-in session.".to_string());
+    }
     let response = Request::post(&format!("{API_BASE}/api/v1/auth/google/exchange"))
         .header("Content-Type", "application/json")
         .json(&GoogleExchangePayload { code: &code })
@@ -351,14 +370,37 @@ fn migrate_legacy_auth_values(auth_storage: &web_sys::Storage) {
     let Some(legacy) = storage() else {
         return;
     };
-    // Migrate and remove the complete token set together, so a refresh token
-    // cannot remain in persistent storage just because it has not been read yet.
-    for key in ["vl_access_token", "vl_refresh_token", "vl_auth_user"] {
-        if auth_storage.get_item(key).ok().flatten().is_none() {
-            if let Some(value) = legacy.get_item(key).ok().flatten() {
-                let _ = auth_storage.set_item(key, &value);
+    const KEYS: [&str; 3] = ["vl_access_token", "vl_refresh_token", "vl_auth_user"];
+    let session_complete = KEYS
+        .iter()
+        .all(|key| auth_storage.get_item(key).ok().flatten().is_some());
+    let legacy_values = KEYS
+        .iter()
+        .map(|key| legacy.get_item(key).ok().flatten())
+        .collect::<Vec<_>>();
+
+    if !session_complete {
+        for key in KEYS {
+            let _ = auth_storage.remove_item(key);
+        }
+        if legacy_values.iter().all(Option::is_some) {
+            let migrated = KEYS
+                .iter()
+                .zip(legacy_values.iter())
+                .try_for_each(|(key, value)| {
+                    auth_storage.set_item(key, value.as_deref().unwrap_or_default())
+                });
+            if migrated.is_err() {
+                for key in KEYS {
+                    let _ = auth_storage.remove_item(key);
+                }
             }
         }
+    }
+
+    // Persistent credentials are always removed, including incomplete legacy
+    // sets that cannot safely form a session.
+    for key in KEYS {
         let _ = legacy.remove_item(key);
     }
 }
@@ -3546,19 +3588,34 @@ mod delivery_draft_tests {
 
     #[test]
     fn google_one_time_code_is_read_from_path_and_hash_router_fragments() {
-        let direct = auth_parameters("#vl_google_auth=1&code=rv_oauth_code_direct", "").unwrap();
+        let direct = auth_parameters(
+            "#vl_google_auth=1&code=rv_oauth_code_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "",
+        )
+        .unwrap();
         let hash_router = auth_parameters(
-            "#/auth/callback?vl_google_auth=1&code=rv_oauth_code_router",
+            "#/auth/callback?vl_google_auth=1&code=rv_oauth_code_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
             "",
         )
         .unwrap();
 
-        assert_eq!(direct["code"], "rv_oauth_code_direct");
-        assert_eq!(hash_router["code"], "rv_oauth_code_router");
+        assert!(valid_google_login_code(&direct["code"]));
+        assert!(valid_google_login_code(&hash_router["code"]));
         assert!(!direct.contains_key("access_token"));
 
         let legacy = auth_parameters("#access_token=old&refresh_token=old", "").unwrap();
         assert!(!legacy.contains_key("code"));
+    }
+
+    #[test]
+    fn unrelated_code_parameters_cannot_trigger_google_exchange() {
+        assert!(auth_parameters("#code=unrelated", "").is_none());
+        assert!(auth_parameters("", "?code=unrelated").is_none());
+        assert!(auth_parameters("#vl_google_auth=0&code=unrelated", "").is_none());
+        assert!(!valid_google_login_code("rv_oauth_code_short"));
+        assert!(!valid_google_login_code(
+            "rv_oauth_code_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+        ));
     }
 
     #[test]

@@ -7,6 +7,16 @@ use crate::{booking_launch_requires_home, AuthSession, BookingLaunchRequest, Rou
 
 const LOGO: Asset = asset!("/assets/img/logo.png");
 
+fn focus_mobile_menu_toggle() {
+    document::eval(
+        r#"
+            requestAnimationFrame(() => {
+                document.querySelector('.nav-burger')?.focus({ preventScroll: true });
+            });
+        "#,
+    );
+}
+
 /// Шапка сайта. На Home — прозрачный overlay поверх hero, на остальных — белая с волосяной линией.
 #[component]
 pub fn Header() -> Element {
@@ -28,6 +38,8 @@ pub fn Header() -> Element {
     let current_user = auth_session.read().clone();
     let rentals_href = api::frontend_path("/#home-rentals");
     let auth_return_route = route.clone();
+    let mobile_booking_route = route.clone();
+    let mobile_navigator = navigator;
     let overlay = matches!(route, Route::Home {});
     let class = if overlay {
         "site-header overlay"
@@ -39,7 +51,58 @@ pub fn Header() -> Element {
     } else {
         "Open navigation"
     };
-    let mobile_menu_icon = if *mobile_open.read() { "x" } else { "menu" };
+    use_effect(move || {
+        if *mobile_open.read() {
+            document::eval(
+                r#"
+                    if (window.__vlMobileMenuKeyHandler) {
+                        document.removeEventListener('keydown', window.__vlMobileMenuKeyHandler);
+                    }
+                    window.__vlMobileMenuKeyHandler = (event) => {
+                        if (event.key !== 'Escape') return;
+                        const toggle = document.querySelector('.nav-burger.is-open');
+                        toggle?.focus({ preventScroll: true });
+                        toggle?.click();
+                    };
+                    document.addEventListener('keydown', window.__vlMobileMenuKeyHandler);
+                    const focusFirstMenuLink = () => {
+                        document.querySelector('#mobile-navigation .nav-link')?.focus({ preventScroll: true });
+                    };
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        focusFirstMenuLink();
+                    }));
+                    window.clearTimeout(window.__vlMobileMenuFocusTimer);
+                    window.__vlMobileMenuFocusTimer = window.setTimeout(() => {
+                        const toggle = document.querySelector('.nav-burger.is-open');
+                        if (toggle && document.activeElement === toggle) focusFirstMenuLink();
+                    }, 420);
+                "#,
+            );
+        } else {
+            document::eval(
+                r#"
+                    if (window.__vlMobileMenuKeyHandler) {
+                        document.removeEventListener('keydown', window.__vlMobileMenuKeyHandler);
+                        window.__vlMobileMenuKeyHandler = null;
+                    }
+                    window.clearTimeout(window.__vlMobileMenuFocusTimer);
+                    window.__vlMobileMenuFocusTimer = null;
+                "#,
+            );
+        }
+    });
+    use_drop(|| {
+        document::eval(
+            r#"
+                if (window.__vlMobileMenuKeyHandler) {
+                    document.removeEventListener('keydown', window.__vlMobileMenuKeyHandler);
+                    window.__vlMobileMenuKeyHandler = null;
+                }
+                window.clearTimeout(window.__vlMobileMenuFocusTimer);
+                window.__vlMobileMenuFocusTimer = null;
+            "#,
+        );
+    });
     let submit = move |_| {
         let email_value = email.read().clone();
         let password_value = password.read().clone();
@@ -70,21 +133,79 @@ pub fn Header() -> Element {
                     account_open.set(false);
                 } else if *mobile_open.peek() {
                     mobile_open.set(false);
+                    focus_mobile_menu_toggle();
                 }
             },
             Link { class: "brand", to: Route::Home {},
                 img { class: "brand-mark", src: LOGO, alt: "VL Rental" }
                 span { class: "brand-word", "VL Rental" }
             }
-            nav { class: if *mobile_open.read() { "nav-menu is-open" } else { "nav-menu" },
-                a { class: "nav-link", href: rentals_href, onclick: move |_| mobile_open.set(false), "RV Rentals" }
-                Link { class: "nav-link", to: Route::CoolerTrailers {}, onclick: move |_| mobile_open.set(false), "Cooler Trailers" }
-                Link { class: "nav-link", to: Route::Delivery {}, onclick: move |_| mobile_open.set(false), "Delivery" }
-                Link { class: "nav-link", to: Route::RvSales {}, onclick: move |_| mobile_open.set(false), "RV Sales" }
-                Link { class: "nav-link nav-menu-contact", to: Route::Contact {}, onclick: move |_| mobile_open.set(false), "Contact" }
+            button {
+                class: if *mobile_open.read() { "mobile-menu-backdrop is-open" } else { "mobile-menu-backdrop" },
+                r#type: "button",
+                aria_label: "Close navigation",
+                tabindex: "-1",
+                onwheel: move |event| event.prevent_default(),
+                onclick: move |_| {
+                    mobile_open.set(false);
+                    focus_mobile_menu_toggle();
+                },
+            }
+            nav {
+                id: "mobile-navigation",
+                class: if *mobile_open.read() { "nav-menu is-open" } else { "nav-menu" },
+                aria_label: "Primary navigation",
+                div { class: "mobile-menu-head",
+                    div {
+                        span { "EXPLORE" }
+                        strong { "Plan your Okanagan stay" }
+                    }
+                    span { class: "mobile-menu-status", "MENU" }
+                }
+                a { class: "nav-link", href: rentals_href, aria_label: "RV Rentals", onclick: move |_| mobile_open.set(false), "RV Rentals" }
+                Link { class: "nav-link", to: Route::CoolerTrailers {}, aria_label: "Cooler Trailers", onclick: move |_| mobile_open.set(false), "Cooler Trailers" }
+                Link { class: "nav-link", to: Route::Delivery {}, aria_label: "Delivery", onclick: move |_| mobile_open.set(false), "Delivery" }
+                Link { class: "nav-link", to: Route::RvSales {}, aria_label: "RV Sales", onclick: move |_| mobile_open.set(false), "RV Sales" }
+                Link { class: "nav-link nav-menu-contact", to: Route::Contact {}, aria_label: "Contact", onclick: move |_| mobile_open.set(false), "Contact" }
+                div { class: "mobile-menu-footer",
+                    a { class: "mobile-menu-phone", href: "tel:+12508785874", aria_label: "Call +1 (250) 878 5874",
+                        Icon { name: "phone", size: 16, color: "currentColor" }
+                        span { "Call {PHONE}" }
+                    }
+                    button {
+                        class: "mobile-menu-book",
+                        r#type: "button",
+                        aria_label: "Book now",
+                        aria_haspopup: "dialog",
+                        onclick: move |_| {
+                            mobile_open.set(false);
+                            account_open.set(false);
+                            booking_launch_request.0.set(true);
+                            if booking_launch_requires_home(&mobile_booking_route) {
+                                mobile_navigator.push(Route::Home {});
+                            }
+                        },
+                        span { "Book now" }
+                        Icon { name: "arrow-up-right", size: 17, color: "currentColor" }
+                    }
+                }
             }
             div { class: "nav-right",
-                button { class: "nav-burger", r#type: "button", aria_label: mobile_menu_label, aria_expanded: *mobile_open.read(), onclick: move |_| { let next = !*mobile_open.peek(); mobile_open.set(next); account_open.set(false); }, Icon { name: mobile_menu_icon, size: 21, color: "currentColor" } }
+                button {
+                    class: if *mobile_open.read() { "nav-burger is-open" } else { "nav-burger" },
+                    r#type: "button",
+                    aria_label: mobile_menu_label,
+                    aria_controls: "mobile-navigation",
+                    aria_expanded: *mobile_open.read(),
+                    onclick: move |_| {
+                        let next = !*mobile_open.peek();
+                        mobile_open.set(next);
+                        account_open.set(false);
+                    },
+                    span { class: "nav-burger-line" }
+                    span { class: "nav-burger-line" }
+                    span { class: "nav-burger-line" }
+                }
                 a { class: "nav-phone", href: "tel:+12508785874",
                     Icon { name: "phone", size: 15, color: "var(--vl-accent)" }
                     span { "{PHONE}" }
