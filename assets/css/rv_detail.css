@@ -15,6 +15,9 @@
 .rvd-meta { display: flex; align-items: center; gap: 16px; font-size: 15px; color: var(--vl-muted); }
 .rvd-meta-item { display: flex; align-items: center; gap: 6px; }
 .rvd-meta-strong { color: var(--vl-ink); font-weight: 600; }
+.rvd-review-anchor { color: var(--vl-muted); text-decoration: none; }
+.rvd-review-anchor:hover { color: var(--vl-forest); text-decoration: underline; text-underline-offset: 3px; }
+.rvd-review-anchor:focus-visible { border-radius: 5px; outline: 2px solid var(--vl-forest); outline-offset: 3px; }
 .rvd-pet-pill { display: flex; align-items: center; gap: 6px; background-color: var(--vl-white); border: 1px solid var(--vl-hair); border-radius: 9999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--vl-ink); }
 .rvd-actions { display: flex; align-items: center; gap: 10px; }
 .rvd-action-btn { display: flex; align-items: center; gap: 7px; border: 1px solid var(--vl-hair); border-radius: 9999px; padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--vl-ink); background-color: var(--vl-white); cursor: pointer; }
@@ -84,6 +87,9 @@
 .rvd-price-u { font-size: 16px; color: var(--vl-muted); }
 .rvd-price-r { display: flex; align-items: center; gap: 5px; font-size: 14px; color: var(--vl-muted); }
 .rvd-price-r b { color: var(--vl-ink); font-weight: 600; }
+.rvd-price-r { text-decoration: none; }
+.rvd-price-r:hover b { color: var(--vl-forest); text-decoration: underline; text-underline-offset: 3px; }
+.rvd-price-r:focus-visible { border-radius: 5px; outline: 2px solid var(--vl-forest); outline-offset: 3px; }
 .rvd-min-pill { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--vl-muted); width: 100%; }
 .rvd-fields { display: flex; flex-direction: column; position: relative; border: 1px solid var(--vl-hair); border-radius: 12px; width: 100%; }
 .rvd-fields-dates { display: flex; width: 100%; }
@@ -121,6 +127,49 @@
 .rvd-total-l { font-family: var(--font-heading); font-size: 18px; color: var(--vl-ink); }
 .rvd-total-v { font-family: var(--font-heading); font-size: 22px; color: var(--vl-forest); }
 .rvd-contact { display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 4px; width: 100%; font-size: 14px; font-weight: 600; color: var(--vl-forest); }
+
+/* Guest reviews on the RV detail page */
+.rvd-reviews { display: grid; gap: 20px; width: 100%; padding-top: 44px; scroll-margin-top: 96px; }
+.rvd-reviews-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.rvd-reviews-heading { display: grid; gap: 7px; }
+.rvd-reviews-heading > span { color: var(--vl-accent); font: 700 10px var(--font-mono); letter-spacing: .11em; }
+.rvd-reviews-heading h2 { color: var(--vl-ink); font: 400 32px/1.05 var(--font-heading); }
+.rvd-reviews-heading p { color: var(--vl-muted); font-size: 14px; line-height: 20px; }
+.rvd-reviews-summary { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--vl-mint); }
+.rvd-reviews-summary > b { color: var(--vl-forest); font: 500 30px/1 var(--font-heading); }
+.rvd-reviews-summary > div { display: grid; gap: 3px; }
+.rvd-reviews-summary small { color: var(--vl-muted); font-size: 11px; font-weight: 650; }
+.rvd-review-stars { display: inline-flex; gap: 1px; color: #C7CEC8; font-size: 13px; line-height: 1; letter-spacing: .04em; }
+.rvd-review-stars > span.filled { color: var(--vl-accent); }
+.rvd-reviews-policy { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid #D7A24A; border-radius: 10px; background: #FFF7E4; }
+.rvd-reviews-policy > span { display: grid; place-items: center; width: 18px; height: 18px; flex: 0 0 18px; border-radius: 50%; background: var(--vl-accent); color: var(--vl-white); font-size: 11px; font-weight: 800; }
+.rvd-reviews-policy p { color: var(--vl-muted); font-size: 12px; font-weight: 650; line-height: 17px; }
+.rvd-reviews-body { display: grid; grid-template-columns: 390px minmax(0, 1fr); align-items: start; gap: 32px; }
+.rvd-reviews-form { min-width: 0; }
+.rvd-reviews-form .review-form { margin: 0; padding: 20px; border-radius: 16px; background: var(--vl-surface); }
+.rvd-reviews-form .review-form h3 { font-size: 23px; }
+.rvd-reviews-list { min-width: 0; }
+.rvd-review-item { display: grid; gap: 10px; padding: 22px 0; border-top: 1px solid var(--vl-hair); }
+.rvd-review-item:first-of-type { padding-top: 2px; border-top: 0; }
+.rvd-review-meta, .rvd-review-meta > div, .rvd-review-foot { display: flex; align-items: center; }
+.rvd-review-meta, .rvd-review-foot { justify-content: space-between; gap: 16px; }
+.rvd-review-meta > div { gap: 8px; }
+.rvd-review-meta b { color: var(--vl-ink); font-size: 11px; }
+.rvd-review-meta time { color: var(--vl-muted); font-size: 10px; }
+.rvd-review-item h3 { color: var(--vl-ink); font-size: 15px; line-height: 21px; }
+.rvd-review-comment { color: var(--vl-muted); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rvd-review-foot small { color: var(--vl-forest); font-size: 10px; font-weight: 750; }
+.rvd-review-like { min-height: 34px; padding: 0 12px; border: 1px solid var(--vl-hair); border-radius: 999px; background: var(--vl-mint); color: var(--vl-forest); font-size: 11px; font-weight: 750; cursor: pointer; }
+.rvd-review-like:hover:not(:disabled) { border-color: var(--vl-forest); }
+.rvd-review-like.active { border-color: var(--vl-forest); background: var(--vl-forest); color: var(--vl-white); }
+.rvd-review-like:focus-visible { outline: 2px solid var(--vl-forest); outline-offset: 2px; }
+.rvd-review-like:disabled { cursor: not-allowed; opacity: .55; }
+.rvd-review-own { color: var(--vl-muted); font-size: 10px; }
+.rvd-review-access, .rvd-reviews-state, .rvd-reviews-empty { padding: 18px; border: 1px solid var(--vl-hair); border-radius: 14px; background: var(--vl-surface); color: var(--vl-muted); font-size: 12px; line-height: 18px; }
+.rvd-reviews-state { text-align: center; }
+.rvd-reviews-state.is-error, .rvd-review-access.is-error, .rvd-review-like-error { border-color: #E5B4AA; background: #FFF3F0; color: #8A3525; }
+.rvd-reviews-state button, .rvd-review-access button { margin-top: 10px; padding: 8px 11px; border: 1px solid currentColor; border-radius: 8px; font-size: 11px; font-weight: 750; }
+.rvd-review-like-error { margin-bottom: 12px; padding: 10px 12px; border-radius: 9px; font-size: 11px; line-height: 16px; }
 
 /* Booking calendar overlay */
 .rvd-calendar-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 28px; background-color: #10231780; backdrop-filter: blur(3px); animation: rvd-calendar-backdrop-in 220ms ease-out both; }
@@ -280,8 +329,10 @@
 .rvd-inline-availability-legend span { display: flex; align-items: center; gap: 5px; }
 .rvd-inline-availability-legend i { width: 8px; height: 8px; border: 1px solid var(--vl-hair); border-radius: 50%; background: var(--vl-white); }
 .rvd-inline-availability-legend .booked i { border-color: #D7D4CD; background: #E7E4DB; }
-.rvd-inline-availability-state { padding: 9px 11px; border-radius: 9px; background: var(--vl-surface); color: var(--vl-muted); font-size: 11px; }
+.rvd-inline-availability-state { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border-radius: 9px; background: var(--vl-surface); color: var(--vl-muted); font-size: 11px; }
 .rvd-inline-availability-state.is-error { background: #FFF1ED; color: #8B3A30; }
+.rvd-inline-availability-state button { flex: 0 0 auto; padding: 5px 9px; border: 1px solid currentColor; border-radius: 7px; font-size: 10px; font-weight: 750; }
+.rvd-inline-availability-state button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .rvd-inline-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .rvd-inline-month { min-width: 0; }
 .rvd-inline-month .rvd-month-head { min-height: 30px; justify-content: center; }
@@ -293,7 +344,9 @@
 .rvd-inline-month .rvd-day:not(:disabled):hover { background: var(--vl-mint); }
 .rvd-inline-month .rvd-day.stay { border-radius: 3px; }
 .rvd-inline-month .rvd-day.edge { border-radius: 8px; }
+.rvd-inline-month .rvd-day.blank { cursor: default; }
 .rvd-inline-availability-foot { display: flex; align-items: center; gap: 8px; color: var(--vl-forest); font-size: 11px; font-weight: 650; }
+.rvd-inline-availability-foot .is-warning { color: #8B3A30; }
 
 /* ===== Mobile (по мотивам фрейма wjWTt) ===== */
 @media (max-width: 860px) {
@@ -325,6 +378,21 @@
     .rvd-am { font-size: 14px; gap: 10px; }
     .rvd-gtk { flex-direction: column; }
     .rvd-booking { width: 100%; padding: 20px; gap: 14px; border-radius: 16px; }
+    .rvd-reviews { gap: 14px; padding-top: 18px; scroll-margin-top: 74px; }
+    .rvd-reviews-head { align-items: stretch; flex-direction: column; gap: 12px; }
+    .rvd-reviews-heading h2 { font-size: 27px; }
+    .rvd-reviews-heading p { font-size: 11px; line-height: 16px; }
+    .rvd-reviews-summary { justify-content: space-between; width: 100%; }
+    .rvd-reviews-policy { padding: 10px 11px; }
+    .rvd-reviews-policy p { font-size: 10px; line-height: 14px; }
+    .rvd-reviews-body { grid-template-columns: 1fr; gap: 16px; }
+    .rvd-reviews-form .review-form { padding: 15px; border-radius: 13px; }
+    .rvd-reviews-form .review-form h3 { font-size: 20px; }
+    .rvd-review-item { gap: 8px; padding: 17px 0; }
+    .rvd-review-item h3 { font-size: 12px; line-height: 17px; }
+    .rvd-review-comment { font-size: 10px; line-height: 15px; }
+    .rvd-review-meta time, .rvd-review-foot small, .rvd-review-own { font-size: 9px; }
+    .rvd-review-like { min-height: 32px; padding: 0 10px; font-size: 10px; }
     .rvd-inline-availability { padding: 16px; }
     .rvd-inline-availability-head { align-items: flex-start; flex-direction: column; }
     .rvd-inline-availability-legend { flex-wrap: wrap; }

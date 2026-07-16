@@ -1,4 +1,5 @@
-//! Страница RV Detail / Booking — Pencil-фреймы `l3JikE` (desktop) и `wjWTt` (mobile).
+//! RV Detail / Booking — Pencil `LaBip` (desktop), `g9upP` (mobile),
+//! review sections `zMEVZ` and `F4qFpi`.
 
 use chrono::{DateTime, Datelike, Duration, LocalResult, Months, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::Vancouver;
@@ -6,7 +7,11 @@ use dioxus::prelude::*;
 
 use super::booking_overlay::UnifiedBookingOverlay;
 use crate::data::{rv_gallery, Listing, PHONE};
-use crate::{api, components::Icon, pricing, Route};
+use crate::{
+    api,
+    components::{Icon, RentalReviewsSection},
+    pricing, Route,
+};
 
 const IMG_HOST: Asset = asset!(
     "/assets/img/host-viktor.webp",
@@ -92,8 +97,17 @@ fn DynamicRvDetail(
         .length_ft
         .clone()
         .unwrap_or_else(|| "Available on request".into());
+    let initial_review_rating = rental.review_rating.clone();
+    let initial_review_count = rental.review_count;
+    let mut review_summary = use_signal(move || api::RentalReviewSummary {
+        average_rating: initial_review_rating,
+        review_count: initial_review_count,
+    });
+    let visible_review_summary = review_summary.read().clone();
+    let review_slug = rental.slug.clone();
+    let review_rental_name = rental.name.clone();
     rsx! {
-        DynamicTitleHead { rental: rental.clone() }
+        DynamicTitleHead { rental: rental.clone(), review_summary: visible_review_summary.clone() }
         DynamicGallery { rental: rental.clone(), media: value.media.clone() }
         div { class: "rvd-content",
             div { class: "rvd-left",
@@ -120,8 +134,9 @@ fn DynamicRvDetail(
                 }
                 GoodToKnow {}
             }
-            DynamicBookingCard { rental, starts_on, ends_on }
+            DynamicBookingCard { rental, starts_on, ends_on, review_summary: visible_review_summary }
         }
+        RentalReviewsSection { slug: review_slug, rental_name: review_rental_name, on_summary: move |summary| review_summary.set(summary) }
     }
 }
 
@@ -163,16 +178,20 @@ fn ApiIcon(name: String, size: u32) -> Element {
 }
 
 #[component]
-fn DynamicTitleHead(rental: api::Rental) -> Element {
+fn DynamicTitleHead(rental: api::Rental, review_summary: api::RentalReviewSummary) -> Element {
     let slug = rental.slug.clone();
     let mut saved = use_signal(move || {
         api::load_json::<Vec<String>>("vl_saved_rvs")
             .unwrap_or_default()
             .contains(&slug)
     });
-    let rating = rental.review_rating.clone().unwrap_or_else(|| "New".into());
+    let rating = review_summary
+        .average_rating
+        .clone()
+        .unwrap_or_else(|| "New".into());
+    let review_count = review_summary.review_count;
     rsx! {
-        div { class: "rvd-title-head", div { class: "rvd-title-left", h1 { class: "rvd-title", "{rental.name}" } div { class: "rvd-meta", div { class: "rvd-meta-item", Icon { name: "star", size: 15, color: "var(--vl-accent)" } span { class: "rvd-meta-strong", "{rating}" } span { "({rental.review_count} reviews)" } } span { "·" } div { class: "rvd-meta-item", Icon { name: "map-pin", size: 15, color: "var(--vl-accent)" } span { "Kelowna, BC" } } if rental.pet_friendly { span { "·" } div { class: "rvd-pet-pill", Icon { name: "paw-print", size: 14, color: "var(--vl-forest)" } span { "Pet friendly" } } } } }
+        div { class: "rvd-title-head", div { class: "rvd-title-left", h1 { class: "rvd-title", "{rental.name}" } div { class: "rvd-meta", a { class: "rvd-meta-item rvd-review-anchor", href: "#guest-reviews", aria_label: "Read {review_count} guest reviews", Icon { name: "star", size: 15, color: "var(--vl-accent)" } span { class: "rvd-meta-strong", "{rating}" } span { "({review_count} reviews)" } } span { "·" } div { class: "rvd-meta-item", Icon { name: "map-pin", size: 15, color: "var(--vl-accent)" } span { "Kelowna, BC" } } if rental.pet_friendly { span { "·" } div { class: "rvd-pet-pill", Icon { name: "paw-print", size: 14, color: "var(--vl-forest)" } span { "Pet friendly" } } } } }
             div { class: "rvd-actions", button { class: if saved() { "rvd-action-btn active" } else { "rvd-action-btn" }, r#type: "button", onclick: { let slug=rental.slug.clone(); move |_| { let mut values=api::load_json::<Vec<String>>("vl_saved_rvs").unwrap_or_default(); if saved(){values.retain(|value|value!=&slug);saved.set(false)}else{values.push(slug.clone());saved.set(true)} let _=api::save_json("vl_saved_rvs",&values); } }, Icon { name: "heart", size: 15, color: "var(--vl-ink)" } span { if saved() { "Saved" } else { "Save" } } } }
         }
     }
@@ -283,6 +302,7 @@ fn DynamicBookingCard(
     rental: api::Rental,
     mut starts_on: Signal<String>,
     mut ends_on: Signal<String>,
+    review_summary: api::RentalReviewSummary,
 ) -> Element {
     let mut booking_open = use_signal(|| false);
     let mut booking_step = use_signal(|| 1_u8);
@@ -311,9 +331,13 @@ fn DynamicBookingCard(
     let base = rental.base_rate.parse::<f64>().unwrap_or_default() * nights.max(0) as f64;
     let known = base + pricing::mandatory_costs(nights);
     let slug = rental.slug.clone();
-    let rating = rental.review_rating.clone().unwrap_or_else(|| "New".into());
+    let rating = review_summary
+        .average_rating
+        .clone()
+        .unwrap_or_else(|| "New".into());
+    let review_count = review_summary.review_count;
     rsx! {
-        div { class:"rvd-booking", div { class:"rvd-price-row", div { class:"rvd-price", span { class:"rvd-price-v", "CA${rental.base_rate}" } span { class:"rvd-price-u", " / night" } } div { class:"rvd-price-r", Icon{name:"star",size:14,color:"var(--vl-accent)"} b { "{rating}" } } }
+        div { class:"rvd-booking", div { class:"rvd-price-row", div { class:"rvd-price", span { class:"rvd-price-v", "CA${rental.base_rate}" } span { class:"rvd-price-u", " / night" } } a { class:"rvd-price-r", href:"#guest-reviews", aria_label:"Read {review_count} guest reviews", Icon{name:"star",size:14,color:"var(--vl-accent)"} b { "{rating}" } span { "({review_count})" } } }
             div { class:"rvd-min-pill", Icon{name:"info",size:14,color:"var(--vl-muted)"} span { "3-night minimum · transparent pricing before confirmation" } }
             button { class:"rvd-summary-dates", r#type:"button", onclick:move |_|{booking_step.set(1);booking_open.set(true)}, span { "DATES" } strong { if nights>=3 { "{starts_on} → {ends_on}" } else { "Choose dates" } } Icon{name:"chevron-right",size:15,color:"var(--vl-forest)"} }
             div { class:"rvd-price-breakdown", div { class:"rvd-price-breakdown-head", strong { "What makes up your trip price" } span { "Exact delivery, add-ons and taxes are calculated in booking" } } div { span { "Base rental" } b { if nights>=3 { "{pricing::money(base)}" } else { "CA${rental.base_rate} / night" } } } div { span { "RV Preparation Fee" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } } div { span { "Stationary Plus Protection" } b { "CA$50.00 / night" } } if nights>=3 { div { class:"rvd-known-price", span { "Known trip costs before delivery, add-ons & tax" } b { "{pricing::money(known)}" } } } }
@@ -816,18 +840,53 @@ fn calendar_cells(month: NaiveDate) -> Vec<Option<NaiveDate>> {
 
 type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
 
-fn unavailable_ranges(value: &api::AvailabilityResponse) -> Vec<UnavailableRange> {
+#[derive(Clone, Debug)]
+struct ValidatedAvailability {
+    unavailable: Vec<UnavailableRange>,
+    minimum_nights: i64,
+}
+
+fn unavailable_ranges(value: &api::AvailabilityResponse) -> Result<Vec<UnavailableRange>, String> {
     let mut ranges = Vec::new();
     for interval in &value.unavailable {
-        let Ok(start) = chrono::DateTime::parse_from_rfc3339(&interval.starts_at) else {
-            continue;
-        };
-        let Ok(end) = chrono::DateTime::parse_from_rfc3339(&interval.ends_at) else {
-            continue;
-        };
-        ranges.push((start.with_timezone(&Utc), end.with_timezone(&Utc)));
+        let start = chrono::DateTime::parse_from_rfc3339(&interval.starts_at)
+            .map_err(|_| "Live availability returned an invalid blocked start time.".to_string())?
+            .with_timezone(&Utc);
+        let end = chrono::DateTime::parse_from_rfc3339(&interval.ends_at)
+            .map_err(|_| "Live availability returned an invalid blocked end time.".to_string())?
+            .with_timezone(&Utc);
+        if end <= start {
+            return Err("Live availability returned an invalid blocked date range.".into());
+        }
+        ranges.push((start, end));
     }
-    ranges
+    Ok(ranges)
+}
+
+fn validated_availability(
+    value: &api::AvailabilityResponse,
+    expected_slug: &str,
+    required_start: NaiveDate,
+    required_end: NaiveDate,
+) -> Result<ValidatedAvailability, String> {
+    let response_start = NaiveDate::parse_from_str(&value.starts_on, "%Y-%m-%d")
+        .map_err(|_| "Live availability returned an invalid start date.".to_string())?;
+    let response_end = NaiveDate::parse_from_str(&value.ends_on, "%Y-%m-%d")
+        .map_err(|_| "Live availability returned an invalid end date.".to_string())?;
+    if value.rental_slug != expected_slug
+        || response_start > required_start
+        || response_end < required_end
+        || value.timezone != "America/Vancouver"
+        || value.delivery_time != "14:00"
+        || value.return_time != "11:00"
+        || value.minimum_nights < 3
+    {
+        return Err("Live availability returned an incomplete schedule. Please retry.".into());
+    }
+    Ok(ValidatedAvailability {
+        unavailable: unavailable_ranges(value)?,
+        minimum_nights: value.minimum_nights,
+    })
 }
 
 fn local_moment(day: NaiveDate, hour: u32) -> Option<DateTime<Utc>> {
@@ -910,36 +969,61 @@ fn InlineAvailabilityCalendar(
 ) -> Element {
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let first_month = month_start(today);
-    let availability_starts_on = first_month.to_string();
-    let availability_ends_on = (add_months(first_month, 3) + Duration::days(3)).to_string();
+    let availability_start = first_month;
+    let availability_end = add_months(first_month, 3) + Duration::days(3);
+    let availability_starts_on = availability_start.to_string();
+    let availability_ends_on = availability_end.to_string();
     let availability_slug = rental.slug.clone();
+    let mut availability_retry = use_signal(|| 0_u32);
     let availability = use_resource(move || {
+        let _retry = *availability_retry.read();
         let slug = availability_slug.clone();
         let range_start = availability_starts_on.clone();
         let range_end = availability_ends_on.clone();
         async move { api::availability(&slug, &range_start, &range_end).await }
     });
-    let response = availability
+    let raw_response = availability
         .read()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
         .cloned();
-    let availability_error = availability
+    let request_error = availability
         .read()
         .as_ref()
         .and_then(|result| result.as_ref().err())
         .cloned();
-    let availability_loaded = response.is_some();
-    let unavailable = response
+    let validated = raw_response.as_ref().map(|value| {
+        validated_availability(value, &rental.slug, availability_start, availability_end)
+    });
+    let contract_error = validated
         .as_ref()
-        .map(unavailable_ranges)
+        .and_then(|result| result.as_ref().err())
+        .cloned();
+    let availability_error = request_error.or(contract_error);
+    let validated = validated.and_then(Result::ok);
+    let availability_loaded = validated.is_some();
+    let unavailable = validated
+        .as_ref()
+        .map(|value| value.unavailable.clone())
         .unwrap_or_default();
-    let minimum_nights = response
+    let minimum_nights = validated
         .as_ref()
-        .map(|value| value.minimum_nights.max(3))
+        .map(|value| value.minimum_nights)
         .unwrap_or(3);
     let selected_start = selected_date(&starts_on);
     let selected_end = selected_date(&ends_on);
+    let selection_verified = availability_loaded
+        && match (selected_start, selected_end) {
+            (Some(start), Some(end)) => {
+                (end - start).num_days() >= minimum_nights
+                    && stay_is_available(start, end, &unavailable)
+            }
+            (Some(start), None) => minimum_stay_can_start(start, minimum_nights, &unavailable),
+            (None, None) => true,
+            (None, Some(_)) => false,
+        };
+    let displayed_start = selection_verified.then_some(selected_start).flatten();
+    let displayed_end = selection_verified.then_some(selected_end).flatten();
     let selected_nights = selected_start
         .zip(selected_end)
         .map(|(start, end)| (end - start).num_days())
@@ -951,6 +1035,53 @@ fn InlineAvailabilityCalendar(
     let planner_location = use_signal(|| "Kelowna, BC".to_string());
     let planner_radius = use_signal(|| 150_i32);
     let overlay_slug = rental.slug.clone();
+    let mut selection_notice = use_signal(String::new);
+
+    use_effect(move || {
+        if *booking_open.read() {
+            return;
+        }
+        let page_start = selected_date(&starts_on);
+        let page_end = selected_date(&ends_on);
+        if *planner_starts_on.peek() != page_start {
+            planner_starts_on.set(page_start);
+        }
+        if *planner_ends_on.peek() != page_end {
+            planner_ends_on.set(page_end);
+        }
+    });
+
+    let reconciliation_slug = rental.slug.clone();
+    use_effect(move || {
+        let snapshot = availability.read().as_ref().cloned();
+        let Some(Ok(value)) = snapshot else {
+            return;
+        };
+        let Ok(current) = validated_availability(
+            &value,
+            &reconciliation_slug,
+            availability_start,
+            availability_end,
+        ) else {
+            return;
+        };
+        let (Some(start), Some(end)) = (selected_date(&starts_on), selected_date(&ends_on)) else {
+            return;
+        };
+        if start < availability_start || end > availability_end {
+            return;
+        }
+        if (end - start).num_days() < current.minimum_nights
+            || !stay_is_available(start, end, &current.unavailable)
+        {
+            starts_on.set(String::new());
+            ends_on.set(String::new());
+            selection_notice.set(
+                "Previously selected dates are no longer available for this RV. Choose new dates."
+                    .into(),
+            );
+        }
+    });
 
     rsx! {
         section { class: "rvd-inline-availability", aria_label: "Live availability for {rental.name}",
@@ -965,7 +1096,10 @@ fn InlineAvailabilityCalendar(
                 }
             }
             if let Some(message) = availability_error.as_ref() {
-                p { class: "rvd-inline-availability-state is-error", role: "alert", "Live availability could not be loaded: {message}" }
+                div { class: "rvd-inline-availability-state is-error", role: "alert",
+                    span { "Live availability could not be loaded: {message}" }
+                    button { r#type: "button", onclick: move |_| availability_retry.set(availability_retry().wrapping_add(1)), "Retry" }
+                }
             } else if !availability_loaded {
                 p { class: "rvd-inline-availability-state", role: "status", "Loading live availability…" }
             }
@@ -978,8 +1112,8 @@ fn InlineAvailabilityCalendar(
                         availability_loaded,
                         unavailable: unavailable.clone(),
                         minimum_nights,
-                        selected_start,
-                        selected_end,
+                        selected_start: displayed_start,
+                        selected_end: displayed_end,
                         on_select: move |day| {
                             let current_start = selected_date(&starts_on);
                             let current_end = selected_date(&ends_on);
@@ -997,7 +1131,9 @@ fn InlineAvailabilityCalendar(
             }
             div { class: "rvd-inline-availability-foot", aria_live: "polite",
                 Icon { name: "calendar-check", size: 16, color: "var(--vl-forest)" }
-                if let Some(start) = selected_start {
+                if !selection_notice.read().is_empty() {
+                    span { class: "is-warning", "{selection_notice}" }
+                } else if let Some(start) = selected_start {
                     if let Some(end) = selected_end {
                         span { "{start} → {end} · {selected_nights} nights" }
                     } else {
@@ -1154,6 +1290,39 @@ mod availability_tests {
         assert_eq!(
             next_date_selection(earlier, Some(selected), None),
             (Some(earlier), None)
+        );
+    }
+
+    #[test]
+    fn inline_calendar_rejects_malformed_or_mismatched_availability() {
+        let mut response = api::AvailabilityResponse {
+            rental_slug: "test-rv".into(),
+            starts_on: "2030-08-01".into(),
+            ends_on: "2030-11-04".into(),
+            unavailable: vec![api::UnavailableInterval {
+                starts_at: "2030-08-10T21:00:00Z".into(),
+                ends_at: "2030-08-13T18:00:00Z".into(),
+            }],
+            delivery_time: "14:00".into(),
+            return_time: "11:00".into(),
+            timezone: "America/Vancouver".into(),
+            minimum_nights: 3,
+        };
+        assert!(
+            validated_availability(&response, "test-rv", day(2030, 8, 1), day(2030, 11, 4)).is_ok()
+        );
+
+        response.unavailable[0].starts_at = "not-a-timestamp".into();
+        assert!(
+            validated_availability(&response, "test-rv", day(2030, 8, 1), day(2030, 11, 4))
+                .is_err()
+        );
+
+        response.unavailable.clear();
+        response.rental_slug = "another-rv".into();
+        assert!(
+            validated_availability(&response, "test-rv", day(2030, 8, 1), day(2030, 11, 4))
+                .is_err()
         );
     }
 }

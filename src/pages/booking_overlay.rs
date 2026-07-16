@@ -48,16 +48,48 @@ struct DatedRentalMatches {
     result: Result<Vec<api::Rental>, String>,
 }
 
-fn availability_ranges(value: &api::AvailabilityResponse) -> Vec<UnavailableRange> {
+fn availability_ranges(value: &api::AvailabilityResponse) -> Result<Vec<UnavailableRange>, String> {
     value
         .unavailable
         .iter()
-        .filter_map(|interval| {
-            let start = DateTime::parse_from_rfc3339(&interval.starts_at).ok()?;
-            let end = DateTime::parse_from_rfc3339(&interval.ends_at).ok()?;
-            Some((start.with_timezone(&Utc), end.with_timezone(&Utc)))
+        .map(|interval| {
+            let start = DateTime::parse_from_rfc3339(&interval.starts_at)
+                .map_err(|_| {
+                    "Live availability returned an invalid blocked start time.".to_string()
+                })?
+                .with_timezone(&Utc);
+            let end = DateTime::parse_from_rfc3339(&interval.ends_at)
+                .map_err(|_| "Live availability returned an invalid blocked end time.".to_string())?
+                .with_timezone(&Utc);
+            if end <= start {
+                return Err("Live availability returned an invalid blocked date range.".into());
+            }
+            Ok((start, end))
         })
         .collect()
+}
+
+fn validated_booking_availability(
+    value: &api::AvailabilityResponse,
+    expected_slug: &str,
+    required_start: NaiveDate,
+    required_end: NaiveDate,
+) -> Result<Vec<UnavailableRange>, String> {
+    let response_start = NaiveDate::parse_from_str(&value.starts_on, "%Y-%m-%d")
+        .map_err(|_| "Live availability returned an invalid start date.".to_string())?;
+    let response_end = NaiveDate::parse_from_str(&value.ends_on, "%Y-%m-%d")
+        .map_err(|_| "Live availability returned an invalid end date.".to_string())?;
+    if value.rental_slug != expected_slug
+        || response_start > required_start
+        || response_end < required_end
+        || value.timezone != "America/Vancouver"
+        || value.delivery_time != "14:00"
+        || value.return_time != "11:00"
+        || value.minimum_nights < 3
+    {
+        return Err("Live availability returned an incomplete schedule. Please retry.".into());
+    }
+    availability_ranges(value)
 }
 
 fn booking_moment(day: NaiveDate, hour: u32) -> Option<DateTime<Utc>> {
@@ -991,6 +1023,8 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut payment_config = use_signal(|| None::<api::PaymentConfig>);
     let mut payment_config_error = use_signal(String::new);
     let mut payment_config_retry = use_signal(|| 0_u32);
+    let mut rental_choices_retry = use_signal(|| 0_u32);
+    let mut selected_availability_retry = use_signal(|| 0_u32);
     let mut pending_payment = use_signal(move || initial_pending_payment);
     let mut payment_overlay_open = use_signal(move || has_pending_payment);
     let mut payment_phase = use_signal(|| "idle".to_string());
@@ -1321,6 +1355,7 @@ pub(crate) fn UnifiedBookingOverlay(
         && phone.read().trim().len() >= 7;
     let mut trip_was_ready = use_signal(|| trip_ready);
     let all_rentals = use_resource(move || {
+        let _retry = *rental_choices_retry.read();
         let query = api::CatalogSearchDraft {
             location: location.read().clone(),
             radius_km: *radius.read(),
@@ -1331,6 +1366,7 @@ pub(crate) fn UnifiedBookingOverlay(
         async move { api::catalog(&query).await }
     });
     let available_rentals = use_resource(move || {
+        let _retry = *rental_choices_retry.read();
         let selected_starts_on = *starts_on.read();
         let selected_ends_on = *ends_on.read();
         let selected_guests = *guests.read();
@@ -1356,6 +1392,7 @@ pub(crate) fn UnifiedBookingOverlay(
         }
     });
     let selected_availability = use_resource(move || {
+        let _retry = *selected_availability_retry.read();
         let slug = selected_slug.read().clone();
         let selected_start_month = (*starts_on.read()).map(month_start);
         let current_month = *visible_month.read();
@@ -1477,35 +1514,42 @@ pub(crate) fn UnifiedBookingOverlay(
         .as_ref()
         .and_then(|result| result.as_ref().ok())
         .and_then(Clone::clone);
-    let availability_error = selected_availability
+    let request_availability_error = selected_availability
         .read()
         .as_ref()
         .and_then(|result| result.as_ref().err())
         .cloned();
     let calendar_range_end = add_months(*visible_month.read(), 2);
     let calendar_required_end = calendar_range_end + chrono::Duration::days(3);
-    let availability_is_current = availability_response.as_ref().is_some_and(|value| {
-        value.rental_slug == *selected_slug.read()
-            && NaiveDate::parse_from_str(&value.starts_on, "%Y-%m-%d")
-                .is_ok_and(|start| start <= *visible_month.read())
-            && NaiveDate::parse_from_str(&value.ends_on, "%Y-%m-%d")
-                .is_ok_and(|end| end >= calendar_required_end)
+    let validated_availability = availability_response.as_ref().map(|value| {
+        validated_booking_availability(
+            value,
+            &selected_slug.read(),
+            *visible_month.read(),
+            calendar_required_end,
+        )
     });
-    let current_availability = availability_response
+    let contract_availability_error = validated_availability
         .as_ref()
-        .filter(|_| availability_is_current);
+        .and_then(|result| result.as_ref().err())
+        .cloned();
+    let availability_error = request_availability_error.or(contract_availability_error);
+    let unavailable_ranges = validated_availability
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    let availability_is_current = availability_response.is_some() && availability_error.is_none();
     let availability_pending = !selected_slug.read().is_empty()
         && availability_error.is_none()
         && !availability_is_current;
-    let unavailable_ranges = current_availability
-        .map(availability_ranges)
-        .unwrap_or_default();
-    let minimum_nights = current_availability
+    let calendar_unavailable = availability_pending || availability_error.is_some();
+    let minimum_nights = availability_response
+        .as_ref()
+        .filter(|_| availability_is_current)
         .map(|value| value.minimum_nights)
         .unwrap_or(3);
     let mut calendar_day = *visible_month.read();
     let mut unavailable_dates = Vec::new();
-    if current_availability.is_some() {
+    if availability_is_current {
         while calendar_day < calendar_range_end {
             if !booking_date_is_selectable(
                 calendar_day,
@@ -1755,8 +1799,11 @@ pub(crate) fn UnifiedBookingOverlay(
                                         Icon { name: "calendar", size: 16, color: "var(--vl-forest)" }
                                         span {
                                             if availability_pending { "Loading live dates for {selected_name}…" }
-                                            else if availability_error.is_some() { "Live dates could not be loaded. Choose a range and we will verify it before continuing." }
+                                            else if availability_error.is_some() { "Live dates could not be verified. Retry before choosing dates for this RV." }
                                             else { "Showing live available dates for {selected_name}." }
+                                        }
+                                        if availability_error.is_some() {
+                                            button { r#type: "button", onclick: move |_| selected_availability_retry.set(selected_availability_retry().wrapping_add(1)), "Retry" }
                                         }
                                     }
                                 }
@@ -1809,7 +1856,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                         }
                                     },
                                     ontouchcancel: move |_| calendar_swipe_start.set(None),
-                                    for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending } }
+                                    for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending: calendar_unavailable } }
                                 }
                                 div { class: "ub-guests", span { "Guests" } button { r#type: "button", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" } strong { "{guests}" } button { r#type: "button", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" } }
                             }
@@ -1829,9 +1876,12 @@ pub(crate) fn UnifiedBookingOverlay(
                                     }
                                 }
                                 if rental_choices_error.is_some() {
-                                    p { class: "ub-error",
-                                        if trip_ready { "Live availability could not be checked. Try again or choose different dates." }
-                                        else { "RV models could not be loaded. Check your connection and try again." }
+                                    div { class: "ub-error", role: "alert",
+                                        p {
+                                            if trip_ready { "Live availability could not be checked. Retry or choose different dates." }
+                                            else { "RV models could not be loaded. Check your connection and retry." }
+                                        }
+                                        button { r#type: "button", onclick: move |_| rental_choices_retry.set(rental_choices_retry().wrapping_add(1)), "Retry" }
                                     }
                                 }
                                 else if rental_choices_loading { p { class: "ub-muted", if trip_ready { "Checking live availability…" } else { "Loading RV models…" } } }
@@ -2737,6 +2787,30 @@ mod saved_address_tests {
             NaiveDate::from_ymd_opt(2030, 8, 11).unwrap(),
             &blocked,
         ));
+    }
+
+    #[test]
+    fn booking_calendar_fails_closed_on_an_invalid_schedule_response() {
+        let response = api::AvailabilityResponse {
+            rental_slug: "test-rv".into(),
+            starts_on: "2030-08-01".into(),
+            ends_on: "2030-10-04".into(),
+            unavailable: vec![api::UnavailableInterval {
+                starts_at: "invalid".into(),
+                ends_at: "2030-08-13T18:00:00Z".into(),
+            }],
+            delivery_time: "14:00".into(),
+            return_time: "11:00".into(),
+            timezone: "America/Vancouver".into(),
+            minimum_nights: 3,
+        };
+        assert!(validated_booking_availability(
+            &response,
+            "test-rv",
+            NaiveDate::from_ymd_opt(2030, 8, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2030, 10, 4).unwrap(),
+        )
+        .is_err());
     }
 
     #[test]

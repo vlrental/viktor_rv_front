@@ -210,8 +210,8 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "/restaurants",
         ),
         Route::CoolerTrailers {} => SeoMetadata::indexed(
-            "Cooler Trailer Rentals in Kelowna | VL Rental",
-            "Explore cooler trailer rental options from VL Rental for events and trips in Kelowna and the Okanagan.",
+            "Cooler Trailers Coming Soon in Kelowna | VL Rental",
+            "Learn about planned refrigerated cooler trailers for cold food and beverage storage at events and campsites. Not an RV and not yet available to book.",
             "/cooler-trailers",
         ),
         Route::Delivery {} => SeoMetadata::indexed(

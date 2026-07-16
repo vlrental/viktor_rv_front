@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::{api, components::Icon};
 
 const IMG_COOLER_HERO: Asset = asset!(
-    "/assets/img/cooler-hero.jpg",
+    "/assets/img/cooler-trailer-refrigerated.webp",
     AssetOptions::image().with_jpg()
 );
 
@@ -17,30 +17,30 @@ struct Feature {
 const FEATURES: [Feature; 4] = [
     Feature {
         icon: "thermometer-snowflake",
-        title: "Powered cooling",
-        desc: "Consistent cold for days — no daily ice runs.",
+        title: "Refrigerated storage",
+        desc: "Insulated cargo space for keeping food and beverages chilled.",
     },
     Feature {
-        icon: "package",
-        title: "Big capacity",
-        desc: "Room for a whole group's food, drinks and catch.",
+        icon: "snowflake",
+        title: "Powered refrigeration",
+        desc: "A cooling unit maintains cold storage without relying on ice alone.",
     },
     Feature {
-        icon: "truck",
-        title: "Delivered chilled",
-        desc: "We drop it off pre-cooled and ready at your site.",
+        icon: "party-popper",
+        title: "For events and campsites",
+        desc: "Planned for group camping, outdoor gatherings and event support.",
     },
     Feature {
-        icon: "link",
-        title: "Add to any rental",
-        desc: "Pairs with any RV booking in a click.",
+        icon: "hourglass",
+        title: "Coming soon",
+        desc: "Not available to reserve yet. Specifications and pricing will be published before launch.",
     },
 ];
 
 const BULLETS: [&str; 3] = [
-    "Large, insulated capacity for groups",
-    "Powered cooling — no melting ice runs",
-    "Easy to tow or delivered to your site",
+    "Chilled storage for food and beverages",
+    "No sleeping or living space",
+    "Specifications, pricing and availability coming soon",
 ];
 
 #[component]
@@ -53,10 +53,15 @@ pub fn CoolerTrailers() -> Element {
                     Icon { name: "hourglass", size: 14, color: "var(--vl-white)" }
                     span { "COMING SOON" }
                 }
-                div { class: "eyebrow", "COOLER TRAILERS" }
-                h1 { class: "clt-title", "Keep it cold, wherever you roam" }
+                div { class: "eyebrow", "REFRIGERATED CARGO TRAILER" }
+                h1 { class: "clt-title", "Cold storage for events and campsites" }
                 p { class: "clt-sub",
-                    "Exciting new cooler trailer rentals launching soon — perfect for events, camping trips and outdoor adventures. Stay tuned, something cool is coming your way!"
+                    "Cooler trailers are insulated cargo trailers with powered refrigeration for keeping food and drinks cold. They are not RVs and are not intended for sleeping. This service is coming soon and cannot be booked yet."
+                }
+                img {
+                    class: "clt-hero-img clt-hero-img-mobile",
+                    src: IMG_COOLER_HERO,
+                    alt: "Open refrigerated cargo trailer with an insulated cold-storage interior",
                 }
                 div { class: "clt-bullets",
                     for (i, bullet) in BULLETS.iter().enumerate() {
@@ -67,13 +72,14 @@ pub fn CoolerTrailers() -> Element {
                     }
                 }
                 a { class: "clt-btn", href: rentals_href,
-                    span { "Explore RV rentals" }
+                    span { "Explore available RV rentals" }
                     Icon { name: "arrow-right", size: 17, color: "var(--vl-white)" }
                 }
             }
-            div {
-                class: "clt-hero-img",
-                style: "background-image: url('{IMG_COOLER_HERO}');",
+            img {
+                class: "clt-hero-img clt-hero-img-desktop",
+                src: IMG_COOLER_HERO,
+                alt: "Open refrigerated cargo trailer with an insulated cold-storage interior",
             }
         }
         section { class: "clt-features",
