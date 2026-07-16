@@ -2115,6 +2115,24 @@ pub async fn booking_status(
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
+pub async fn expire_pending_booking_for_edit(
+    booking_id: &str,
+    booking_token: &str,
+) -> Result<(), ApiError> {
+    let response = Request::delete(&format!(
+        "{API_BASE}/api/v1/bookings/{}/pending-payment",
+        urlencoding::encode(booking_id)
+    ))
+    .header("x-booking-token", booking_token)
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    Ok(())
+}
+
 pub async fn create_booking(
     quote_id: &str,
     first_name: &str,
@@ -3918,6 +3936,18 @@ mod delivery_draft_tests {
 
         assert!(status.confirmed);
         assert_eq!(status.payment_status, "paid");
+    }
+
+    #[test]
+    fn pending_payment_edit_uses_the_private_booking_route() {
+        let booking_id = "booking-1";
+        assert_eq!(
+            format!(
+                "{API_BASE}/api/v1/bookings/{}/pending-payment",
+                urlencoding::encode(booking_id)
+            ),
+            format!("{API_BASE}/api/v1/bookings/booking-1/pending-payment")
+        );
     }
 
     #[test]

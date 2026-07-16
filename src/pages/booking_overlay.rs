@@ -1029,6 +1029,9 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut payment_overlay_open = use_signal(move || has_pending_payment);
     let mut payment_phase = use_signal(|| "idle".to_string());
     let mut payment_attempt_nonce = use_signal(|| 0_u32);
+    let mut edit_booking_confirm_open = use_signal(|| false);
+    let mut edit_booking_busy = use_signal(|| false);
+    let mut edit_booking_error = use_signal(String::new);
     let navigator = use_navigator();
     let google_href = api::google_login_url();
     let google_return = use_route::<Route>().to_string();
@@ -2057,8 +2060,11 @@ pub(crate) fn UnifiedBookingOverlay(
                                         div { Icon { name: "shield-check", size: 20, color: "var(--vl-forest)" } div { h3 { "Reservation ready for payment" } p { "Booking {created.booking.booking_number} is held. Secure Checkout opens above this booking." } } }
                                         span { "TEST MODE" }
                                     }
-                                    p { "Your dates remain reserved while this Checkout session is active. Closing the payment window will not create another booking." }
-                                    button { class: "ub-primary", r#type: "button", onclick: move |_| { booking_error.set(String::new()); payment_overlay_open.set(true); payment_phase.set("idle".into()); let next = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next); }, "Open secure payment" }
+                                    p { "Your dates remain reserved while this Checkout session is active. To change any trip detail, release this unpaid reservation first." }
+                                    div { class: "ub-payment-reserved-actions",
+                                        button { class: "ub-primary", r#type: "button", onclick: move |_| { booking_error.set(String::new()); payment_overlay_open.set(true); payment_phase.set("idle".into()); let next = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next); }, "Open secure payment" }
+                                        button { class: "ub-change-booking", r#type: "button", onclick: move |_| { edit_booking_error.set(String::new()); edit_booking_confirm_open.set(true); }, Icon { name: "pencil", size: 15, color: "var(--vl-forest)" } span { "Change booking details" } }
+                                    }
                                 } } else { div { class: "ub-fields",
                                     if let Some(authenticated_user) = user.read().as_ref() {
                                         if contact_complete && !*contact_editing.read() {
@@ -2153,7 +2159,22 @@ pub(crate) fn UnifiedBookingOverlay(
                                 div { class: "ub-payment-price-now", div { span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } strong { "{created.booking.currency} ${created.booking.amount_due_now}" } } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total} — charged today" } }
                                 if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "ub-payment-price-row", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } strong { "{created.booking.currency} ${remaining}" } } }
                                 div { class: "ub-payment-price-row is-deposit", span { "Refundable damage deposit" small { "Separate payment {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. Not included in the trip price." } } strong { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                                button { class: "ub-change-booking ub-change-booking-payment", r#type: "button", onclick: move |_| { edit_booking_error.set(String::new()); edit_booking_confirm_open.set(true); }, Icon { name: "pencil", size: 15, color: "var(--vl-forest)" } span { "Change booking details" } small { "Cancels this unpaid payment session, releases the dates, and recalculates your updated trip." } }
                             }
+                        }
+                    }
+                }
+            }
+            if *edit_booking_confirm_open.read() {
+                div { class: "ub-edit-confirm-layer", onclick: move |event| { event.stop_propagation(); if !*edit_booking_busy.read() { edit_booking_confirm_open.set(false); edit_booking_error.set(String::new()); } },
+                    section { class: "ub-edit-confirm", role: "alertdialog", aria_modal: "true", aria_labelledby: "ub-edit-confirm-title", aria_describedby: "ub-edit-confirm-description", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if !*edit_booking_busy.read() { edit_booking_confirm_open.set(false); edit_booking_error.set(String::new()); } },
+                        div { class: "ub-edit-confirm-icon", Icon { name: "calendar-cog", size: 23, color: "var(--vl-forest)" } }
+                        h2 { id: "ub-edit-confirm-title", "Change this booking?" }
+                        p { id: "ub-edit-confirm-description", "The current unpaid reservation and Stripe Checkout session will be cancelled. Your dates will be released while you update the trip, and the server will calculate a new price before payment." }
+                        if !edit_booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{edit_booking_error}" } }
+                        div { class: "ub-edit-confirm-actions",
+                            button { r#type: "button", disabled: *edit_booking_busy.read(), onclick: move |_| { edit_booking_confirm_open.set(false); edit_booking_error.set(String::new()); }, "Keep current payment" }
+                            button { class: "ub-primary", r#type: "button", disabled: *edit_booking_busy.read(), onclick: move |_| { let created = pending_payment.read().clone(); async move { let Some(created) = created else { edit_booking_confirm_open.set(false); return; }; edit_booking_busy.set(true); edit_booking_error.set(String::new()); match api::expire_pending_booking_for_edit(&created.booking.booking_id, &created.access_token).await { Ok(()) => { let next_attempt = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next_attempt); document::eval(UNMOUNT_EMBEDDED_CHECKOUT); api::remove_sensitive_saved(SAVED_PENDING_PAYMENT); api::remove_saved("vl_active_quote"); pending_payment.set(None); payment_overlay_open.set(false); payment_phase.set("idle".into()); edit_booking_confirm_open.set(false); quote.set(None); accepted.set(false); booking_error.set(String::new()); addon_notice.set("Your previous unpaid reservation was released. Update any details; the exact server price will refresh automatically.".into()); open_step.set(1); let next_quote = quote_refresh_nonce().wrapping_add(1); quote_refresh_nonce.set(next_quote); spawn(async move { scroll_to_booking_step(1).await; }); }, Err(error) if error.is_conflict() => edit_booking_error.set("This reservation can no longer be changed because its payment or status has already advanced. Close this message and check the payment status before continuing.".into()), Err(error) => edit_booking_error.set(error.message) } edit_booking_busy.set(false); } }, if *edit_booking_busy.read() { "Releasing reservation…" } else { "Release and edit booking" } }
                         }
                     }
                 }
