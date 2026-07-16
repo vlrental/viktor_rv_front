@@ -182,23 +182,99 @@ fn DynamicTitleHead(rental: api::Rental) -> Element {
 fn DynamicGallery(rental: api::Rental, media: Vec<api::RentalMedia>) -> Element {
     let mut images = media
         .iter()
+        .filter(|item| !item.source_url.trim().is_empty())
         .map(|item| (item.source_url.clone(), item.alt_text.clone()))
         .collect::<Vec<_>>();
     if images.is_empty() {
-        if let Some(hero) = rental.hero_image_url.as_ref() {
+        let fallback_images = rv_gallery(&rental.slug);
+        if let Some(hero) = rental
+            .hero_image_url
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
             images.push((hero.clone(), rental.name.clone()));
+        }
+        for (index, image) in fallback_images.into_iter().enumerate() {
+            let source = image.to_string();
+            if !images.iter().any(|(existing, _)| existing == &source) {
+                images.push((source, format!("{}, photo {}", rental.name, index + 1)));
+            }
         }
     }
     let count = images.len();
     let mut selected = use_signal(|| None::<usize>);
+
+    use_effect(move || {
+        let is_open = selected.read().is_some();
+        document::eval(&format!(
+            r#"
+                if (window.__vlDynamicGalleryCleanup) {{
+                    window.__vlDynamicGalleryCleanup();
+                    window.__vlDynamicGalleryCleanup = null;
+                }}
+
+                const overlay = document.getElementById('rvd-lightbox');
+                if ({is_open} && overlay) {{
+                    const previousOverflow = document.body.style.overflow;
+                    const keyHandler = (event) => {{
+                        if (event.key === 'Escape') document.getElementById('rvd-lightbox-close')?.click();
+                        if (event.key === 'ArrowLeft') document.getElementById('rvd-lightbox-prev')?.click();
+                        if (event.key === 'ArrowRight') document.getElementById('rvd-lightbox-next')?.click();
+                    }};
+                    let startX = null;
+                    let startY = null;
+                    const touchStart = (event) => {{
+                        startX = event.touches[0]?.clientX ?? null;
+                        startY = event.touches[0]?.clientY ?? null;
+                    }};
+                    const touchEnd = (event) => {{
+                        if (startX === null || startY === null) return;
+                        const endX = event.changedTouches[0]?.clientX ?? startX;
+                        const endY = event.changedTouches[0]?.clientY ?? startY;
+                        const distanceX = endX - startX;
+                        const distanceY = endY - startY;
+                        if (Math.abs(distanceX) > 50 && Math.abs(distanceX) > Math.abs(distanceY)) {{
+                            document.getElementById(distanceX > 0 ? 'rvd-lightbox-prev' : 'rvd-lightbox-next')?.click();
+                        }}
+                        startX = null;
+                        startY = null;
+                    }};
+
+                    document.body.style.overflow = 'hidden';
+                    document.addEventListener('keydown', keyHandler);
+                    overlay.addEventListener('touchstart', touchStart, {{ passive: true }});
+                    overlay.addEventListener('touchend', touchEnd, {{ passive: true }});
+                    requestAnimationFrame(() => overlay.focus({{ preventScroll: true }}));
+
+                    window.__vlDynamicGalleryCleanup = () => {{
+                        document.body.style.overflow = previousOverflow;
+                        document.removeEventListener('keydown', keyHandler);
+                        overlay.removeEventListener('touchstart', touchStart);
+                        overlay.removeEventListener('touchend', touchEnd);
+                    }};
+                }}
+            "#
+        ));
+    });
+    use_drop(|| {
+        document::eval(
+            r#"
+                if (window.__vlDynamicGalleryCleanup) {
+                    window.__vlDynamicGalleryCleanup();
+                    window.__vlDynamicGalleryCleanup = null;
+                }
+            "#,
+        );
+    });
+
     if images.is_empty() {
         return rsx! { div { class: "rvd-gallery rvd-gallery-empty", Icon { name: "image", size: 32, color: "var(--vl-muted)" } span { "Photos are being prepared" } } };
     }
     rsx! {
-        div { class: "rvd-gallery", button { class: "rvd-gallery-main", r#type: "button", aria_label: "Open photo 1 of {count}", style: "background-image: url('{images[0].0}');", onclick: move |_|selected.set(Some(0)) }
-            div { class: "rvd-gallery-grid", for (index,image) in images.iter().enumerate().skip(1).take(6) { button { key: "gallery-{index}", class: "rvd-gallery-tile", r#type: "button", aria_label: "Open photo {index+1} of {count}", style: "background-image: url('{image.0}');", onclick: move |_|selected.set(Some(index)), if index==6 && count>7 { span { class:"rvd-gallery-more", "Show all {count} photos" } } } } }
+        div { class: "rvd-gallery", button { class: "rvd-gallery-main", r#type: "button", aria_label: "Open photo 1 of {count}", onclick: move |_|selected.set(Some(0)), img { src: "{images[0].0}", alt: "{images[0].1}", draggable: "false" } }
+            div { class: "rvd-gallery-grid", for (index,image) in images.iter().enumerate().skip(1).take(6) { button { key: "gallery-{index}", class: "rvd-gallery-tile", r#type: "button", aria_label: "Open photo {index+1} of {count}", onclick: move |_|selected.set(Some(index)), img { src: "{image.0}", alt: "{image.1}", loading: "lazy", draggable: "false" } if index==6 && count>7 { span { class:"rvd-gallery-more", "Show all {count} photos" } } } } }
         }
-        if let Some(index)=selected() { div { class:"rvd-lightbox", role:"dialog", aria_modal:"true", tabindex:"-1", onkeydown:move|event|if event.key()==Key::Escape{selected.set(None)}, onclick:move |_|selected.set(None), div { class:"rvd-lightbox-content", onclick:move|event|event.stop_propagation(), img { class:"rvd-lightbox-image", src:"{images[index].0}", alt:"{images[index].1}" } button { class:"rvd-lightbox-close", r#type:"button", onclick:move |_|selected.set(None), Icon{name:"x",size:24,color:"var(--vl-white)"} } button { class:"rvd-lightbox-nav prev", r#type:"button", onclick:move |_|selected.set(Some((index+count-1)%count)), Icon{name:"chevron-left",size:30,color:"var(--vl-white)"} } button { class:"rvd-lightbox-nav next", r#type:"button", onclick:move |_|selected.set(Some((index+1)%count)), Icon{name:"chevron-right",size:30,color:"var(--vl-white)"} } div { class:"rvd-lightbox-count", "{index+1} / {count}" } } } }
+        if let Some(index)=selected() { div { id:"rvd-lightbox", class:"rvd-lightbox", role:"dialog", aria_modal:"true", aria_label:"{rental.name} photo gallery", tabindex:"-1", autofocus:true, onkeydown:move|event|if event.key()==Key::Escape{event.stop_propagation();selected.set(None)}, onclick:move |_|selected.set(None), div { class:"rvd-lightbox-content", onclick:move|event|event.stop_propagation(), img { class:"rvd-lightbox-image", src:"{images[index].0}", alt:"{images[index].1}", draggable:"false" } button { id:"rvd-lightbox-close", class:"rvd-lightbox-close", r#type:"button", aria_label:"Close gallery", onclick:move |_|selected.set(None), Icon{name:"x",size:24,color:"var(--vl-white)"} } if count > 1 { button { id:"rvd-lightbox-prev", class:"rvd-lightbox-nav prev", r#type:"button", aria_label:"Previous photo", onclick:move |_|selected.set(Some((index+count-1)%count)), Icon{name:"chevron-left",size:30,color:"var(--vl-white)"} } button { id:"rvd-lightbox-next", class:"rvd-lightbox-nav next", r#type:"button", aria_label:"Next photo", onclick:move |_|selected.set(Some((index+1)%count)), Icon{name:"chevron-right",size:30,color:"var(--vl-white)"} } } div { class:"rvd-lightbox-count", "{index+1} / {count}" } } } }
     }
 }
 

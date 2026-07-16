@@ -111,7 +111,7 @@ pub fn Home() -> Element {
             search_open,
             search_initial_step,
         }
-        HowItWorks {}
+        HowItWorks { search_open, search_initial_step }
         MoreServices {}
         CtaBand { search_open, search_initial_step }
         if *search_open.read() {
@@ -164,12 +164,10 @@ fn booking_entry_step(search: &api::CatalogSearchDraft) -> u8 {
     }
 }
 
-fn home_booking_entry_step(entry: HomeBookingEntry, has_complete_dates: bool) -> u8 {
+fn home_booking_entry_step(entry: HomeBookingEntry) -> u8 {
     match entry {
         HomeBookingEntry::Rvs => 2,
-        HomeBookingEntry::Dates | HomeBookingEntry::Guests => 1,
-        HomeBookingEntry::Search if has_complete_dates => 2,
-        HomeBookingEntry::Search => 1,
+        HomeBookingEntry::Dates | HomeBookingEntry::Guests | HomeBookingEntry::Search => 1,
     }
 }
 
@@ -255,7 +253,6 @@ fn Hero(
     let search = applied_search.read().clone();
     let starts_on = search_date(search.starts_on.as_deref());
     let ends_on = search_date(search.ends_on.as_deref());
-    let has_complete_dates = starts_on.is_some() && ends_on.is_some();
     let dates_label = catalog_date_label(starts_on, ends_on);
     let guests_label = if search.guests == 1 {
         "1 guest".to_string()
@@ -287,7 +284,7 @@ fn Hero(
                 }
             }
             div { class: "searchbar",
-                button { class: "searchbar-open", r#type: "button", aria_label: "Open booking dates", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Dates, has_complete_dates)); search_open.set(true); } }
+                button { class: "searchbar-open", r#type: "button", aria_label: "Open booking dates", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Dates)); search_open.set(true); } }
                 div { class: "search-field is-static",
                     div { class: "search-label", "DELIVERY RADIUS" }
                     div { class: "search-value",
@@ -296,7 +293,7 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Rvs, has_complete_dates)); search_open.set(true); },
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Rvs)); search_open.set(true); },
                     div { class: "search-label", "WHAT" }
                     div { class: "search-value",
                         Icon { name: "compass", size: 17, color: "var(--vl-forest)" }
@@ -304,7 +301,7 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Dates, has_complete_dates)); search_open.set(true); },
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Dates)); search_open.set(true); },
                     div { class: "search-label", "DATES" }
                     div { class: "search-value",
                         Icon { name: "calendar", size: 17, color: "var(--vl-forest)" }
@@ -312,14 +309,14 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Guests, has_complete_dates)); search_open.set(true); },
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Guests)); search_open.set(true); },
                     div { class: "search-label", "GUESTS" }
                     div { class: "search-value",
                         Icon { name: "users", size: 17, color: "var(--vl-forest)" }
                         span { "{guests_label}" }
                     }
                 }
-                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Search, has_complete_dates)); search_open.set(true); },
+                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Search)); search_open.set(true); },
                     Icon { name: "search", size: 19, color: "var(--vl-white)" }
                     span { "Search" }
                 }
@@ -359,11 +356,10 @@ mod booking_entry_tests {
 
     #[test]
     fn home_search_fields_open_their_matching_rv_steps() {
-        assert_eq!(home_booking_entry_step(HomeBookingEntry::Dates, true), 1);
-        assert_eq!(home_booking_entry_step(HomeBookingEntry::Guests, true), 1);
-        assert_eq!(home_booking_entry_step(HomeBookingEntry::Rvs, false), 2);
-        assert_eq!(home_booking_entry_step(HomeBookingEntry::Search, false), 1);
-        assert_eq!(home_booking_entry_step(HomeBookingEntry::Search, true), 2);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Dates), 1);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Guests), 1);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Rvs), 2);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Search), 1);
     }
 }
 
@@ -489,12 +485,25 @@ fn PopularRvs(
 }
 
 #[component]
-fn HowItWorks() -> Element {
+fn HowItWorks(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>) -> Element {
     let steps = [
         ("search", "01", "Search & compare", "Browse fully-equipped RVs with transparent, upfront pricing — no hidden fees."),
         ("calendar-check", "02", "Book online", "Reserve in minutes with fair policies and helpful guidance from our local Okanagan team."),
         ("tent-tree", "03", "Hit the road", "We deliver, level and set up your rig. You focus on the fun, we handle the logistics."),
     ];
+    let card_content =
+        |icon: &'static str, num: &'static str, title: &'static str, desc: &'static str| {
+            rsx! {
+                div { class: "step-top",
+                    div { class: "step-icon",
+                        Icon { name: icon, size: 24, color: "var(--vl-white)" }
+                    }
+                    div { class: "step-num", "{num}" }
+                }
+                div { class: "step-title", "{title}" }
+                p { class: "step-desc", "{desc}" }
+            }
+        };
     rsx! {
         section { class: "section bg-white", style: "padding-top: 74px; padding-bottom: 74px;",
             div { class: "hiw-header",
@@ -503,15 +512,20 @@ fn HowItWorks() -> Element {
             }
             div { class: "card-row",
                 for (icon, num, title, desc) in steps {
-                    div { key: "{num}", class: "step-card",
-                        div { class: "step-top",
-                            div { class: "step-icon",
-                                Icon { name: icon, size: 24, color: "var(--vl-white)" }
-                            }
-                            div { class: "step-num", "{num}" }
+                    if num == "03" {
+                        div { key: "{num}", class: "step-card", {card_content(icon, num, title, desc)} }
+                    } else {
+                        button {
+                            key: "{num}",
+                            class: "step-card step-card-action",
+                            r#type: "button",
+                            aria_label: "Choose dates from {title}",
+                            onclick: move |_| {
+                                search_initial_step.set(1);
+                                search_open.set(true);
+                            },
+                            {card_content(icon, num, title, desc)}
                         }
-                        div { class: "step-title", "{title}" }
-                        p { class: "step-desc", "{desc}" }
                     }
                 }
             }

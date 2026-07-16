@@ -294,9 +294,13 @@ img { display: block; max-width: 100%; }
 .step-card {
   display: flex; flex-direction: column; gap: 16px;
   background: var(--vl-surface);
+  border: 1px solid transparent;
   border-radius: 16px;
   padding: 28px;
 }
+.step-card-action { width: 100%; text-align: left; transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
+.step-card-action:hover, .step-card-action:focus-visible { border-color: #AFC5B4; box-shadow: 0 10px 24px #10231714; transform: translateY(-2px); outline: none; }
+.step-card-action:active { transform: translateY(0); }
 .step-top { display: flex; align-items: center; justify-content: space-between; }
 .step-icon {
   width: 52px; height: 52px; border-radius: 14px;
