@@ -14,6 +14,11 @@
 - The frontend is the default working directory for this workspace. When a task involves API behavior, server code, routes, database access, or backend integrations, inspect the backend repository at the path above instead of searching for it.
 - The user commonly runs both projects locally. Verify the actual processes and ports when runtime state matters; do not assume that a service is currently running solely from this note.
 
+## Cross-repository implementation authorization
+
+- For Viktor RV tasks, the user grants standing authorization to inspect and modify both the frontend and backend repositories as needed to complete the requested work, without asking separately before crossing repository boundaries.
+- This standing authorization covers repository code, configuration, documentation, and tests. It does not by itself authorize a production deployment or restart, DNS/domain changes, live-payment activation, secret changes, or production database writes; those actions still require a direct user request.
+
 ## Project design
 
 - Viktor RV UI design must always be created, updated, and verified in Pencil. Do not use or suggest Figma for this project.
