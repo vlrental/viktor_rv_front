@@ -15,6 +15,20 @@ if (window.__vlEmbeddedCheckout) {
   window.__vlEmbeddedCheckout = null;
 }
 "#;
+const CLEANUP_BOOKING_EPHEMERALS: &str = r#"
+const mapState = window.__vlBookingDeliveryMapState;
+if (mapState?.map) {
+  try { mapState.map.remove(); } catch (_) {}
+}
+delete window.__vlBookingDeliveryMapState;
+
+const moneyFrames = window.__vlBookingMoneyFrames;
+if (moneyFrames) {
+  Object.values(moneyFrames).forEach(frame => cancelAnimationFrame(frame));
+}
+delete window.__vlBookingMoneyFrames;
+delete window.__vlBookingMoneyValues;
+"#;
 
 type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
 
@@ -766,6 +780,7 @@ pub(crate) fn UnifiedBookingOverlay(
     use_drop(|| {
         document::eval(UNLOCK_PAGE_SCROLL);
         document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
+        document::eval(CLEANUP_BOOKING_EPHEMERALS);
     });
 
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
@@ -774,6 +789,12 @@ pub(crate) fn UnifiedBookingOverlay(
         api::load_sensitive_json::<api::CreatedBooking>(SAVED_PENDING_PAYMENT)
             .filter(|created| created.client_secret.is_some() && !created.access_token.is_empty());
     let has_pending_payment = initial_pending_payment.is_some();
+    use_effect(move || {
+        if !has_pending_payment && !resumed_booking {
+            api::remove_saved("vl_active_quote");
+            api::remove_saved("vl_trip_draft");
+        }
+    });
     let mut visible_month = use_signal(|| {
         (*starts_on.read())
             .map(month_start)

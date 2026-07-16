@@ -17,13 +17,15 @@ const IMG_HOST: Asset = asset!("/assets/img/host-viktor.webp");
 pub fn RvDetail(slug: String) -> Element {
     let confirmation_slug = slug.clone();
     let confirmed_booking = use_signal(move || {
-        let saved =
-            api::load_json::<api::CreatedBooking>("vl_post_payment_booking").filter(|created| {
+        let saved = api::load_sensitive_json::<api::CreatedBooking>("vl_post_payment_booking")
+            .filter(|created| {
                 created.booking.rental_slug == confirmation_slug
                     && created.booking.status == "confirmed"
             });
         if saved.is_some() {
-            api::remove_saved("vl_post_payment_booking");
+            api::remove_sensitive_saved("vl_post_payment_booking");
+            api::remove_saved("vl_active_quote");
+            api::remove_saved("vl_trip_draft");
         }
         saved
     });
@@ -337,6 +339,16 @@ fn Gallery(listing: Listing) -> Element {
                 }}
             "#
         ));
+    });
+    use_drop(|| {
+        document::eval(
+            r#"
+                if (window.__vlGalleryKeyHandler) {
+                    document.removeEventListener('keydown', window.__vlGalleryKeyHandler);
+                    window.__vlGalleryKeyHandler = null;
+                }
+            "#,
+        );
     });
 
     rsx! {

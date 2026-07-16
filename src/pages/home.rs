@@ -13,6 +13,34 @@ use crate::data::IMG_HERO_RV;
 use crate::{BookingLaunchRequest, Route};
 
 const IMG_CTA_PARALLAX: Asset = asset!("/assets/img/generated/okanagan-rv-parallax.webp");
+const CLEANUP_HERO_VIDEO: &str = r#"
+if (window.__vlHeroRevealTimer) {
+    window.clearTimeout(window.__vlHeroRevealTimer);
+    window.__vlHeroRevealTimer = null;
+}
+if (window.__vlHeroPlayer) {
+    try { window.__vlHeroPlayer.destroy(); } catch (_) {}
+    window.__vlHeroPlayer = null;
+}
+if (window.__vlHeroReadyHandler && window.onYouTubeIframeAPIReady === window.__vlHeroReadyHandler) {
+    window.onYouTubeIframeAPIReady = window.__vlHeroPreviousReady || null;
+}
+window.__vlHeroReadyHandler = null;
+window.__vlHeroPreviousReady = null;
+const heroIframe = document.getElementById('hero-youtube-player');
+if (heroIframe) {
+    heroIframe.classList.remove('is-playing');
+    heroIframe.removeAttribute('src');
+}
+"#;
+
+#[derive(Clone, Copy)]
+enum HomeBookingEntry {
+    Dates,
+    Rvs,
+    Guests,
+    Search,
+}
 
 #[component]
 pub fn Home() -> Element {
@@ -136,6 +164,15 @@ fn booking_entry_step(search: &api::CatalogSearchDraft) -> u8 {
     }
 }
 
+fn home_booking_entry_step(entry: HomeBookingEntry, has_complete_dates: bool) -> u8 {
+    match entry {
+        HomeBookingEntry::Rvs => 2,
+        HomeBookingEntry::Dates | HomeBookingEntry::Guests => 1,
+        HomeBookingEntry::Search if has_complete_dates => 2,
+        HomeBookingEntry::Search => 1,
+    }
+}
+
 #[component]
 fn Hero(
     applied_search: Signal<api::CatalogSearchDraft>,
@@ -147,15 +184,15 @@ fn Hero(
             r#"
                 const iframe = document.getElementById('hero-youtube-player');
                 if (!iframe || iframe.dataset.initialized === 'true') return;
+                if (!window.matchMedia('(min-width: 861px)').matches) return;
                 iframe.dataset.initialized = 'true';
+                iframe.src = 'https://www.youtube.com/embed/?autoplay=0&controls=0&disablekb=1&enablejsapi=1&iv_load_policy=3&modestbranding=1&mute=1&playsinline=1&rel=0';
 
                 const createPlayer = () => {
                     const playerIframe = document.getElementById('hero-youtube-player');
                     if (!playerIframe || !window.YT?.Player) return;
 
-                    let revealTimer;
-
-                    new window.YT.Player('hero-youtube-player', {
+                    window.__vlHeroPlayer = new window.YT.Player('hero-youtube-player', {
                         events: {
                             onReady: (event) => {
                                 event.target.mute();
@@ -166,8 +203,8 @@ fn Hero(
                             },
                             onStateChange: (event) => {
                                 if (event.data === window.YT.PlayerState.PLAYING) {
-                                    window.clearTimeout(revealTimer);
-                                    revealTimer = window.setTimeout(() => {
+                                    window.clearTimeout(window.__vlHeroRevealTimer);
+                                    window.__vlHeroRevealTimer = window.setTimeout(() => {
                                         if (event.target.getPlayerState() === window.YT.PlayerState.PLAYING) {
                                             event.target.getIframe().classList.add('is-playing');
                                         }
@@ -177,7 +214,7 @@ fn Hero(
                                     event.data === window.YT.PlayerState.PAUSED ||
                                     event.data === window.YT.PlayerState.CUED
                                 ) {
-                                    window.clearTimeout(revealTimer);
+                                    window.clearTimeout(window.__vlHeroRevealTimer);
                                     event.target.getIframe().classList.remove('is-playing');
                                 }
                                 if (event.data === window.YT.PlayerState.ENDED) {
@@ -194,10 +231,13 @@ fn Hero(
                     createPlayer();
                 } else {
                     const previousReady = window.onYouTubeIframeAPIReady;
-                    window.onYouTubeIframeAPIReady = () => {
+                    const readyHandler = () => {
                         if (typeof previousReady === 'function') previousReady();
                         createPlayer();
                     };
+                    window.__vlHeroPreviousReady = previousReady;
+                    window.__vlHeroReadyHandler = readyHandler;
+                    window.onYouTubeIframeAPIReady = readyHandler;
 
                     if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
                         const script = document.createElement('script');
@@ -208,10 +248,14 @@ fn Hero(
             "#,
         );
     });
+    use_drop(|| {
+        document::eval(CLEANUP_HERO_VIDEO);
+    });
 
     let search = applied_search.read().clone();
     let starts_on = search_date(search.starts_on.as_deref());
     let ends_on = search_date(search.ends_on.as_deref());
+    let has_complete_dates = starts_on.is_some() && ends_on.is_some();
     let dates_label = catalog_date_label(starts_on, ends_on);
     let guests_label = if search.guests == 1 {
         "1 guest".to_string()
@@ -225,7 +269,6 @@ fn Hero(
                 iframe {
                     id: "hero-youtube-player",
                     class: "hero-video",
-                    src: "https://www.youtube.com/embed/?autoplay=0&controls=0&disablekb=1&enablejsapi=1&iv_load_policy=3&modestbranding=1&mute=1&playsinline=1&rel=0",
                     title: "Kelowna, British Columbia - Drone 4K",
                     allow: "autoplay; encrypted-media; picture-in-picture",
                     tabindex: "-1",
@@ -244,7 +287,7 @@ fn Hero(
                 }
             }
             div { class: "searchbar",
-                button { class: "searchbar-open", r#type: "button", aria_label: "Open booking dates", onclick: move |_| { search_initial_step.set(1); search_open.set(true); } }
+                button { class: "searchbar-open", r#type: "button", aria_label: "Open booking dates", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Dates, has_complete_dates)); search_open.set(true); } }
                 div { class: "search-field is-static",
                     div { class: "search-label", "DELIVERY RADIUS" }
                     div { class: "search-value",
@@ -253,7 +296,7 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(2); search_open.set(true); },
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Rvs, has_complete_dates)); search_open.set(true); },
                     div { class: "search-label", "WHAT" }
                     div { class: "search-value",
                         Icon { name: "compass", size: 17, color: "var(--vl-forest)" }
@@ -261,7 +304,7 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(1); search_open.set(true); },
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Dates, has_complete_dates)); search_open.set(true); },
                     div { class: "search-label", "DATES" }
                     div { class: "search-value",
                         Icon { name: "calendar", size: 17, color: "var(--vl-forest)" }
@@ -269,14 +312,14 @@ fn Hero(
                     }
                 }
                 div { class: "search-divider" }
-                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(1); search_open.set(true); },
+                button { class: "search-field", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Guests, has_complete_dates)); search_open.set(true); },
                     div { class: "search-label", "GUESTS" }
                     div { class: "search-value",
                         Icon { name: "users", size: 17, color: "var(--vl-forest)" }
                         span { "{guests_label}" }
                     }
                 }
-                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(booking_entry_step(&search)); search_open.set(true); },
+                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(home_booking_entry_step(HomeBookingEntry::Search, has_complete_dates)); search_open.set(true); },
                     Icon { name: "search", size: 19, color: "var(--vl-white)" }
                     span { "Search" }
                 }
