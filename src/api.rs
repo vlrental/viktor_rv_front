@@ -58,6 +58,10 @@ pub fn frontend_path(path: &str) -> String {
     frontend_path_for_base(&frontend_base_url(), path)
 }
 
+pub fn auth_completion_url(path: &str) -> String {
+    auth_completion_url_for_base(&frontend_base_url(), path)
+}
+
 fn frontend_path_for_base(base_url: &str, path: &str) -> String {
     format!(
         "{}{}",
@@ -72,6 +76,25 @@ fn normalized_frontend_path(path: &str) -> &str {
     } else {
         "/account"
     }
+}
+
+fn auth_completion_url_for_base(base_url: &str, path: &str) -> String {
+    let path = normalized_frontend_path(path);
+    let (route, fragment) = path
+        .split_once('#')
+        .map(|(route, fragment)| (route, Some(fragment)))
+        .unwrap_or((path, None));
+    let separator = if route.contains('?') { '&' } else { '?' };
+    let fragment = fragment
+        .map(|value| format!("#{value}"))
+        .unwrap_or_default();
+    format!(
+        "{}{}{}vl_auth_complete=1{}",
+        base_url.trim_end_matches('/'),
+        route,
+        separator,
+        fragment
+    )
 }
 
 pub fn remember_auth_return(path: &str) {
@@ -123,6 +146,12 @@ pub fn save_booking_auth_continuation(
 }
 
 pub fn take_booking_auth_continuation() -> Option<BookingAuthContinuation> {
+    // On the callback render, wait until the one-time code is exchanged. The
+    // subsequent clean navigation consumes the booking continuation exactly
+    // once, after the authenticated session has been saved.
+    if google_callback_present() {
+        return None;
+    }
     let storage = web_sys::window()?.session_storage().ok().flatten()?;
     let value = storage
         .get_item("vl_booking_auth_continuation")
@@ -130,6 +159,17 @@ pub fn take_booking_auth_continuation() -> Option<BookingAuthContinuation> {
         .flatten();
     let _ = storage.remove_item("vl_booking_auth_continuation");
     serde_json::from_str(&value?).ok()
+}
+
+fn google_callback_present() -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    auth_parameters(
+        &window.location().hash().unwrap_or_default(),
+        &window.location().search().unwrap_or_default(),
+    )
+    .is_some()
 }
 
 pub fn request_inline_auth(register: bool, message: Option<&str>) {
@@ -3528,6 +3568,14 @@ mod delivery_draft_tests {
         assert_eq!(
             frontend_path_for_base(base, "/admin"),
             "https://gaponovalexey.github.io/viktor_rv_front/admin"
+        );
+        assert_eq!(
+            auth_completion_url_for_base(base, "/#home-rentals"),
+            "https://gaponovalexey.github.io/viktor_rv_front/?vl_auth_complete=1#home-rentals"
+        );
+        assert_eq!(
+            auth_completion_url_for_base(base, "/account"),
+            "https://gaponovalexey.github.io/viktor_rv_front/account?vl_auth_complete=1"
         );
     }
 

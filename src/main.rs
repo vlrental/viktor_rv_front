@@ -344,7 +344,7 @@ fn AuthSessionBridge() -> Element {
             match result {
                 Ok(Some(path)) => {
                     if let Some(window) = web_sys::window() {
-                        let _ = window.location().replace(&api::frontend_path(&path));
+                        let _ = window.location().replace(&api::auth_completion_url(&path));
                     }
                 }
                 Ok(None) if compatibility_callback => {
@@ -356,7 +356,7 @@ fn AuthSessionBridge() -> Element {
                         );
                     }
                     if let Some(window) = web_sys::window() {
-                        let _ = window.location().replace(&api::frontend_path(&path));
+                        let _ = window.location().replace(&api::auth_completion_url(&path));
                     }
                 }
                 Err(message) => {
@@ -364,7 +364,7 @@ fn AuthSessionBridge() -> Element {
                     let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
                     api::request_inline_auth(false, Some(&message));
                     if let Some(window) = web_sys::window() {
-                        let _ = window.location().replace(&api::frontend_path(&path));
+                        let _ = window.location().replace(&api::auth_completion_url(&path));
                     }
                 }
                 Ok(None) => {}
