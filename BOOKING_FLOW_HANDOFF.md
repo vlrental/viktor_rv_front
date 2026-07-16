@@ -58,6 +58,7 @@ This document records the current frontend booking architecture, the problems fi
 - Changing dates or guests causes the available RV resource to run again. Do not precompute the search outside the reactive resource closure; doing so previously left the RV list permanently stale.
 - When an RV is selected first, the calendar loads that model's live unavailable intervals and disables date choices that cannot form a valid minimum stay. The 11:00 AM return and 2:00 PM next-delivery turnover remains selectable.
 - After an RV is selected without dates, step 1 opens its custom live-availability calendar directly. Customers choose delivery and return dates manually, with unavailable days disabled.
+- On mobile widths, the step 1 calendar changes months with a horizontal swipe: swipe left for the next month and right for the previous month. Short gestures and primarily vertical scrolling do not change the month, the calendar cannot swipe earlier than the current month, and the arrow buttons remain available.
 - Every dismissible booking overlay with a visible close control must close through the same guarded path when the user presses `Escape`.
 
 ### Step 2 — Choose an RV

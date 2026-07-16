@@ -183,10 +183,10 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
                 )
             })
             .unwrap_or_else(|| {
-                SeoMetadata::private(
-                    "RV Not Found | VL Rental",
-                    "The requested RV listing could not be found.",
-                    "/rv",
+                SeoMetadata::indexed(
+                    "RV Rental in Kelowna | VL Rental",
+                    "View this VL Rental RV with delivery and setup available in Kelowna and approved Okanagan destinations.",
+                    &format!("/rv/{slug}"),
                 )
             }),
         Route::Contact {} => SeoMetadata::indexed(
@@ -456,6 +456,16 @@ mod seo_tests {
             );
             assert!(metadata.title.contains(listing.title));
         }
+    }
+
+    #[test]
+    fn dynamically_created_rv_pages_remain_indexable() {
+        let slug = "admin-created-rv";
+        let metadata = seo_metadata(&Route::RvDetail { slug: slug.into() });
+
+        assert!(metadata.robots.starts_with("index,follow"));
+        assert_eq!(metadata.canonical, format!("{SITE_URL}/rv/{slug}"));
+        assert!(metadata.title.contains("RV Rental"));
     }
 
     #[test]

@@ -28,6 +28,10 @@ fn selected_option_index(options: &[(&str, &str)], value: &str) -> usize {
         .unwrap_or(0)
 }
 
+fn activates_sort_option(key: &Key) -> bool {
+    key == &Key::Enter || matches!(key, Key::Character(value) if value == " ")
+}
+
 fn focus_sort_element(element_id: &str) {
     document::eval(&format!(
         r#"requestAnimationFrame(() => document.getElementById("{element_id}")?.focus({{ preventScroll: true }}));"#
@@ -126,6 +130,7 @@ pub fn SortDropdown(
                         {
                             let selected = key == value;
                             let option_value = key.to_string();
+                            let keyboard_value = option_value.clone();
                             rsx! {
                                 button {
                                     id: "rv-sort-option-{instance_id}-{index}",
@@ -136,6 +141,16 @@ pub fn SortDropdown(
                                     aria_selected: selected,
                                     tabindex: if index == *active_index.read() { "0" } else { "-1" },
                                     onfocus: move |_| active_index.set(index),
+                                    onkeydown: move |event| {
+                                        let key = event.key();
+                                        if activates_sort_option(&key) {
+                                            event.prevent_default();
+                                            event.stop_propagation();
+                                            on_change.call(keyboard_value.clone());
+                                            open.set(false);
+                                            focus_sort_trigger(instance_id);
+                                        }
+                                    },
                                     onclick: move |_| {
                                         on_change.call(option_value.clone());
                                         open.set(false);
@@ -173,5 +188,12 @@ mod tests {
 
         assert_eq!(selected_option_index(&options, "unknown"), 0);
         assert_eq!(options[0].0, "recommended");
+    }
+
+    #[test]
+    fn enter_and_space_activate_a_keyboard_option() {
+        assert!(activates_sort_option(&Key::Enter));
+        assert!(activates_sort_option(&Key::Character(" ".into())));
+        assert!(!activates_sort_option(&Key::ArrowDown));
     }
 }

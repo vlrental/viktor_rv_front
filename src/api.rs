@@ -1,7 +1,7 @@
 use dioxus::prelude::document;
-use gloo_net::http::Request;
+use gloo_net::http::{Request, Response};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, future::Future};
 
 const GOOGLE_AUTH_CALLBACK_STORAGE: &str = "vl_google_auth_callback";
 
@@ -2342,13 +2342,52 @@ pub async fn admin_delete_rental_review(review_id: &str) -> Result<(), ApiError>
     Ok(())
 }
 
+async fn admin_authorized_response<F, Fut>(mut send: F) -> Result<Response, ApiError>
+where
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = Result<Response, ApiError>>,
+{
+    let mut token = admin_access_token()?;
+    let mut response = send(token.clone()).await?;
+    if response.status() == 401 {
+        token = refresh_session().await?.access_token;
+        response = send(token).await?;
+    }
+    Ok(response)
+}
+
+fn rental_media_form(
+    file: &web_sys::File,
+    alt_text: &str,
+    is_cover: bool,
+    sort_order: i32,
+) -> Result<web_sys::FormData, ApiError> {
+    let form = web_sys::FormData::new()
+        .map_err(|_| ApiError::client("The rental photo upload could not be prepared"))?;
+    form.append_with_blob_and_filename("photo", file, &file.name())
+        .map_err(|_| ApiError::client("The selected rental photo could not be attached"))?;
+    form.append_with_str("alt_text", alt_text)
+        .map_err(|_| ApiError::client("Photo alt text could not be attached"))?;
+    form.append_with_str("is_cover", if is_cover { "true" } else { "false" })
+        .map_err(|_| ApiError::client("Photo cover state could not be attached"))?;
+    form.append_with_str("sort_order", &sort_order.to_string())
+        .map_err(|_| ApiError::client("Photo order could not be attached"))?;
+    Ok(form)
+}
+
 pub async fn admin_rentals() -> Result<Vec<AdminRentalSummary>, ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::get(&format!("{API_BASE}/api/v1/admin/rentals"))
-        .header("Authorization", &format!("Bearer {token}"))
-        .send()
-        .await
-        .map_err(|error| ApiError::client(error.to_string()))?;
+    let url = format!("{API_BASE}/api/v1/admin/rentals");
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        async move {
+            Request::get(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2360,15 +2399,21 @@ pub async fn admin_rentals() -> Result<Vec<AdminRentalSummary>, ApiError> {
 }
 
 pub async fn admin_rental(rental_id: &str) -> Result<AdminRentalDetail, ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::get(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}",
         urlencoding::encode(rental_id)
-    ))
-    .header("Authorization", &format!("Bearer {token}"))
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        async move {
+            Request::get(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2396,7 +2441,6 @@ async fn admin_rental_json_request(
     method: &str,
     payload: &AdminRentalPayload,
 ) -> Result<AdminRentalDetail, ApiError> {
-    let token = admin_access_token()?;
     let url = if rental_id.is_empty() {
         format!("{API_BASE}/api/v1/admin/rentals")
     } else {
@@ -2405,20 +2449,32 @@ async fn admin_rental_json_request(
             urlencoding::encode(rental_id)
         )
     };
-    let builder = if method == "POST" {
-        Request::post(&url)
-    } else {
-        Request::patch(&url)
-    };
-    let response = builder
-        .header("Content-Type", "application/json")
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-        .json(payload)
-        .map_err(|error| ApiError::client(error.to_string()))?
-        .send()
-        .await
-        .map_err(|error| ApiError::client(error.to_string()))?;
+    let payload = payload.clone();
+    let method = method.to_string();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let method = method.clone();
+        let payload = payload.clone();
+        let request_id = request_id.clone();
+        async move {
+            let builder = if method == "POST" {
+                Request::post(&url)
+            } else {
+                Request::patch(&url)
+            };
+            builder
+                .header("Content-Type", "application/json")
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .json(&payload)
+                .map_err(|error| ApiError::client(error.to_string()))?
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2435,17 +2491,25 @@ pub async fn admin_rental_publication_action(
     if !matches!(action, "publish" | "archive") {
         return Err(ApiError::client("Unsupported RV publication action"));
     }
-    let token = admin_access_token()?;
-    let response = Request::post(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}/{}",
         urlencoding::encode(rental_id),
         action
-    ))
-    .header("Authorization", &format!("Bearer {token}"))
-    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let request_id = request_id.clone();
+        async move {
+            Request::post(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2462,28 +2526,31 @@ pub async fn upload_admin_rental_media(
     is_cover: bool,
     sort_order: i32,
 ) -> Result<RentalMedia, ApiError> {
-    let token = admin_access_token()?;
-    let form = web_sys::FormData::new()
-        .map_err(|_| ApiError::client("The rental photo upload could not be prepared"))?;
-    form.append_with_blob_and_filename("photo", file, &file.name())
-        .map_err(|_| ApiError::client("The selected rental photo could not be attached"))?;
-    form.append_with_str("alt_text", alt_text)
-        .map_err(|_| ApiError::client("Photo alt text could not be attached"))?;
-    form.append_with_str("is_cover", if is_cover { "true" } else { "false" })
-        .map_err(|_| ApiError::client("Photo cover state could not be attached"))?;
-    form.append_with_str("sort_order", &sort_order.to_string())
-        .map_err(|_| ApiError::client("Photo order could not be attached"))?;
-    let response = Request::post(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}/media",
         urlencoding::encode(rental_id)
-    ))
-    .header("Authorization", &format!("Bearer {token}"))
-    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-    .body(form)
-    .map_err(|error| ApiError::client(error.to_string()))?
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let file = file.clone();
+    let alt_text = alt_text.to_string();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let file = file.clone();
+        let alt_text = alt_text.clone();
+        let request_id = request_id.clone();
+        async move {
+            let form = rental_media_form(&file, &alt_text, is_cover, sort_order)?;
+            Request::post(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .body(form)
+                .map_err(|error| ApiError::client(error.to_string()))?
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2500,20 +2567,31 @@ pub async fn update_admin_rental_media(
     sort_order: i32,
     is_cover: bool,
 ) -> Result<RentalMedia, ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::patch(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}/media/{}",
         urlencoding::encode(rental_id),
         urlencoding::encode(media_id)
-    ))
-    .header("Content-Type", "application/json")
-    .header("Authorization", &format!("Bearer {token}"))
-    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-    .json(&serde_json::json!({"alt_text":alt_text,"sort_order":sort_order,"is_cover":is_cover}))
-    .map_err(|error| ApiError::client(error.to_string()))?
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let payload =
+        serde_json::json!({"alt_text":alt_text,"sort_order":sort_order,"is_cover":is_cover});
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let payload = payload.clone();
+        let request_id = request_id.clone();
+        async move {
+            Request::patch(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .json(&payload)
+                .map_err(|error| ApiError::client(error.to_string()))?
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2527,19 +2605,29 @@ pub async fn reorder_admin_rental_media(
     rental_id: &str,
     media_ids: &[String],
 ) -> Result<Vec<RentalMedia>, ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::patch(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}/media/reorder",
         urlencoding::encode(rental_id)
-    ))
-    .header("Content-Type", "application/json")
-    .header("Authorization", &format!("Bearer {token}"))
-    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-    .json(&serde_json::json!({"media_ids": media_ids}))
-    .map_err(|error| ApiError::client(error.to_string()))?
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let payload = serde_json::json!({"media_ids": media_ids});
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let payload = payload.clone();
+        let request_id = request_id.clone();
+        async move {
+            Request::patch(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .json(&payload)
+                .map_err(|error| ApiError::client(error.to_string()))?
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2550,17 +2638,25 @@ pub async fn reorder_admin_rental_media(
 }
 
 pub async fn delete_admin_rental_media(rental_id: &str, media_id: &str) -> Result<(), ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::delete(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}/media/{}",
         urlencoding::encode(rental_id),
         urlencoding::encode(media_id)
-    ))
-    .header("Authorization", &format!("Bearer {token}"))
-    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-    .send()
-    .await
-    .map_err(|error| ApiError::client(error.to_string()))?;
+    );
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let request_id = request_id.clone();
+        async move {
+            Request::delete(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2585,7 +2681,6 @@ async fn admin_feature_request(
     feature_id: Option<&str>,
     payload: &AdminFeaturePayload,
 ) -> Result<RentalFeature, ApiError> {
-    let token = admin_access_token()?;
     let url = feature_id
         .map(|id| {
             format!(
@@ -2600,20 +2695,31 @@ async fn admin_feature_request(
                 urlencoding::encode(rental_id)
             )
         });
-    let builder = if feature_id.is_some() {
-        Request::patch(&url)
-    } else {
-        Request::post(&url)
-    };
-    let response = builder
-        .header("Content-Type", "application/json")
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-        .json(payload)
-        .map_err(|e| ApiError::client(e.to_string()))?
-        .send()
-        .await
-        .map_err(|e| ApiError::client(e.to_string()))?;
+    let create = feature_id.is_none();
+    let payload = payload.clone();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let payload = payload.clone();
+        let request_id = request_id.clone();
+        async move {
+            let builder = if create {
+                Request::post(&url)
+            } else {
+                Request::patch(&url)
+            };
+            builder
+                .header("Content-Type", "application/json")
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .json(&payload)
+                .map_err(|e| ApiError::client(e.to_string()))?
+                .send()
+                .await
+                .map_err(|e| ApiError::client(e.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2626,17 +2732,25 @@ pub async fn delete_admin_rental_feature(
     rental_id: &str,
     feature_id: &str,
 ) -> Result<(), ApiError> {
-    let token = admin_access_token()?;
-    let response = Request::delete(&format!(
+    let url = format!(
         "{API_BASE}/api/v1/admin/rentals/{}/features/{}",
         urlencoding::encode(rental_id),
         urlencoding::encode(feature_id)
-    ))
-    .header("Authorization", &format!("Bearer {token}"))
-    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-    .send()
-    .await
-    .map_err(|e| ApiError::client(e.to_string()))?;
+    );
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let request_id = request_id.clone();
+        async move {
+            Request::delete(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .send()
+                .await
+                .map_err(|e| ApiError::client(e.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }
@@ -2661,7 +2775,6 @@ async fn admin_addon_request(
     addon_id: Option<&str>,
     payload: &AdminAddonPayload,
 ) -> Result<RentalAddon, ApiError> {
-    let token = admin_access_token()?;
     let url = addon_id
         .map(|id| {
             format!(
@@ -2676,20 +2789,31 @@ async fn admin_addon_request(
                 urlencoding::encode(rental_id)
             )
         });
-    let builder = if addon_id.is_some() {
-        Request::patch(&url)
-    } else {
-        Request::post(&url)
-    };
-    let response = builder
-        .header("Content-Type", "application/json")
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
-        .json(payload)
-        .map_err(|e| ApiError::client(e.to_string()))?
-        .send()
-        .await
-        .map_err(|e| ApiError::client(e.to_string()))?;
+    let create = addon_id.is_none();
+    let payload = payload.clone();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let payload = payload.clone();
+        let request_id = request_id.clone();
+        async move {
+            let builder = if create {
+                Request::post(&url)
+            } else {
+                Request::patch(&url)
+            };
+            builder
+                .header("Content-Type", "application/json")
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .json(&payload)
+                .map_err(|e| ApiError::client(e.to_string()))?
+                .send()
+                .await
+                .map_err(|e| ApiError::client(e.to_string()))
+        }
+    })
+    .await?;
     if !response.ok() {
         return Err(response_error(response).await);
     }

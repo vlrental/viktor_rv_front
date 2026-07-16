@@ -21,7 +21,7 @@ devo:
 
 # Прод-сборка (release).
 build:
-	dx build --release
+	dx build --release --web --debug-symbols false
 
 # Push development work. This does not publish GitHub Pages.
 deploy:

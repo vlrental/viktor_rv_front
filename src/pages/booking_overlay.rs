@@ -14,6 +14,8 @@ const SAVED_DELIVERY_ADDRESSES: &str = "vl_delivery_addresses";
 const MAX_SAVED_DELIVERY_ADDRESSES: usize = 5;
 const SAVED_PENDING_PAYMENT: &str = "vl_pending_booking_payment";
 const SAVED_POST_PAYMENT_BOOKING: &str = "vl_post_payment_booking";
+const MOBILE_CALENDAR_BREAKPOINT: f64 = 860.0;
+const CALENDAR_SWIPE_THRESHOLD: f64 = 48.0;
 const UNMOUNT_EMBEDDED_CHECKOUT: &str = r#"
 if (window.__vlEmbeddedCheckout) {
   try { window.__vlEmbeddedCheckout.unmount(); } catch (_) {}
@@ -118,6 +120,25 @@ fn initial_booking_step(initial_step: u8, has_pending_payment: bool) -> u8 {
     } else {
         initial_step.clamp(1, 5)
     }
+}
+
+fn calendar_swipe_month_delta(start: (f64, f64), end: (f64, f64)) -> i32 {
+    let distance_x = end.0 - start.0;
+    let distance_y = end.1 - start.1;
+    if distance_x.abs() < CALENDAR_SWIPE_THRESHOLD || distance_x.abs() <= distance_y.abs() * 1.2 {
+        0
+    } else if distance_x < 0.0 {
+        1
+    } else {
+        -1
+    }
+}
+
+fn mobile_calendar_swipe_enabled() -> bool {
+    web_sys::window()
+        .and_then(|window| window.inner_width().ok())
+        .and_then(|width| width.as_f64())
+        .is_some_and(|width| width <= MOBILE_CALENDAR_BREAKPOINT)
 }
 
 fn money_cents(value: &str) -> Option<i64> {
@@ -806,6 +827,7 @@ pub(crate) fn UnifiedBookingOverlay(
             .map(month_start)
             .unwrap_or(initial_month)
     });
+    let mut calendar_swipe_start = use_signal(|| None::<(f64, f64)>);
     let initial_slug = resumed_draft
         .as_ref()
         .map(|draft| draft.rental_slug.clone())
@@ -1564,7 +1586,50 @@ pub(crate) fn UnifiedBookingOverlay(
                                     span { "Choose delivery and return" }
                                     button { r#type: "button", aria_label: "Next month", onclick: move |_| { let current = *visible_month.read(); visible_month.set(add_months(current, 1)); }, Icon { name: "chevron-right", size: 18, color: "var(--vl-ink)" } }
                                 }
-                                div { class: "cat-calendar-months ub-calendar", for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending } } }
+                                div {
+                                    class: "cat-calendar-months ub-calendar",
+                                    ontouchstart: move |event| {
+                                        if !mobile_calendar_swipe_enabled() {
+                                            calendar_swipe_start.set(None);
+                                            return;
+                                        }
+                                        let touches = event.touches();
+                                        if touches.len() != 1 {
+                                            calendar_swipe_start.set(None);
+                                            return;
+                                        }
+                                        let point = touches[0].client_coordinates();
+                                        calendar_swipe_start.set(Some((point.x, point.y)));
+                                    },
+                                    ontouchend: move |event| {
+                                        let start = *calendar_swipe_start.read();
+                                        calendar_swipe_start.set(None);
+                                        if !mobile_calendar_swipe_enabled() {
+                                            return;
+                                        }
+                                        let Some(start) = start else { return; };
+                                        let changed = event.touches_changed();
+                                        let Some(touch) = changed.first() else { return; };
+                                        let point = touch.client_coordinates();
+                                        match calendar_swipe_month_delta(start, (point.x, point.y)) {
+                                            1 => {
+                                                event.prevent_default();
+                                                let current = *visible_month.read();
+                                                visible_month.set(add_months(current, 1));
+                                            }
+                                            -1 if *visible_month.read() > initial_month => {
+                                                event.prevent_default();
+                                                let current = *visible_month.read();
+                                                if let Some(previous) = current.checked_sub_months(Months::new(1)) {
+                                                    visible_month.set(previous.max(initial_month));
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    },
+                                    ontouchcancel: move |_| calendar_swipe_start.set(None),
+                                    for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending } }
+                                }
                                 div { class: "ub-guests", span { "Guests" } button { r#type: "button", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" } strong { "{guests}" } button { r#type: "button", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" } }
                             }
                         }
@@ -1867,6 +1932,10 @@ fn set_review_like_membership(
     }
 }
 
+fn review_like_action_disabled(can_like: bool, is_liked: bool, busy: bool) -> bool {
+    (!can_like && !is_liked) || busy
+}
+
 #[component]
 fn RentalChoice(
     rental: api::Rental,
@@ -1983,7 +2052,11 @@ fn RentalChoice(
                                                         class: if context.liked_review_ids.contains(&review.rental_review_id) { "ub-like active" } else { "ub-like" },
                                                         r#type: "button",
                                                         aria_label: if context.liked_review_ids.contains(&review.rental_review_id) { "Unlike this review" } else { "Like this review" },
-                                                        disabled: !context.can_like || like_busy.read().contains(&review.rental_review_id),
+                                                        disabled: review_like_action_disabled(
+                                                            context.can_like,
+                                                            context.liked_review_ids.contains(&review.rental_review_id),
+                                                            like_busy.read().contains(&review.rental_review_id),
+                                                        ),
                                                         onclick: {
                                                             let review_id = review.rental_review_id.clone();
                                                             let was_liked = context.liked_review_ids.contains(&review.rental_review_id);
@@ -2113,6 +2186,24 @@ mod saved_address_tests {
                 "1198 raymer avenue, kelowna, bc",
                 "Bear Creek Provincial Park"
             ]
+        );
+    }
+
+    #[test]
+    fn horizontal_calendar_swipes_change_months() {
+        assert_eq!(calendar_swipe_month_delta((180.0, 120.0), (90.0, 130.0)), 1);
+        assert_eq!(
+            calendar_swipe_month_delta((90.0, 120.0), (180.0, 110.0)),
+            -1
+        );
+    }
+
+    #[test]
+    fn short_or_vertical_calendar_gestures_do_not_change_months() {
+        assert_eq!(calendar_swipe_month_delta((100.0, 100.0), (70.0, 103.0)), 0);
+        assert_eq!(
+            calendar_swipe_month_delta((100.0, 100.0), (155.0, 175.0)),
+            0
         );
     }
 
@@ -2389,5 +2480,12 @@ mod saved_address_tests {
 
         set_review_like_membership(&mut context, "first", false);
         assert_eq!(context.liked_review_ids, vec!["second"]);
+    }
+
+    #[test]
+    fn existing_like_can_be_removed_after_like_eligibility_is_lost() {
+        assert!(!review_like_action_disabled(false, true, false));
+        assert!(review_like_action_disabled(false, false, false));
+        assert!(review_like_action_disabled(true, true, true));
     }
 }

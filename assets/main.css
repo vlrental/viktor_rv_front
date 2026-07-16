@@ -903,7 +903,7 @@ body:has(.cat-planner-backdrop) {
   .ub-summary { order: -1; flex: 0 0 auto; overflow: visible; padding: 15px; border-left: 0; }
   .ub-summary > h3 { font-size: 27px; }
   .ub-price-lines, .ub-summary-trip, .ub-payment-note { display: none; }
-  .ub-calendar { grid-template-columns: 1fr; }
+  .ub-calendar { grid-template-columns: 1fr; touch-action: pan-y; }
   .ub-calendar .cat-calendar-month:nth-child(2) { display: none; }
   .ub-date-summary { grid-template-columns: 1fr auto; }
   .ub-date-summary > i { display: none; }
