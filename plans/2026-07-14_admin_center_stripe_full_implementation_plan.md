@@ -2,6 +2,12 @@
 
 Дата: 2026-07-14
 Статус: UI, backend и production Supabase private storage реализованы. Stripe test-mode refundable-deposit flow, автоматические тесты и реальные Checkout/full-refund/partial-refund smoke checks зелёные. Live activation остаётся отдельным запрещённым этапом.
+
+Обновление 2026-07-15: повторный readiness-аудит закрыл SMTP diagnostics/retry, admin email alerts, browser/customer timezones, public rate limiting, согласованное истечение Checkout objects и обязательные disposable-DB/CI deployment gates. Локально зелёные unit/integration/concurrency проверки не означают разрешение production deployment или live Stripe.
+
+Обновление 2026-07-15, security hardening pass 2: Google callback переведён на hashed five-minute one-time code и server exchange без access/refresh tokens в URL; refresh rotation сделан atomic compare-and-swap, logout отзывает expired-access session, Supabase Data API tables/sequences/default privileges закрыты явно, sensitive booking state перенесён в session storage, body limits разделены по маршрутам, uploads проверяют magic bytes/symlink paths, CSV защищён от spreadsheet formulas. На чистом PostgreSQL 17 прошли все SQL suites, 102 обычных backend tests, 7 payment DB tests, 3 auth race/session tests и 2 booking/block concurrency tests. Production migration/deployment не выполнялись.
+
+Обновление 2026-07-15, final security pass 3: HTTP tracing больше не записывает query strings/headers, server errors логируются только безопасной категорией, sensitive API responses получили `no-store` и browser security headers, OAuth callback ограничен по размеру/формату и rate limit, auth access/refresh tokens перенесены в session storage с полной очисткой legacy local storage. Supabase backend-only perimeter теперь также отзывает schema `USAGE`, все function grants и default function execution у `PUBLIC`/`anon`/`authenticated`. Production backend/DB/live Stripe не изменялись. Финально зелёные: frontend 71 tests + strict clippy + WASM check; backend importer 8 + app 105 tests + strict clippy; PostgreSQL 17 — 5 SQL suites, 7 payment DB tests, 3 auth race/session tests и 2 concurrency tests.
 Рабочая ветка: `dev`
 Frontend: `/Users/viktoriiakarpova/Projects/it_work/viktor_rv_front`
 Backend: `/Users/viktoriiakarpova/Projects/it_work/viktor_rv_back`
@@ -1004,7 +1010,7 @@ Concurrency safety:
 ### 16.9 Live webhook checklist (только подготовка)
 
 - Получить отдельное прямое разрешение владельца на live-этап; до него не создавать live endpoint и не менять production env.
-- До live подтвердить у Stripe корректный MCC, условия IC+, Extended Authorizations и фактический достаточный `capture_before` в test mode.
+- До live завершить полный test-mode отчёт для выбранной модели refundable CA$1,000 charge/refund; Extended Authorization после отказа Stripe больше не является частью продукта.
 - Создать отдельный live webhook endpoint именно на ожидаемом Stripe account; test и live signing secrets не переиспользовать.
 - Хранить `sk_live_…` и `whsec_…` только в production server environment; никогда не передавать их frontend, БД, логам или Git.
 - Подписать endpoint только на реально обрабатываемые события: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`, `payment_intent.amount_capturable_updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `invoice.paid`, `invoice.payment_failed`, `refund.created`, `refund.updated`, `refund.failed`. Перед включением ещё раз сверить список с backend dispatcher.
@@ -1022,8 +1028,8 @@ Concurrency safety:
 - initial Stripe test payment подтверждает booking только webhook;
 - 30%/100% schedule корректен;
 - balance invoice создаётся автоматически и идемпотентно;
-- CA$1,000 hold проверяет extended authorization и `capture_before`;
-- Delivered блокируется без full trip payment/valid hold;
+- отдельный CA$1,000 refundable damage deposit списывается за 48 часов до доставки;
+- Delivered блокируется без full trip payment и подтверждённого CA$1,000 deposit payment;
 - Returned открывает release/capture actions;
 - partial damage capture требует reason + photo;
 - cancellation/refund работает с немедленным release availability;
@@ -1054,7 +1060,7 @@ Migration, APIs, webhook и worker проходят automated tests.
 
 ### Gate E — Live readiness
 
-Есть документированный отчёт и подтверждён extended authorization. Даже после этого live не включается автоматически.
+Есть документированный зелёный отчёт по refundable deposit charge/refund, production SES готов и подтверждена server-only production configuration. Даже после этого live не включается автоматически.
 
 ### Gate F — Separate owner approval
 
@@ -1062,7 +1068,7 @@ Migration, APIs, webhook и worker проходят automated tests.
 
 ## 19. Риски и защита
 
-- Extended authorization зависит от card network/MCC/account pricing. Защита: проверять каждый `capture_before`, требовать другую карту, не использовать silent capture fallback.
+- Refundable deposit создаёт обычную Stripe processing fee, которую Stripe обычно не возвращает бизнесу при refund. Защита: показывать deposit отдельно, возвращать клиенту утверждённую сумму полностью и учитывать fee как расход бизнеса.
 - Duplicate/out-of-order webhooks. Защита: event table, unique provider IDs, provider timestamps и транзакции.
 - Backend restart в due time. Защита: catch-up worker по due obligations.
 - Двойной worker. Защита: row locks, unique constraints и Stripe idempotency.
@@ -1089,8 +1095,8 @@ Migration, APIs, webhook и worker проходят automated tests.
 
 Текущий следующий этап:
 
-1. Зафиксировать отдельное решение владельца по damage-risk модели после отказа Stripe в Extended Authorization: сохранить текущую модель и искать другого provider/повторный review либо отдельно спроектировать допустимую альтернативу. Не внедрять предложенные Stripe SetupIntent/deposit автоматически и не ослаблять backend gate.
-2. После утверждения модели синхронно обновить оба `AGENTS.md`, Terms, backend invariants, admin/customer UI и test matrix, затем выполнить полный test E2E.
-3. После полностью зелёного обновлённого test report запросить отдельное разрешение владельца на live. Подготовленный checklist сам по себе не разрешает activation.
+1. Выбранная владельцем модель — отдельный refundable CA$1,000 charge за 48 часов до доставки с admin refund/retention после возврата. Extended Authorization не используется.
+2. Завершить внешнюю готовность SES: опубликовать три Easy DKIM CNAME в DNS, дождаться статуса `Verified`, затем запросить выход SES `ca-central-1` из sandbox. DNS и AWS submission требуют отдельного подтверждения владельца непосредственно перед действием.
+3. После полностью зелёного обновлённого test report запросить отдельное разрешение владельца на live Stripe и production deployment. Подготовленный checklist сам по себе не разрешает activation.
 
 Live Stripe, deployment и production остаются заблокированными до отдельного запроса.

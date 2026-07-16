@@ -10,12 +10,13 @@ use super::catalog::{
 use crate::api;
 use crate::components::Icon;
 use crate::data::IMG_HERO_RV;
-use crate::Route;
+use crate::{BookingLaunchRequest, Route};
 
 const IMG_CTA_PARALLAX: Asset = asset!("/assets/img/generated/okanagan-rv-parallax.webp");
 
 #[component]
 pub fn Home() -> Element {
+    let mut booking_launch_request = use_context::<BookingLaunchRequest>();
     let resumed_booking = use_signal(api::take_booking_auth_continuation);
     let resumed_booking_value = resumed_booking.peek().clone();
     let today = chrono::Utc::now()
@@ -41,7 +42,15 @@ pub fn Home() -> Element {
     let mut search_guests = use_signal(|| 1_i32);
     let resume_after_auth = resumed_booking_value.is_some();
     let mut search_open = use_signal(move || resume_after_auth);
-    let search_initial_step = use_signal(move || if resume_after_auth { 5_u8 } else { 1_u8 });
+    let mut search_initial_step = use_signal(move || if resume_after_auth { 5_u8 } else { 1_u8 });
+    use_effect(move || {
+        if *booking_launch_request.0.read() {
+            let search = applied_search.read();
+            search_initial_step.set(booking_entry_step(&search));
+            search_open.set(true);
+            booking_launch_request.0.set(false);
+        }
+    });
     use_effect(move || {
         if *search_open.read() {
             let search = applied_search.read().clone();
@@ -76,7 +85,7 @@ pub fn Home() -> Element {
         }
         HowItWorks {}
         MoreServices {}
-        CtaBand {}
+        CtaBand { search_open, search_initial_step }
         if *search_open.read() {
             UnifiedBookingOverlay {
                 location: search_location,
@@ -117,6 +126,14 @@ pub fn Home() -> Element {
 
 fn search_date(value: Option<&str>) -> Option<NaiveDate> {
     value.and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+}
+
+fn booking_entry_step(search: &api::CatalogSearchDraft) -> u8 {
+    if search.starts_on.is_some() && search.ends_on.is_some() {
+        2
+    } else {
+        1
+    }
 }
 
 #[component]
@@ -259,12 +276,42 @@ fn Hero(
                         span { "{guests_label}" }
                     }
                 }
-                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(if search.starts_on.is_some() && search.ends_on.is_some() { 2 } else { 1 }); search_open.set(true); },
+                button { class: "search-btn", r#type: "button", onclick: move |_| { search_initial_step.set(booking_entry_step(&search)); search_open.set(true); },
                     Icon { name: "search", size: 19, color: "var(--vl-white)" }
                     span { "Search" }
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod booking_entry_tests {
+    use super::*;
+
+    fn search(starts_on: Option<&str>, ends_on: Option<&str>) -> api::CatalogSearchDraft {
+        api::CatalogSearchDraft {
+            location: "Kelowna, BC".into(),
+            radius_km: 150,
+            starts_on: starts_on.map(str::to_string),
+            ends_on: ends_on.map(str::to_string),
+            guests: 2,
+        }
+    }
+
+    #[test]
+    fn global_booking_opens_dates_when_the_range_is_incomplete() {
+        assert_eq!(booking_entry_step(&search(None, None)), 1);
+        assert_eq!(booking_entry_step(&search(Some("2026-08-16"), None)), 1);
+        assert_eq!(booking_entry_step(&search(None, Some("2026-08-19"))), 1);
+    }
+
+    #[test]
+    fn global_booking_skips_to_rv_selection_for_a_complete_range() {
+        assert_eq!(
+            booking_entry_step(&search(Some("2026-08-16"), Some("2026-08-19"))),
+            2
+        );
     }
 }
 
@@ -481,7 +528,7 @@ fn MoreServices() -> Element {
 }
 
 #[component]
-fn CtaBand() -> Element {
+fn CtaBand(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>) -> Element {
     rsx! {
         section { id: "home-parallax-cta", class: "cta-band",
             div {
@@ -498,7 +545,7 @@ fn CtaBand() -> Element {
                     "The best memories are made outdoors — tracing scenic Okanagan highways and settling into lakeside campsites. Let's get you out there."
                 }
                 div { class: "cta-buttons",
-                    a { class: "btn-gold", href: "#home-rentals",
+                    button { class: "btn-gold", r#type: "button", aria_haspopup: "dialog", onclick: move |_| { search_initial_step.set(1); search_open.set(true); },
                         Icon { name: "tent-tree", size: 18, color: "var(--vl-forest-2)" }
                         span { "Book an RV" }
                     }

@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::api;
 use crate::components::Icon;
 use crate::data::PHONE;
-use crate::Route;
+use crate::{booking_launch_requires_home, BookingLaunchRequest, Route};
 
 const LOGO: Asset = asset!("/assets/img/logo.png");
 
@@ -11,6 +11,8 @@ const LOGO: Asset = asset!("/assets/img/logo.png");
 #[component]
 pub fn Header() -> Element {
     let route = use_route::<Route>();
+    let navigator = use_navigator();
+    let mut booking_launch_request = use_context::<BookingLaunchRequest>();
     let inline_auth = api::take_inline_auth_request();
     let initial_account_open = inline_auth.is_some();
     let initial_register = inline_auth.as_ref().is_some_and(|value| value.0);
@@ -26,7 +28,7 @@ pub fn Header() -> Element {
     let _session_version = *session_version.read();
     let current_user = api::current_user();
     let rentals_href = api::frontend_path("/#home-rentals");
-    let book_now_href = rentals_href.clone();
+    let auth_return_route = route.clone();
     let overlay = matches!(route, Route::Home {});
     let class = if overlay {
         "site-header overlay"
@@ -62,7 +64,15 @@ pub fn Header() -> Element {
     };
 
     rsx! {
-        header { class: "{class}",
+        header {
+            class: "{class}",
+            onkeydown: move |event| if event.key() == Key::Escape {
+                if *account_open.peek() {
+                    account_open.set(false);
+                } else if *mobile_open.peek() {
+                    mobile_open.set(false);
+                }
+            },
             Link { class: "brand", to: Route::Home {},
                 img { class: "brand-mark", src: LOGO, alt: "VL Rental" }
                 span { class: "brand-word", "VL Rental" }
@@ -117,8 +127,8 @@ pub fn Header() -> Element {
                                         span { "Open admin dashboard" }
                                     }
                                 }
-                                button { class: "nav-account-signout", r#type: "button", onclick: move |_| {
-                                    api::clear_session();
+                                button { class: "nav-account-signout", r#type: "button", onclick: move |_| async move {
+                                    api::logout().await;
                                     session_version += 1;
                                     account_open.set(false);
                                 }, "Sign out" }
@@ -131,7 +141,7 @@ pub fn Header() -> Element {
                                     }
                                 }
                                 p { class: "nav-account-copy", "Keep your dates and continue booking right where you are." }
-                                a { class: "nav-account-google", href: api::google_login_url(), onclick: move |_| api::remember_auth_return(&route.to_string()),
+                                a { class: "nav-account-google", href: api::google_login_url(), onclick: move |_| api::remember_auth_return(&auth_return_route.to_string()),
                                     span { class: "auth-google-mark", "G" }
                                     "Continue with Google"
                                 }
@@ -161,7 +171,20 @@ pub fn Header() -> Element {
                         span { "Admin dashboard" }
                     }
                 }
-                a { class: "nav-cta", href: book_now_href, "Book now" }
+                button {
+                    class: "nav-cta",
+                    r#type: "button",
+                    aria_haspopup: "dialog",
+                    onclick: move |_| {
+                        mobile_open.set(false);
+                        account_open.set(false);
+                        booking_launch_request.0.set(true);
+                        if booking_launch_requires_home(&route) {
+                            navigator.push(Route::Home {});
+                        }
+                    },
+                    "Book now"
+                }
             }
         }
     }

@@ -198,20 +198,31 @@ fn auth_parameters(fragment: &str, search: &str) -> Option<HashMap<String, Strin
             .any(|key| {
                 matches!(
                     key.as_str(),
-                    "vl_google_auth" | "access_token" | "refresh_token"
+                    "vl_google_auth" | "code" | "access_token" | "refresh_token"
                 )
             })
             .then_some(parameters)
     })
 }
 
-pub fn finish_google_sign_in() -> Result<Option<String>, String> {
+pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
     let window = web_sys::window().ok_or("Google sign in could not access this browser window.")?;
     let fragment = window.location().hash().unwrap_or_default();
     let search = window.location().search().unwrap_or_default();
     let Some(values) = auth_parameters(&fragment, &search) else {
         return Ok(None);
     };
+    // Remove the one-time code from the address bar and browser history before
+    // validation or the server exchange can fail.
+    let safe_path = window
+        .location()
+        .pathname()
+        .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?;
+    window
+        .history()
+        .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?
+        .replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&safe_path))
+        .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?;
     let required = |key: &str| {
         values
             .get(key)
@@ -219,18 +230,21 @@ pub fn finish_google_sign_in() -> Result<Option<String>, String> {
             .cloned()
             .ok_or_else(|| "Google did not return a valid sign-in session.".to_string())
     };
-    let tokens = AuthTokens {
-        access_token: required("access_token")?,
-        refresh_token: required("refresh_token")?,
-        user: AuthUser {
-            user_id: required("user_id")?,
-            email: required("email")?,
-            role: required("role")?,
-            first_name: String::new(),
-            last_name: String::new(),
-            phone: String::new(),
-        },
-    };
+    let code = required("code")?;
+    let response = Request::post(&format!("{API_BASE}/api/v1/auth/google/exchange"))
+        .header("Content-Type", "application/json")
+        .json(&GoogleExchangePayload { code: &code })
+        .map_err(|_| "Google sign in could not be completed.".to_string())?
+        .send()
+        .await
+        .map_err(|_| "Google sign in could not reach the server.".to_string())?;
+    if !response.ok() {
+        return Err("Google sign in expired or was already used. Please try again.".to_string());
+    }
+    let tokens = response
+        .json::<AuthTokens>()
+        .await
+        .map_err(|_| "Google returned an invalid sign-in session.".to_string())?;
     save_session(&tokens)?;
     let _ = take_google_auth_pending();
     Ok(Some(
@@ -238,6 +252,10 @@ pub fn finish_google_sign_in() -> Result<Option<String>, String> {
             .filter(|path| path.starts_with('/') && !path.starts_with("//"))
             .unwrap_or_else(|| "/".to_string()),
     ))
+}
+#[derive(Serialize)]
+struct GoogleExchangePayload<'a> {
+    code: &'a str,
 }
 #[derive(Serialize)]
 struct Credentials<'a> {
@@ -271,47 +289,96 @@ pub async fn login(email: &str, password: &str, register: bool) -> Result<AuthTo
 fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok().flatten()
 }
+fn session_storage() -> Option<web_sys::Storage> {
+    web_sys::window()?.session_storage().ok().flatten()
+}
 pub fn save_session(tokens: &AuthTokens) -> Result<(), String> {
-    let storage = storage().ok_or("Browser storage is unavailable")?;
-    storage
+    let auth_storage = session_storage().ok_or("Browser session storage is unavailable")?;
+    let serialized_user = serde_json::to_string(&tokens.user).map_err(|error| error.to_string())?;
+    let result = auth_storage
         .set_item("vl_access_token", &tokens.access_token)
-        .map_err(|_| "Could not save session")?;
-    storage
-        .set_item("vl_refresh_token", &tokens.refresh_token)
-        .map_err(|_| "Could not save session")?;
-    storage
-        .set_item(
-            "vl_auth_user",
-            &serde_json::to_string(&tokens.user).map_err(|e| e.to_string())?,
-        )
-        .map_err(|_| "Could not save session".into())
+        .and_then(|_| auth_storage.set_item("vl_refresh_token", &tokens.refresh_token))
+        .and_then(|_| auth_storage.set_item("vl_auth_user", &serialized_user));
+    if result.is_err() {
+        clear_session();
+        return Err("Could not save session".into());
+    }
+    remove_legacy_auth_values();
+    Ok(())
 }
 pub fn current_user() -> Option<AuthUser> {
-    serde_json::from_str(&storage()?.get_item("vl_auth_user").ok()??).ok()
+    serde_json::from_str(&auth_value("vl_auth_user")?).ok()
 }
 pub fn save_auth_user(user: &AuthUser) -> Result<(), String> {
-    storage()
-        .ok_or("Browser storage is unavailable")?
+    session_storage()
+        .ok_or("Browser session storage is unavailable")?
         .set_item(
             "vl_auth_user",
             &serde_json::to_string(user).map_err(|error| error.to_string())?,
         )
-        .map_err(|_| "Could not update the saved user".into())
+        .map_err(|_| "Could not update the saved user".to_string())?;
+    if let Some(legacy) = storage() {
+        let _ = legacy.remove_item("vl_auth_user");
+    }
+    Ok(())
 }
 pub fn clear_session() {
-    if let Some(s) = storage() {
-        let _ = s.remove_item("vl_access_token");
-        let _ = s.remove_item("vl_refresh_token");
-        let _ = s.remove_item("vl_auth_user");
+    for session in [session_storage(), storage()].into_iter().flatten() {
+        let _ = session.remove_item("vl_access_token");
+        let _ = session.remove_item("vl_refresh_token");
+        let _ = session.remove_item("vl_auth_user");
     }
 }
 
+fn remove_legacy_auth_values() {
+    if let Some(legacy) = storage() {
+        let _ = legacy.remove_item("vl_access_token");
+        let _ = legacy.remove_item("vl_refresh_token");
+        let _ = legacy.remove_item("vl_auth_user");
+    }
+}
+
+fn auth_value(key: &str) -> Option<String> {
+    let auth_storage = session_storage()?;
+    migrate_legacy_auth_values(&auth_storage);
+    if let Some(value) = auth_storage.get_item(key).ok().flatten() {
+        return Some(value);
+    }
+    None
+}
+
+fn migrate_legacy_auth_values(auth_storage: &web_sys::Storage) {
+    let Some(legacy) = storage() else {
+        return;
+    };
+    // Migrate and remove the complete token set together, so a refresh token
+    // cannot remain in persistent storage just because it has not been read yet.
+    for key in ["vl_access_token", "vl_refresh_token", "vl_auth_user"] {
+        if auth_storage.get_item(key).ok().flatten().is_none() {
+            if let Some(value) = legacy.get_item(key).ok().flatten() {
+                let _ = auth_storage.set_item(key, &value);
+            }
+        }
+        let _ = legacy.remove_item(key);
+    }
+}
+
+pub async fn logout() {
+    if let Some(token) = access_token() {
+        let _ = Request::post(&format!("{API_BASE}/api/v1/auth/logout"))
+            .header("Authorization", &format!("Bearer {token}"))
+            .send()
+            .await;
+    }
+    clear_session();
+}
+
 pub fn access_token() -> Option<String> {
-    storage()?.get_item("vl_access_token").ok().flatten()
+    auth_value("vl_access_token")
 }
 
 fn refresh_token() -> Option<String> {
-    storage()?.get_item("vl_refresh_token").ok().flatten()
+    auth_value("vl_refresh_token")
 }
 
 async fn refresh_session() -> Result<AuthTokens, ApiError> {
@@ -343,11 +410,27 @@ async fn refresh_session() -> Result<AuthTokens, ApiError> {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Rental {
+    #[serde(default)]
+    pub rental_id: String,
     pub slug: String,
     pub name: String,
     pub category: String,
     pub summary: String,
     pub description: String,
+    #[serde(default)]
+    pub model_year: Option<i32>,
+    #[serde(default)]
+    pub manufacturer: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default = "default_rv_type")]
+    pub rv_type: String,
+    #[serde(default)]
+    pub length_ft: Option<String>,
+    #[serde(default)]
+    pub slide_outs: i32,
+    #[serde(default)]
+    pub pet_friendly: bool,
     pub capacity: i32,
     pub price_unit: String,
     pub base_rate: String,
@@ -356,9 +439,17 @@ pub struct Rental {
     pub refundable_deposit: String,
     pub hero_image_url: Option<String>,
     #[serde(default)]
+    pub is_active: bool,
+    #[serde(default)]
+    pub sort_order: i32,
+    #[serde(default)]
     pub review_rating: Option<String>,
     #[serde(default)]
     pub review_count: i64,
+}
+
+fn default_rv_type() -> String {
+    "travel_trailer".into()
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -394,36 +485,165 @@ pub struct CatalogResponse {
     pub rentals: Vec<Rental>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct RentalMedia {
+    #[serde(default)]
+    pub media_id: String,
     pub source_url: String,
     pub alt_text: String,
+    #[serde(default)]
+    pub sort_order: i32,
+    #[serde(default)]
+    pub is_cover: bool,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    #[serde(default)]
+    pub byte_size: Option<i64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct RentalFeature {
+    #[serde(default)]
+    pub feature_id: String,
     pub group_name: String,
     pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_feature_icon")]
+    pub icon_name: String,
+    #[serde(default)]
+    pub sort_order: i32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+fn default_feature_icon() -> String {
+    "circle-check".into()
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct RentalAddon {
+    #[serde(default)]
+    pub addon_id: String,
     pub addon_key: String,
     pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_addon_icon")]
+    pub icon_name: String,
     pub price: String,
     pub charge_type: String,
     pub is_recommended: bool,
+    #[serde(default = "default_true")]
+    pub is_active: bool,
+    #[serde(default)]
+    pub sort_order: i32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+fn default_addon_icon() -> String {
+    "sparkles".into()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct RentalResponse {
     pub rental: Rental,
     pub media: Vec<RentalMedia>,
     pub features: Vec<RentalFeature>,
     pub addons: Vec<RentalAddon>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminRentalSummary {
+    pub rental_id: String,
+    pub slug: String,
+    pub name: String,
+    #[serde(default)]
+    pub model_year: Option<i32>,
+    #[serde(default)]
+    pub manufacturer: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default = "default_rv_type")]
+    pub rv_type: String,
+    #[serde(default)]
+    pub capacity: i32,
+    #[serde(default)]
+    pub base_rate: String,
+    #[serde(default = "admin_default_currency")]
+    pub currency: String,
+    #[serde(default)]
+    pub is_active: bool,
+    pub hero_image_url: Option<String>,
+    #[serde(default)]
+    pub sort_order: i32,
+    #[serde(default)]
+    pub media_count: i64,
+    #[serde(default)]
+    pub addon_count: i64,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+fn admin_default_currency() -> String {
+    "CAD".into()
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct AdminRentalsResponse {
+    rentals: Vec<AdminRentalSummary>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AdminRentalDetail {
+    pub rental: Rental,
+    pub cleaning_fee: String,
+    pub media: Vec<RentalMedia>,
+    pub features: Vec<RentalFeature>,
+    pub addons: Vec<RentalAddon>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AdminRentalPayload {
+    pub name: String,
+    pub model_year: Option<i32>,
+    pub manufacturer: String,
+    pub model: String,
+    pub rv_type: String,
+    pub summary: String,
+    pub description: String,
+    pub capacity: i32,
+    pub length_ft: Option<String>,
+    pub slide_outs: i32,
+    pub pet_friendly: bool,
+    pub nightly_rate: String,
+    pub cleaning_fee: String,
+    pub sort_order: i32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AdminAddonPayload {
+    pub label: String,
+    pub description: String,
+    pub icon_name: String,
+    pub price: String,
+    pub charge_type: String,
+    pub is_recommended: bool,
+    pub is_active: bool,
+    pub sort_order: i32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AdminFeaturePayload {
+    pub group_name: String,
+    pub icon_name: String,
+    pub label: String,
+    pub description: String,
+    pub sort_order: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -941,6 +1161,8 @@ pub struct AdminDashboard {
     pub pending_payments: i64,
     #[serde(default, alias = "payment_failures")]
     pub payment_errors: i64,
+    #[serde(default)]
+    pub notification_failures: i64,
     #[serde(default, alias = "deliveries_today")]
     pub upcoming_deliveries: i64,
     #[serde(default)]
@@ -953,6 +1175,16 @@ pub struct AdminDashboard {
     pub confirmed: i64,
     #[serde(default)]
     pub returns_today: i64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminEmailAction {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub queued: i64,
+    #[serde(default)]
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -1307,6 +1539,7 @@ struct ManualBookingPayload<'a> {
     delivery_address: &'a str,
     notes: Option<&'a str>,
     admin_notes: &'a str,
+    customer_timezone: &'a str,
 }
 
 #[derive(Serialize)]
@@ -1353,6 +1586,7 @@ struct CreateBookingPayload<'a> {
     email: &'a str,
     phone: &'a str,
     notes: Option<&'a str>,
+    customer_timezone: &'a str,
 }
 
 #[derive(Serialize)]
@@ -1658,6 +1892,7 @@ async fn send_booking_request(
     phone: &str,
     notes: &str,
 ) -> Result<gloo_net::http::Response, ApiError> {
+    let customer_timezone = crate::timezone::browser_timezone();
     Request::post(&format!("{API_BASE}/api/v1/bookings"))
         .header("Content-Type", "application/json")
         .header("Authorization", &format!("Bearer {token}"))
@@ -1668,6 +1903,7 @@ async fn send_booking_request(
             email,
             phone,
             notes: (!notes.trim().is_empty()).then_some(notes),
+            customer_timezone: &customer_timezone,
         })
         .map_err(|error| ApiError::client(error.to_string()))?
         .send()
@@ -1784,6 +2020,363 @@ fn admin_access_token() -> Result<String, ApiError> {
     })
 }
 
+pub async fn admin_rentals() -> Result<Vec<AdminRentalSummary>, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!("{API_BASE}/api/v1/admin/rentals"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminRentalsResponse>()
+        .await
+        .map(|value| value.rentals)
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_rental(rental_id: &str) -> Result<AdminRentalDetail, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}",
+        urlencoding::encode(rental_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminRentalDetail>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn create_admin_rental(
+    payload: &AdminRentalPayload,
+) -> Result<AdminRentalDetail, ApiError> {
+    admin_rental_json_request("", "POST", payload).await
+}
+
+pub async fn update_admin_rental(
+    rental_id: &str,
+    payload: &AdminRentalPayload,
+) -> Result<AdminRentalDetail, ApiError> {
+    admin_rental_json_request(rental_id, "PATCH", payload).await
+}
+
+async fn admin_rental_json_request(
+    rental_id: &str,
+    method: &str,
+    payload: &AdminRentalPayload,
+) -> Result<AdminRentalDetail, ApiError> {
+    let token = admin_access_token()?;
+    let url = if rental_id.is_empty() {
+        format!("{API_BASE}/api/v1/admin/rentals")
+    } else {
+        format!(
+            "{API_BASE}/api/v1/admin/rentals/{}",
+            urlencoding::encode(rental_id)
+        )
+    };
+    let builder = if method == "POST" {
+        Request::post(&url)
+    } else {
+        Request::patch(&url)
+    };
+    let response = builder
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+        .json(payload)
+        .map_err(|error| ApiError::client(error.to_string()))?
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminRentalDetail>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_rental_publication_action(
+    rental_id: &str,
+    action: &str,
+) -> Result<AdminRentalDetail, ApiError> {
+    if !matches!(action, "publish" | "archive") {
+        return Err(ApiError::client("Unsupported RV publication action"));
+    }
+    let token = admin_access_token()?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}/{}",
+        urlencoding::encode(rental_id),
+        action
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminRentalDetail>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn upload_admin_rental_media(
+    rental_id: &str,
+    file: &web_sys::File,
+    alt_text: &str,
+    is_cover: bool,
+    sort_order: i32,
+) -> Result<RentalMedia, ApiError> {
+    let token = admin_access_token()?;
+    let form = web_sys::FormData::new()
+        .map_err(|_| ApiError::client("The rental photo upload could not be prepared"))?;
+    form.append_with_blob_and_filename("photo", file, &file.name())
+        .map_err(|_| ApiError::client("The selected rental photo could not be attached"))?;
+    form.append_with_str("alt_text", alt_text)
+        .map_err(|_| ApiError::client("Photo alt text could not be attached"))?;
+    form.append_with_str("is_cover", if is_cover { "true" } else { "false" })
+        .map_err(|_| ApiError::client("Photo cover state could not be attached"))?;
+    form.append_with_str("sort_order", &sort_order.to_string())
+        .map_err(|_| ApiError::client("Photo order could not be attached"))?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}/media",
+        urlencoding::encode(rental_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+    .body(form)
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<RentalMedia>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn update_admin_rental_media(
+    rental_id: &str,
+    media_id: &str,
+    alt_text: &str,
+    sort_order: i32,
+    is_cover: bool,
+) -> Result<RentalMedia, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::patch(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}/media/{}",
+        urlencoding::encode(rental_id),
+        urlencoding::encode(media_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+    .json(&serde_json::json!({"alt_text":alt_text,"sort_order":sort_order,"is_cover":is_cover}))
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn reorder_admin_rental_media(
+    rental_id: &str,
+    media_ids: &[String],
+) -> Result<Vec<RentalMedia>, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::patch(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}/media/reorder",
+        urlencoding::encode(rental_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+    .json(&serde_json::json!({"media_ids": media_ids}))
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<Vec<RentalMedia>>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn delete_admin_rental_media(rental_id: &str, media_id: &str) -> Result<(), ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::delete(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}/media/{}",
+        urlencoding::encode(rental_id),
+        urlencoding::encode(media_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    Ok(())
+}
+
+pub async fn create_admin_rental_feature(
+    rental_id: &str,
+    payload: &AdminFeaturePayload,
+) -> Result<RentalFeature, ApiError> {
+    admin_feature_request(rental_id, None, payload).await
+}
+pub async fn update_admin_rental_feature(
+    rental_id: &str,
+    feature_id: &str,
+    payload: &AdminFeaturePayload,
+) -> Result<RentalFeature, ApiError> {
+    admin_feature_request(rental_id, Some(feature_id), payload).await
+}
+async fn admin_feature_request(
+    rental_id: &str,
+    feature_id: Option<&str>,
+    payload: &AdminFeaturePayload,
+) -> Result<RentalFeature, ApiError> {
+    let token = admin_access_token()?;
+    let url = feature_id
+        .map(|id| {
+            format!(
+                "{API_BASE}/api/v1/admin/rentals/{}/features/{}",
+                urlencoding::encode(rental_id),
+                urlencoding::encode(id)
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "{API_BASE}/api/v1/admin/rentals/{}/features",
+                urlencoding::encode(rental_id)
+            )
+        });
+    let builder = if feature_id.is_some() {
+        Request::patch(&url)
+    } else {
+        Request::post(&url)
+    };
+    let response = builder
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+        .json(payload)
+        .map_err(|e| ApiError::client(e.to_string()))?
+        .send()
+        .await
+        .map_err(|e| ApiError::client(e.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|e| ApiError::client(e.to_string()))
+}
+pub async fn delete_admin_rental_feature(
+    rental_id: &str,
+    feature_id: &str,
+) -> Result<(), ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::delete(&format!(
+        "{API_BASE}/api/v1/admin/rentals/{}/features/{}",
+        urlencoding::encode(rental_id),
+        urlencoding::encode(feature_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+    .send()
+    .await
+    .map_err(|e| ApiError::client(e.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    Ok(())
+}
+
+pub async fn create_admin_rental_addon(
+    rental_id: &str,
+    payload: &AdminAddonPayload,
+) -> Result<RentalAddon, ApiError> {
+    admin_addon_request(rental_id, None, payload).await
+}
+pub async fn update_admin_rental_addon(
+    rental_id: &str,
+    addon_id: &str,
+    payload: &AdminAddonPayload,
+) -> Result<RentalAddon, ApiError> {
+    admin_addon_request(rental_id, Some(addon_id), payload).await
+}
+async fn admin_addon_request(
+    rental_id: &str,
+    addon_id: Option<&str>,
+    payload: &AdminAddonPayload,
+) -> Result<RentalAddon, ApiError> {
+    let token = admin_access_token()?;
+    let url = addon_id
+        .map(|id| {
+            format!(
+                "{API_BASE}/api/v1/admin/rentals/{}/addons/{}",
+                urlencoding::encode(rental_id),
+                urlencoding::encode(id)
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "{API_BASE}/api/v1/admin/rentals/{}/addons",
+                urlencoding::encode(rental_id)
+            )
+        });
+    let builder = if addon_id.is_some() {
+        Request::patch(&url)
+    } else {
+        Request::post(&url)
+    };
+    let response = builder
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+        .json(payload)
+        .map_err(|e| ApiError::client(e.to_string()))?
+        .send()
+        .await
+        .map_err(|e| ApiError::client(e.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|e| ApiError::client(e.to_string()))
+}
+
 pub async fn admin_dashboard() -> Result<AdminDashboard, ApiError> {
     let token = admin_access_token()?;
     let response = Request::get(&format!("{API_BASE}/api/v1/admin/dashboard"))
@@ -1801,6 +2394,31 @@ pub async fn admin_dashboard() -> Result<AdminDashboard, ApiError> {
             AdminDashboardResponse::Wrapped { dashboard }
             | AdminDashboardResponse::Direct(dashboard) => dashboard,
         })
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_test_email() -> Result<AdminEmailAction, ApiError> {
+    admin_email_action("test").await
+}
+
+pub async fn admin_retry_failed_emails() -> Result<AdminEmailAction, ApiError> {
+    admin_email_action("retry-failed").await
+}
+
+async fn admin_email_action(action: &str) -> Result<AdminEmailAction, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!("{API_BASE}/api/v1/admin/email/{action}"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("x-request-id", &uuid::Uuid::new_v4().to_string())
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminEmailAction>()
+        .await
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
@@ -1936,6 +2554,7 @@ pub async fn create_manual_admin_booking(
 ) -> Result<CreatedBooking, ApiError> {
     let token = admin_access_token()?;
     let request_id = uuid::Uuid::new_v4().to_string();
+    let customer_timezone = crate::timezone::browser_timezone();
     let response = Request::post(&format!("{API_BASE}/api/v1/admin/bookings/manual"))
         .header("Content-Type", "application/json")
         .header("Authorization", &format!("Bearer {token}"))
@@ -1952,6 +2571,7 @@ pub async fn create_manual_admin_booking(
             delivery_address,
             notes: None,
             admin_notes: notes,
+            customer_timezone: &customer_timezone,
         })
         .map_err(|error| ApiError::client(error.to_string()))?
         .send()
@@ -2376,6 +2996,38 @@ pub fn remove_saved(key: &str) {
     }
 }
 
+pub fn save_sensitive_json<T: Serialize>(key: &str, value: &T) -> Result<(), String> {
+    session_storage()
+        .ok_or("Browser session storage is unavailable")?
+        .set_item(
+            key,
+            &serde_json::to_string(value).map_err(|error| error.to_string())?,
+        )
+        .map_err(|_| "Could not save secure booking progress".into())
+}
+
+pub fn load_sensitive_json<T: for<'de> Deserialize<'de>>(key: &str) -> Option<T> {
+    let session = session_storage()?;
+    if let Some(value) = session.get_item(key).ok().flatten() {
+        return serde_json::from_str(&value).ok();
+    }
+    // One-time migration for older builds that persisted private booking
+    // access tokens beyond the browser session.
+    let legacy = storage()?.get_item(key).ok().flatten()?;
+    let parsed = serde_json::from_str(&legacy).ok()?;
+    let _ = session.set_item(key, &legacy);
+    remove_saved(key);
+    Some(parsed)
+}
+
+pub fn remove_sensitive_saved(key: &str) {
+    if let Some(storage) = session_storage() {
+        let _ = storage.remove_item(key);
+    }
+    // Also remove any value left by a pre-hardening frontend build.
+    remove_saved(key);
+}
+
 #[derive(Serialize)]
 struct ContactPayload<'a> {
     full_name: &'a str,
@@ -2723,11 +3375,13 @@ mod delivery_draft_tests {
             delivery_address: "Kelowna, BC",
             notes: None,
             admin_notes: "",
+            customer_timezone: "America/Vancouver",
         };
         let value = serde_json::to_value(payload).unwrap();
 
         assert_eq!(value["admin_notes"], "");
         assert!(value["notes"].is_null());
+        assert_eq!(value["customer_timezone"], "America/Vancouver");
     }
 
     #[test]
@@ -2891,21 +3545,20 @@ mod delivery_draft_tests {
     }
 
     #[test]
-    fn google_tokens_are_read_from_path_and_hash_router_fragments() {
-        let direct = auth_parameters(
-            "#access_token=access&refresh_token=refresh&user_id=user&email=vl%40example.com&role=admin",
-            "",
-        )
-        .unwrap();
+    fn google_one_time_code_is_read_from_path_and_hash_router_fragments() {
+        let direct = auth_parameters("#vl_google_auth=1&code=rv_oauth_code_direct", "").unwrap();
         let hash_router = auth_parameters(
-            "#/auth/callback?access_token=access&refresh_token=refresh&user_id=user&email=vl%40example.com&role=admin",
+            "#/auth/callback?vl_google_auth=1&code=rv_oauth_code_router",
             "",
         )
         .unwrap();
 
-        assert_eq!(direct["email"], "vl@example.com");
-        assert_eq!(hash_router["access_token"], "access");
-        assert_eq!(hash_router["role"], "admin");
+        assert_eq!(direct["code"], "rv_oauth_code_direct");
+        assert_eq!(hash_router["code"], "rv_oauth_code_router");
+        assert!(!direct.contains_key("access_token"));
+
+        let legacy = auth_parameters("#access_token=old&refresh_token=old", "").unwrap();
+        assert!(!legacy.contains_key("code"));
     }
 
     #[test]

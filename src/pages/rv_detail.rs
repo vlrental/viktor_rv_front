@@ -7,7 +7,7 @@ use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
 use super::booking_overlay::UnifiedBookingOverlay;
-use crate::data::{rv_gallery, rv_listings, Listing, PHONE};
+use crate::data::{rv_gallery, Listing, PHONE};
 use crate::{api, components::Icon, pricing, Route};
 
 const CSS: Asset = asset!("/assets/css/rv_detail.css");
@@ -45,58 +45,191 @@ pub fn RvDetail(slug: String) -> Element {
         let value = api_slug.clone();
         async move { api::rental(&value).await }
     });
-    let listings = rv_listings();
-    let Some(l) = listings.iter().copied().find(|l| l.slug == slug) else {
-        return rsx! {
-            document::Link { rel: "stylesheet", href: CSS }
-            div { class: "rvd-body",
-                div { class: "rvd-min-pill", "This RV could not be found or is no longer available." }
-                a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" }
-            }
-        };
-    };
-
     rsx! {
         document::Link { rel: "stylesheet", href: CSS }
         div { class: "rvd-body",
-            // Breadcrumb
-            div { class: "rvd-crumb",
-                a { href: rentals_href, "RV Rentals" }
-                Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" }
-                b { "{l.title}" }
-            }
-            if let Some(created) = confirmed_booking.read().as_ref() {
-                section { class: "rvd-booking-confirmed", role: "status",
-                    div { class: "rvd-booking-confirmed-icon", Icon { name: "check", size: 22, color: "var(--vl-white)" } }
-                    div {
-                        span { "BOOKING CONFIRMED" }
-                        h2 { "Your {l.title} is booked" }
-                        p { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." }
-                        small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } }
-                    }
-                    Link { class: "rvd-booking-confirmed-link", to: Route::Account {}, "View my booking" }
-                }
-            }
             if let Some(result) = details.read().as_ref() {
                 match result {
-                    Ok(value) => rsx! { div { class: "rvd-min-pill", "Live availability and pricing loaded for {value.rental.name}: {value.features.len()} features, {value.addons.len()} add-ons, {value.media.len()} photos." } },
-                    Err(message) => rsx! { p { class: "auth-error", role: "alert", "Could not refresh rental data: {message}" } },
+                    Ok(value) => rsx! {
+                        div { class: "rvd-crumb", a { href: rentals_href, "RV Rentals" } Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" } b { "{value.rental.name}" } }
+                        if let Some(created) = confirmed_booking.read().as_ref() {
+                            section { class: "rvd-booking-confirmed", role: "status",
+                                div { class: "rvd-booking-confirmed-icon", Icon { name: "check", size: 22, color: "var(--vl-white)" } }
+                                div { span { "BOOKING CONFIRMED" } h2 { "Your {value.rental.name} is booked" } p { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." } small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } } }
+                                Link { class: "rvd-booking-confirmed-link", to: Route::Account {}, "View my booking" }
+                            }
+                        }
+                        DynamicRvDetail { value: value.clone(), starts_on, ends_on }
+                    },
+                    Err(_) => rsx! { h1 { class: "rvd-min-pill", "This RV could not be found or is no longer available." } a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" } },
                 }
-            }
-            TitleHead { listing: l }
-            Gallery { listing: l }
-            div { class: "rvd-content",
-                div { class: "rvd-left",
-                    Overview {}
-                    div { class: "rvd-divider" }
-                    Highlights {}
-                    AboutRv {}
-                    Amenities {}
-                    GoodToKnow {}
-                }
-                BookingCard { listing: l, starts_on, ends_on }
-            }
+            } else { div { class: "rvd-min-pill", "Loading RV details…" } }
         }
+    }
+}
+
+#[component]
+fn DynamicRvDetail(
+    value: api::RentalResponse,
+    starts_on: Signal<String>,
+    ends_on: Signal<String>,
+) -> Element {
+    let rental = value.rental.clone();
+    let highlights = value
+        .features
+        .iter()
+        .filter(|feature| feature.group_name == "highlight")
+        .cloned()
+        .collect::<Vec<_>>();
+    let amenities = value
+        .features
+        .iter()
+        .filter(|feature| feature.group_name == "amenity")
+        .cloned()
+        .collect::<Vec<_>>();
+    let length_label = rental
+        .length_ft
+        .clone()
+        .unwrap_or_else(|| "Available on request".into());
+    rsx! {
+        DynamicTitleHead { rental: rental.clone() }
+        DynamicGallery { rental: rental.clone(), media: value.media.clone() }
+        div { class: "rvd-content",
+            div { class: "rvd-left",
+                div { class: "rvd-overview",
+                    div { div { class: "rvd-overview-t", "Entire {rv_type_label(&rental.rv_type)} · hosted by Viktor" } div { class: "rvd-overview-s", "Sleeps {rental.capacity} · {length_label} ft · {rental.slide_outs} slide-outs · 3-night minimum" } }
+                    div { class: "rvd-avatar", style: "background-image: url('{IMG_HOST}');" }
+                }
+                div { class: "rvd-divider" }
+                if highlights.is_empty() {
+                    div { class: "rvd-highlights",
+                        div { class: "rvd-hl", Icon { name: "users", size: 20, color: "var(--vl-forest)" } div { class: "rvd-hl-t", "Sleeps {rental.capacity}" } div { class: "rvd-hl-d", "Maximum guest capacity" } }
+                        div { class: "rvd-hl", Icon { name: "ruler", size: 20, color: "var(--vl-forest)" } div { class: "rvd-hl-t", "{length_label} ft" } div { class: "rvd-hl-d", "Exterior length" } }
+                        div { class: "rvd-hl", Icon { name: "move-horizontal", size: 20, color: "var(--vl-forest)" } div { class: "rvd-hl-t", "{rental.slide_outs} slide-outs" } div { class: "rvd-hl-d", "Extra living space" } }
+                        div { class: "rvd-hl", Icon { name: "shield-check", size: 20, color: "var(--vl-forest)" } div { class: "rvd-hl-t", if rental.pet_friendly { "Pet friendly" } else { "Family ready" } } div { class: "rvd-hl-d", "See booking policies" } }
+                    }
+                } else {
+                    div { class: "rvd-highlights", for feature in highlights { div { key: "{feature.feature_id}", class: "rvd-hl", ApiIcon { name: feature.icon_name.clone(), size: 20 } div { class: "rvd-hl-t", "{feature.label}" } div { class: "rvd-hl-d", "{feature.description}" } } } }
+                }
+                div { class: "rvd-sec", h2 { class: "rvd-h", "About this RV" } p { class: "rvd-p", "{rental.description}" } }
+                div { class: "rvd-sec", h2 { class: "rvd-h", "What this RV offers" }
+                    if amenities.is_empty() { p { class: "rvd-p", "Amenities are being updated. Contact us for the complete equipment list." } }
+                    else { div { class: "rvd-amenities", for feature in amenities { div { key: "{feature.feature_id}", class: "rvd-am", ApiIcon { name: feature.icon_name.clone(), size: 18 } span { "{feature.label}" } } } } }
+                }
+                GoodToKnow {}
+            }
+            DynamicBookingCard { rental, starts_on, ends_on }
+        }
+    }
+}
+
+fn rv_type_label(value: &str) -> &'static str {
+    match value {
+        "fifth_wheel" => "fifth wheel",
+        "toy_hauler" => "toy hauler",
+        _ => "travel trailer",
+    }
+}
+
+fn public_icon(value: &str) -> &'static str {
+    match value {
+        "flame" => "flame",
+        "bed-double" => "bed-double",
+        "paw-print" => "paw-print",
+        "utensils" => "utensils",
+        "shower-head" => "shower-head",
+        "snowflake" => "snowflake",
+        "wifi" => "wifi",
+        "tv" => "tv",
+        "battery-charging" => "battery-charging",
+        "plug-zap" => "plug-zap",
+        "cooking-pot" => "cooking-pot",
+        "tent-tree" => "tent-tree",
+        "caravan" => "caravan",
+        "shield-check" => "shield-check",
+        "package" => "package",
+        "fuel" => "fuel",
+        "trash-2" => "trash-2",
+        _ => "circle-check",
+    }
+}
+
+#[component]
+fn ApiIcon(name: String, size: u32) -> Element {
+    let safe_name = public_icon(&name);
+    rsx! { i { class: "icon-{safe_name}", style: "font-size: {size}px; color: var(--vl-forest);" } }
+}
+
+#[component]
+fn DynamicTitleHead(rental: api::Rental) -> Element {
+    let slug = rental.slug.clone();
+    let mut saved = use_signal(move || {
+        api::load_json::<Vec<String>>("vl_saved_rvs")
+            .unwrap_or_default()
+            .contains(&slug)
+    });
+    let rating = rental.review_rating.clone().unwrap_or_else(|| "New".into());
+    rsx! {
+        div { class: "rvd-title-head", div { class: "rvd-title-left", h1 { class: "rvd-title", "{rental.name}" } div { class: "rvd-meta", div { class: "rvd-meta-item", Icon { name: "star", size: 15, color: "var(--vl-accent)" } span { class: "rvd-meta-strong", "{rating}" } span { "({rental.review_count} reviews)" } } span { "·" } div { class: "rvd-meta-item", Icon { name: "map-pin", size: 15, color: "var(--vl-accent)" } span { "Kelowna, BC" } } if rental.pet_friendly { span { "·" } div { class: "rvd-pet-pill", Icon { name: "paw-print", size: 14, color: "var(--vl-forest)" } span { "Pet friendly" } } } } }
+            div { class: "rvd-actions", button { class: if saved() { "rvd-action-btn active" } else { "rvd-action-btn" }, r#type: "button", onclick: { let slug=rental.slug.clone(); move |_| { let mut values=api::load_json::<Vec<String>>("vl_saved_rvs").unwrap_or_default(); if saved(){values.retain(|value|value!=&slug);saved.set(false)}else{values.push(slug.clone());saved.set(true)} let _=api::save_json("vl_saved_rvs",&values); } }, Icon { name: "heart", size: 15, color: "var(--vl-ink)" } span { if saved() { "Saved" } else { "Save" } } } }
+        }
+    }
+}
+
+#[component]
+fn DynamicGallery(rental: api::Rental, media: Vec<api::RentalMedia>) -> Element {
+    let mut images = media
+        .iter()
+        .map(|item| (item.source_url.clone(), item.alt_text.clone()))
+        .collect::<Vec<_>>();
+    if images.is_empty() {
+        if let Some(hero) = rental.hero_image_url.as_ref() {
+            images.push((hero.clone(), rental.name.clone()));
+        }
+    }
+    let count = images.len();
+    let mut selected = use_signal(|| None::<usize>);
+    if images.is_empty() {
+        return rsx! { div { class: "rvd-gallery rvd-gallery-empty", Icon { name: "image", size: 32, color: "var(--vl-muted)" } span { "Photos are being prepared" } } };
+    }
+    rsx! {
+        div { class: "rvd-gallery", button { class: "rvd-gallery-main", r#type: "button", aria_label: "Open photo 1 of {count}", style: "background-image: url('{images[0].0}');", onclick: move |_|selected.set(Some(0)) }
+            div { class: "rvd-gallery-grid", for (index,image) in images.iter().enumerate().skip(1).take(6) { button { key: "gallery-{index}", class: "rvd-gallery-tile", r#type: "button", aria_label: "Open photo {index+1} of {count}", style: "background-image: url('{image.0}');", onclick: move |_|selected.set(Some(index)), if index==6 && count>7 { span { class:"rvd-gallery-more", "Show all {count} photos" } } } } }
+        }
+        if let Some(index)=selected() { div { class:"rvd-lightbox", role:"dialog", aria_modal:"true", tabindex:"-1", onkeydown:move|event|if event.key()==Key::Escape{selected.set(None)}, onclick:move |_|selected.set(None), div { class:"rvd-lightbox-content", onclick:move|event|event.stop_propagation(), img { class:"rvd-lightbox-image", src:"{images[index].0}", alt:"{images[index].1}" } button { class:"rvd-lightbox-close", r#type:"button", onclick:move |_|selected.set(None), Icon{name:"x",size:24,color:"var(--vl-white)"} } button { class:"rvd-lightbox-nav prev", r#type:"button", onclick:move |_|selected.set(Some((index+count-1)%count)), Icon{name:"chevron-left",size:30,color:"var(--vl-white)"} } button { class:"rvd-lightbox-nav next", r#type:"button", onclick:move |_|selected.set(Some((index+1)%count)), Icon{name:"chevron-right",size:30,color:"var(--vl-white)"} } div { class:"rvd-lightbox-count", "{index+1} / {count}" } } } }
+    }
+}
+
+#[component]
+fn DynamicBookingCard(
+    rental: api::Rental,
+    mut starts_on: Signal<String>,
+    mut ends_on: Signal<String>,
+) -> Element {
+    let mut booking_open = use_signal(|| false);
+    let mut booking_step = use_signal(|| 1_u8);
+    let planner_starts_on = use_signal(|| selected_date(&starts_on));
+    let planner_ends_on = use_signal(|| selected_date(&ends_on));
+    let planner_guests = use_signal(|| 1_i32);
+    let planner_location = use_signal(|| "Kelowna, BC".to_string());
+    let planner_radius = use_signal(|| 150_i32);
+    let nights = selected_date(&starts_on)
+        .zip(selected_date(&ends_on))
+        .map(|(start, end)| (end - start).num_days())
+        .unwrap_or(0);
+    let base = rental.base_rate.parse::<f64>().unwrap_or_default() * nights.max(0) as f64;
+    let known = base + pricing::mandatory_costs(nights);
+    let slug = rental.slug.clone();
+    let rating = rental.review_rating.clone().unwrap_or_else(|| "New".into());
+    rsx! {
+        div { class:"rvd-booking", div { class:"rvd-price-row", div { class:"rvd-price", span { class:"rvd-price-v", "CA${rental.base_rate}" } span { class:"rvd-price-u", " / night" } } div { class:"rvd-price-r", Icon{name:"star",size:14,color:"var(--vl-accent)"} b { "{rating}" } } }
+            div { class:"rvd-min-pill", Icon{name:"info",size:14,color:"var(--vl-muted)"} span { "3-night minimum · transparent pricing before confirmation" } }
+            button { class:"rvd-summary-dates", r#type:"button", onclick:move |_|{booking_step.set(1);booking_open.set(true)}, span { "DATES" } strong { if nights>=3 { "{starts_on} → {ends_on}" } else { "Choose dates" } } Icon{name:"chevron-right",size:15,color:"var(--vl-forest)"} }
+            div { class:"rvd-price-breakdown", div { class:"rvd-price-breakdown-head", strong { "What makes up your trip price" } span { "Exact delivery, add-ons and taxes are calculated in booking" } } div { span { "Base rental" } b { if nights>=3 { "{pricing::money(base)}" } else { "CA${rental.base_rate} / night" } } } div { span { "RV Preparation Fee" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } } div { span { "Stationary Plus Protection" } b { "CA$50.00 / night" } } if nights>=3 { div { class:"rvd-known-price", span { "Known trip costs before delivery, add-ons & tax" } b { "{pricing::money(known)}" } } } }
+            div { class:"rvd-damage-deposit", div { Icon{name:"shield-check",size:17,color:"var(--vl-forest)"} strong { "Refundable CA$1,000 damage deposit" } } p { "Separate from the trip price. Due 48 hours before delivery." } }
+            button { class:"rvd-reserve", r#type:"button", onclick:move |_|{booking_step.set(if nights>=3{3}else{1});booking_open.set(true)}, "Open booking" }
+        }
+        if booking_open() { UnifiedBookingOverlay { location:planner_location, radius:planner_radius, starts_on:planner_starts_on, ends_on:planner_ends_on, guests:planner_guests, initial_rental_slug:Some(slug), initial_step:booking_step(), resume_after_auth:None, on_search_change:move |_|{starts_on.set(planner_starts_on().map(|d|d.to_string()).unwrap_or_default());ends_on.set(planner_ends_on().map(|d|d.to_string()).unwrap_or_default())}, on_close:move |_|booking_open.set(false) } }
     }
 }
 
@@ -754,6 +887,7 @@ fn selected_date(value: &Signal<String>) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(&value.read(), "%Y-%m-%d").ok()
 }
 
+#[allow(dead_code)]
 fn price_amount(price: &str) -> f64 {
     price
         .chars()

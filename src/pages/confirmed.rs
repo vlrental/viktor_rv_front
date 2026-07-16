@@ -9,7 +9,7 @@ const CSS: Asset = asset!("/assets/css/confirmed.css");
 /// Страница подтверждения брони — Pencil-фреймы pivyP (desktop) / V4VB2P (mobile).
 #[component]
 pub fn Confirmed() -> Element {
-    let created = api::load_json::<api::CreatedBooking>("vl_last_booking");
+    let created = api::load_sensitive_json::<api::CreatedBooking>("vl_last_booking");
     let draft = api::load_json::<api::TripDraft>("vl_trip_draft");
     if created.is_none() {
         return rsx! {

@@ -102,7 +102,7 @@ pub fn Checkout() -> Element {
             .await
             {
                 Ok(created) => {
-                    let _ = api::save_json("vl_last_booking", &created);
+                    let _ = api::save_sensitive_json("vl_last_booking", &created);
                     nav.push(Route::Confirmed {});
                 }
                 Err(api_error) => {

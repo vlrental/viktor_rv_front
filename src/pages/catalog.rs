@@ -35,14 +35,10 @@ fn rental_price(rental: &api::Rental) -> f64 {
 }
 
 fn rental_style(rental: &api::Rental) -> &'static str {
-    let searchable =
-        format!("{} {} {}", rental.name, rental.summary, rental.description).to_ascii_lowercase();
-    if searchable.contains("toy-hauler") || searchable.contains("toy hauler") {
-        "toy-hauler"
-    } else if searchable.contains("fifth wheel") || searchable.contains("5th wheel") {
-        "fifth-wheel"
-    } else {
-        "travel-trailer"
+    match rental.rv_type.as_str() {
+        "toy_hauler" => "toy-hauler",
+        "fifth_wheel" => "fifth-wheel",
+        _ => "travel-trailer",
     }
 }
 
@@ -963,11 +959,25 @@ mod catalog_search_tests {
 
     fn rental(slug: &str, description: &str, price: &str, capacity: i32) -> api::Rental {
         api::Rental {
+            rental_id: format!("rental-{slug}"),
             slug: slug.into(),
             name: slug.into(),
             category: "rv".into(),
             summary: String::new(),
             description: description.into(),
+            model_year: Some(2025),
+            manufacturer: "Test".into(),
+            model: slug.into(),
+            rv_type: if slug == "fifth" {
+                "fifth_wheel".into()
+            } else if slug == "toys" {
+                "toy_hauler".into()
+            } else {
+                "travel_trailer".into()
+            },
+            length_ft: Some("24.0".into()),
+            slide_outs: 1,
+            pet_friendly: false,
             capacity,
             price_unit: "night".into(),
             base_rate: price.into(),
@@ -975,6 +985,8 @@ mod catalog_search_tests {
             min_units: 3,
             refundable_deposit: "1000.00".into(),
             hero_image_url: None,
+            is_active: true,
+            sort_order: 0,
             review_rating: None,
             review_count: 0,
         }
@@ -1070,6 +1082,13 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
 }
 
 pub(crate) fn rental_image(rental: &api::Rental) -> String {
+    if let Some(image) = rental
+        .hero_image_url
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return image.clone();
+    }
     match rental.slug.as_str() {
         "jayco26" => IMG_JAYCO.to_string(),
         "2015-keystone-bullet" => IMG_BULLET.to_string(),
@@ -1077,7 +1096,7 @@ pub(crate) fn rental_image(rental: &api::Rental) -> String {
         "2025-open-range-1" => IMG_OPENRANGE.to_string(),
         "2025-highland-ridge-2" => IMG_OPENRANGE2.to_string(),
         "2017-keystone-outback-ultra" => IMG_OUTBACK.to_string(),
-        _ => rental.hero_image_url.clone().unwrap_or_default(),
+        _ => String::new(),
     }
 }
 

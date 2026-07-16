@@ -16,6 +16,7 @@
 
 ## Project design
 
+- Viktor RV UI design must always be created, updated, and verified in Pencil. Do not use or suggest Figma for this project.
 - The canonical project design is available through the connected design tool. Open and inspect it directly when design context is needed; do not ask the user to provide it again unless access fails.
 - Design Node IDs: `IUHnT`, `x8t0A0`, `I6W2Es`, `raX6S`, `rmfa4`, `ODW3r`, `f1GuCf`, `ns0xG`, `LaBip`, `iKgTN`, `Oijpd`, `MEsd0`, `XgqBg`, `w19Mf`, `jr5XP`, `CdnCR`, `X9ejnB`, `g9upP`, `qaZRF`, `yTWGi`, `Al6fI`, `lsQAl`, `eb6Ck`, `cOu0u`, `YuNUS`, `TDhXo`, `M4DJcJ`, `e8z6o4`, `K7A9o`.
 - Use these nodes as the visual source of truth when implementing or reviewing the corresponding frontend UI.
@@ -45,6 +46,16 @@
 
 - Booking confirmation email is sent by the backend through Amazon SES SMTP in `ca-central-1` from `no-reply@vlrental.ca`; the administrator recipient is `Vlrental.ca@gmail.com`.
 - A successful booking remains valid if email delivery fails; the confirmation page must report the email result returned by the backend.
+- Store timestamps in UTC. The RV delivery/return business schedule remains `America/Vancouver`; customer emails also show the validated browser timezone captured with the booking, and browser UI timestamps use the viewer's local timezone with an explicit timezone label.
+- Failed customer/admin email deliveries must retain a sanitized error code/message, appear in the existing admin overview, and be retryable from that page. Email failure never rolls back a webhook-confirmed payment or booking.
+- Public authentication, quote, booking, contact, newsletter, review, address and delivery-estimate endpoints must use bounded per-client rate limits. Stripe webhook delivery is protected by signature verification and is not placed behind the public client rate limiter.
+- Frontend and backend production workflows must run formatting, tests, warning-free lint checks, and the relevant browser/database target checks before any deployment job can begin.
+- Google OAuth callbacks may return only a short-lived one-time login code. Access and refresh tokens are created by the backend exchange endpoint, never placed in callback URLs, and refresh rotation must be atomic so the same refresh token cannot succeed twice.
+- Logout must revoke the matching backend session even when its access token has expired; clearing browser storage alone is not a logout.
+- The frontend never queries Supabase Data API directly. The `public` application schema is backend-only: revoke schema `USAGE` plus all table, sequence, and function privileges from `PUBLIC`/`anon`/`authenticated`, lock down matching default privileges, and keep RLS enabled; backend-only one-time login codes are stored only as SHA-256 hashes.
+- Auth access/refresh tokens, private booking access tokens, and pending Checkout client secrets may persist only in browser session storage, with one-time migration/removal of complete legacy local-storage token sets.
+- HTTP tracing may log only the request method and URL path, never query strings or headers. Authentication, booking, payment-status, owner, admin, and legacy RPC responses must use `Cache-Control: no-store` and security headers.
+- Ordinary JSON/form bodies are capped at 256 KiB; only Stripe webhook (1 MiB) and authenticated image uploads (11 MiB request, 10 MiB image) receive larger route-specific limits. Uploaded JPEG/PNG/WebP content must match its declared file signature.
 
 ## Git branches and deployment
 

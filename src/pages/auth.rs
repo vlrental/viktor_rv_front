@@ -1,6 +1,10 @@
 use crate::{api, pricing, Route};
 use dioxus::prelude::*;
 
+fn local_booking_moment(value: &str) -> String {
+    crate::timezone::format_local_moment(value)
+}
+
 fn redirect_to_inline_auth(register: bool) {
     api::request_inline_auth(register, None);
     if let Some(window) = web_sys::window() {
@@ -68,7 +72,7 @@ pub fn Account() -> Element {
                         article { class: "co-card", key: "{booking.booking_id}",
                             p { class: "auth-kicker", "{booking.status} · {booking.payment_status}" }
                             h2 { "#{booking.booking_number}" }
-                            p { "Delivery/setup: {booking.starts_at} · Return: {booking.ends_at}" }
+                            p { "Delivery/setup: {local_booking_moment(&booking.starts_at)} · Return: {local_booking_moment(&booking.ends_at)}" }
                             p { "Trip price: {booking.currency} {booking.total}" }
                             p { "Booking payment: {booking.currency} {booking.amount_due_now}" }
                             p { "Refundable damage deposit: {pricing::money(pricing::DAMAGE_DEPOSIT)} · separate · charged 48 hours before delivery" }
@@ -99,7 +103,7 @@ pub fn Account() -> Element {
                     }
                 }
             }
-            button { class: "account-signout", onclick: move |_| { api::clear_session(); nav.push(Route::Login {}); }, "Sign out" }
+            button { class: "account-signout", onclick: move |_| async move { api::logout().await; nav.push(Route::Login {}); }, "Sign out" }
         } else {
             div { class: "account-empty", h1 { "Sign in required" } Link { class: "btn-forest", to: Route::Login {}, "Sign in" } }
         }

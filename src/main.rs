@@ -3,6 +3,7 @@ mod components;
 mod data;
 mod pages;
 mod pricing;
+mod timezone;
 
 use components::{Footer, Header};
 use pages::*;
@@ -16,19 +17,6 @@ const _: Asset = asset!(
 const PARALLAX_JS: Asset = asset!("/assets/parallax.js");
 
 fn main() {
-    // Finish OAuth before mounting route components so they see the restored
-    // session on their very first render.
-    if let Ok(Some(path)) = api::finish_google_sign_in() {
-        if let Some(window) = web_sys::window() {
-            if window
-                .location()
-                .replace(&api::frontend_path(&path))
-                .is_ok()
-            {
-                return;
-            }
-        }
-    }
     dioxus::launch(App);
 }
 
@@ -72,6 +60,13 @@ pub enum Route {
         Account {},
         #[route("/admin")]
         Admin {},
+}
+
+#[derive(Clone, Copy)]
+pub struct BookingLaunchRequest(pub Signal<bool>);
+
+pub fn booking_launch_requires_home(route: &Route) -> bool {
+    !matches!(route, Route::Home {})
 }
 
 const SITE_URL: &str = match option_env!("VL_FRONTEND_BASE_URL") {
@@ -231,6 +226,9 @@ fn App() -> Element {
 
 #[component]
 fn SiteShell() -> Element {
+    let booking_launch_request = use_signal(|| false);
+    use_context_provider(|| BookingLaunchRequest(booking_launch_request));
+
     rsx! {
         SeoHead {}
         AuthSessionBridge {}
@@ -336,35 +334,37 @@ fn SeoHead() -> Element {
 fn AuthSessionBridge() -> Element {
     let compatibility_callback = matches!(use_route::<Route>(), Route::AuthCallback {});
     use_effect(move || {
-        let result = api::finish_google_sign_in();
-        match result {
-            Ok(Some(path)) => {
-                if let Some(window) = web_sys::window() {
-                    let _ = window.location().replace(&api::frontend_path(&path));
+        spawn(async move {
+            let result = api::finish_google_sign_in().await;
+            match result {
+                Ok(Some(path)) => {
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.location().replace(&api::frontend_path(&path));
+                    }
                 }
+                Ok(None) if compatibility_callback => {
+                    let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
+                    if api::take_google_auth_pending() {
+                        api::request_inline_auth(
+                            false,
+                            Some("Google sign in was not completed. Please try again."),
+                        );
+                    }
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.location().replace(&api::frontend_path(&path));
+                    }
+                }
+                Err(message) => {
+                    let _ = api::take_google_auth_pending();
+                    let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
+                    api::request_inline_auth(false, Some(&message));
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.location().replace(&api::frontend_path(&path));
+                    }
+                }
+                Ok(None) => {}
             }
-            Ok(None) if compatibility_callback => {
-                let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
-                if api::take_google_auth_pending() {
-                    api::request_inline_auth(
-                        false,
-                        Some("Google sign in was not completed. Please try again."),
-                    );
-                }
-                if let Some(window) = web_sys::window() {
-                    let _ = window.location().replace(&api::frontend_path(&path));
-                }
-            }
-            Err(message) => {
-                let _ = api::take_google_auth_pending();
-                let path = api::take_auth_return().unwrap_or_else(|| "/".to_string());
-                api::request_inline_auth(false, Some(&message));
-                if let Some(window) = web_sys::window() {
-                    let _ = window.location().replace(&api::frontend_path(&path));
-                }
-            }
-            Ok(None) => {}
-        }
+        });
     });
     rsx! {}
 }
@@ -403,6 +403,37 @@ mod seo_tests {
 
         for route in private_routes {
             assert_eq!(seo_metadata(&route).robots, "noindex,nofollow");
+        }
+    }
+
+    #[test]
+    fn global_booking_cta_stays_on_home_and_routes_every_other_page_home() {
+        assert!(!booking_launch_requires_home(&Route::Home {}));
+
+        let non_home_routes = [
+            Route::Catalog {},
+            Route::RvDetail {
+                slug: "missing-rv".into(),
+            },
+            Route::Checkout {},
+            Route::Confirmed {},
+            Route::Contact {},
+            Route::About {},
+            Route::Attractions {},
+            Route::Restaurants {},
+            Route::CoolerTrailers {},
+            Route::Delivery {},
+            Route::RvSales {},
+            Route::Terms {},
+            Route::Login {},
+            Route::Register {},
+            Route::AuthCallback {},
+            Route::Account {},
+            Route::Admin {},
+        ];
+
+        for route in non_home_routes {
+            assert!(booking_launch_requires_home(&route), "route: {route}");
         }
     }
 }
