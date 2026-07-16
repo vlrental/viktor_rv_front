@@ -1996,7 +1996,8 @@ fn RentalChoice(
                                                                     .and_then(|value| value.reviews.iter().find(|item| item.rental_review_id == review_id))
                                                                     .map(|item| item.like_count)
                                                                     .unwrap_or(displayed_like_count);
-                                                                if let Some(mut current) = reviews.read().clone() {
+                                                                let optimistic_reviews = reviews.read().clone();
+                                                                if let Some(mut current) = optimistic_reviews {
                                                                     set_review_like_count(
                                                                         &mut current,
                                                                         &review_id,
@@ -2004,7 +2005,8 @@ fn RentalChoice(
                                                                     );
                                                                     reviews.set(Some(current));
                                                                 }
-                                                                if let Some(mut current) = review_context.read().clone() {
+                                                                let optimistic_context = review_context.read().clone();
+                                                                if let Some(mut current) = optimistic_context {
                                                                     set_review_like_membership(&mut current, &review_id, !was_liked);
                                                                     review_context.set(Some(current));
                                                                 }
@@ -2013,21 +2015,25 @@ fn RentalChoice(
                                                                 spawn(async move {
                                                                     match api::set_rental_review_like(&review_id_for_request, !was_liked).await {
                                                                         Ok(result) => {
-                                                                            if let Some(mut current) = reviews.read().clone() {
+                                                                            let latest_reviews = reviews.read().clone();
+                                                                            if let Some(mut current) = latest_reviews {
                                                                                 set_review_like_count(&mut current, &result.rental_review_id, result.like_count);
                                                                                 reviews.set(Some(current));
                                                                             }
-                                                                            if let Some(mut current) = review_context.read().clone() {
+                                                                            let latest_context = review_context.read().clone();
+                                                                            if let Some(mut current) = latest_context {
                                                                                 set_review_like_membership(&mut current, &result.rental_review_id, result.liked);
                                                                                 review_context.set(Some(current));
                                                                             }
                                                                         }
                                                                         Err(_) => {
-                                                                            if let Some(mut current) = reviews.read().clone() {
+                                                                            let latest_reviews = reviews.read().clone();
+                                                                            if let Some(mut current) = latest_reviews {
                                                                                 set_review_like_count(&mut current, &review_id_for_request, previous_like_count);
                                                                                 reviews.set(Some(current));
                                                                             }
-                                                                            if let Some(mut current) = review_context.read().clone() {
+                                                                            let latest_context = review_context.read().clone();
+                                                                            if let Some(mut current) = latest_context {
                                                                                 set_review_like_membership(&mut current, &review_id_for_request, was_liked);
                                                                                 review_context.set(Some(current));
                                                                             }
