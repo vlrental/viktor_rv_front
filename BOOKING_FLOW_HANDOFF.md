@@ -11,7 +11,7 @@ This document records the current frontend booking architecture, the problems fi
 - Viktor RV is RV-only. Never add boats or boat bookings.
 - The primary booking experience is a single overlay. A customer should not be sent through separate date, catalog, delivery, extras, and checkout screens during the normal flow.
 - The customer should be able to choose dates and guests, select an RV, calculate delivery, select extras, see the live total, sign in, and confirm without leaving the overlay.
-- Dates-first and RV-first are both supported without separate hidden modes. Step 2 always lists every active RV that fits the guest count. When dates exist, each card is marked either `Available for your dates` or `Choose new dates`. Selecting an available card continues to delivery; selecting a booked card keeps that model, clears the incompatible dates, and opens its live calendar.
+- Dates-first and RV-first are both supported without separate hidden modes. Before dates are selected, step 2 lists every active RV that fits the guest count and selecting one opens its live calendar. After a valid date range is selected, step 2 lists only RVs the server marks available for that range; if none are available, the empty state keeps the customer inside the overlay and returns them to the date calendar.
 - Completed sections collapse into summaries and can be reopened for editing.
 - The home page is the primary catalog. `/catalog` is retained only as a compatibility route and redirects to the RV section on the home page.
 
@@ -64,13 +64,14 @@ This document records the current frontend booking architecture, the problems fi
 ### Step 2 — Choose an RV
 
 - RV choices use image cards based on the home listing design, including name, capacity, summary, and nightly price.
-- Step 2 uses two server catalog views: the no-date response supplies every model that fits the guest count, and the dated response marks which of those models are available for the current range.
+- Step 2 uses two server catalog views: the no-date response supplies every model that fits the guest count before a date range exists, and the dated response becomes the displayed list after valid dates are selected.
 - Step 2 keeps a compact guest stepper in its upper-right toolbar so customers can see and change the active capacity filter without returning to step 1. Its fixed desktop width and mobile wrap must not shift or overflow the RV card grid.
-- Step 2 is always clickable and never becomes an empty dead end merely because all RVs are booked for the selected dates. Without a valid range, selecting any model opens step 1. With dates, available cards continue to delivery, while booked cards remain clickable and open their own calendar after clearing only the incompatible date range.
+- Step 2 is always clickable and never becomes an empty dead end merely because all RVs are booked for the selected dates. Without a valid range, selecting any model opens step 1. With dates, only available cards continue to delivery; when none are available, an inline empty state offers `Choose new dates` and reopens step 1.
 - RV detail pages pass their slug as the initial selection, but the customer can choose another available RV in the same overlay.
 - Each RV card has previous/next gallery controls that appear on pointer hover and remain visible on touch devices. The controls rotate through the project gallery without selecting the RV.
 - Cards show the published server rating and review count. `Read comments` opens a nested, independently scrolling review overlay; its close control and `Escape` dismiss only that topmost review layer.
 - The `DATES` row in an RV detail booking card is an interactive control. It always opens the unified overlay directly on step 1 so saved dates can be reviewed or changed; the main `Open booking` button continues from the next relevant step.
+- Every RV detail page also shows a compact live three-month availability calendar immediately before `About this RV`. Booked or otherwise invalid days are disabled. Selecting a valid delivery and return range of at least three nights opens the existing unified booking overlay for that RV on the delivery-address step; it never creates a second booking flow or standalone calendar page.
 
 ### Step 3 — Delivery address
 

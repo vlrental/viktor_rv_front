@@ -18,7 +18,8 @@ const MOBILE_CALENDAR_BREAKPOINT: f64 = 860.0;
 const CALENDAR_SWIPE_THRESHOLD: f64 = 48.0;
 const UNMOUNT_EMBEDDED_CHECKOUT: &str = r#"
 if (window.__vlEmbeddedCheckout) {
-  try { window.__vlEmbeddedCheckout.unmount(); } catch (_) {}
+  try { window.__vlEmbeddedCheckout.destroy(); }
+  catch (_) { try { window.__vlEmbeddedCheckout.unmount(); } catch (_) {} }
   window.__vlEmbeddedCheckout = null;
 }
 "#;
@@ -142,12 +143,22 @@ fn mobile_calendar_swipe_enabled() -> bool {
 }
 
 fn money_cents(value: &str) -> Option<i64> {
-    value
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|amount| amount.is_finite() && *amount >= 0.0)
-        .map(|amount| (amount * 100.0).round() as i64)
+    let value = value.trim();
+    let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || fraction.len() > 2
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let whole = whole.parse::<i64>().ok()?;
+    let fraction = match fraction.len() {
+        0 => 0,
+        1 => fraction.parse::<i64>().ok()?.checked_mul(10)?,
+        _ => fraction.parse::<i64>().ok()?,
+    };
+    whole.checked_mul(100)?.checked_add(fraction)
 }
 
 fn booking_payment_amount_is_valid(booking: &api::Booking) -> bool {
@@ -161,32 +172,73 @@ fn booking_payment_amount_is_valid(booking: &api::Booking) -> bool {
     due_now == total || due_now == thirty_percent
 }
 
+fn booking_payment_percent(booking: &api::Booking) -> Option<i32> {
+    let total = money_cents(&booking.total)?;
+    let due_now = money_cents(&booking.amount_due_now)?;
+    if due_now == total {
+        Some(100)
+    } else if due_now == (total * i64::from(pricing::BOOKING_DEPOSIT_PERCENT) + 50) / 100 {
+        Some(pricing::BOOKING_DEPOSIT_PERCENT)
+    } else {
+        None
+    }
+}
+
+fn money_from_cents(cents: i64) -> String {
+    format!("{}.{:02}", cents / 100, cents.rem_euclid(100))
+}
+
+fn booking_remaining_balance(booking: &api::Booking) -> Option<String> {
+    let remaining = money_cents(&booking.total)? - money_cents(&booking.amount_due_now)?;
+    (remaining > 0).then(|| money_from_cents(remaining))
+}
+
+fn quote_matches_booking(quote: &api::QuoteResponse, booking: &api::Booking) -> bool {
+    !booking.quote_id.is_empty()
+        && quote.quote.quote_id == booking.quote_id
+        && money_cents(&quote.quote.total) == money_cents(&booking.total)
+}
+
+fn fill_booking_rental(booking: &mut api::Booking, rental_slug: String, rental_name: String) {
+    if booking.rental_slug.is_empty() {
+        booking.rental_slug = rental_slug;
+    }
+    if booking.rental_name.is_empty() {
+        booking.rental_name = rental_name;
+    }
+}
+
 fn embedded_checkout_script(publishable_key: &str, client_secret: &str) -> String {
     format!(
         r#"
 return await (async () => {{
   if (!window.Stripe) {{
     await new Promise((resolve, reject) => {{
+      const timeout = window.setTimeout(() => reject(new Error('Stripe.js timed out')), 15000);
+      const loaded = () => {{ window.clearTimeout(timeout); resolve(); }};
+      const failed = () => {{ window.clearTimeout(timeout); reject(new Error('Stripe.js failed to load')); }};
       const current = document.querySelector('script[data-vl-stripe]');
       if (current) {{
-        current.addEventListener('load', resolve, {{ once: true }});
-        current.addEventListener('error', reject, {{ once: true }});
-        if (window.Stripe) resolve();
+        current.addEventListener('load', loaded, {{ once: true }});
+        current.addEventListener('error', failed, {{ once: true }});
+        if (window.Stripe) loaded();
         return;
       }}
       const script = document.createElement('script');
       script.src = 'https://js.stripe.com/v3/';
       script.async = true;
       script.dataset.vlStripe = 'true';
-      script.onload = resolve;
-      script.onerror = reject;
+      script.onload = loaded;
+      script.onerror = failed;
       document.head.appendChild(script);
     }});
   }}
   const root = document.getElementById('vl-embedded-checkout');
   if (!root || !window.Stripe) throw new Error('Stripe Checkout is unavailable');
   if (window.__vlEmbeddedCheckout) {{
-    try {{ window.__vlEmbeddedCheckout.unmount(); }} catch (_) {{}}
+    try {{ window.__vlEmbeddedCheckout.destroy(); }}
+    catch (_) {{ try {{ window.__vlEmbeddedCheckout.unmount(); }} catch (_) {{}} }}
+    window.__vlEmbeddedCheckout = null;
   }}
   root.replaceChildren();
   const stripe = window.Stripe({publishable_key});
@@ -204,6 +256,18 @@ return await (async () => {{
 
 fn rental_selection_keeps_dates(trip_ready: bool, available_for_dates: Option<bool>) -> bool {
     trip_ready && available_for_dates == Some(true)
+}
+
+fn displayed_rental_choices<'a, T>(
+    all_rentals: &'a [T],
+    available_rentals: Option<&'a [T]>,
+    trip_ready: bool,
+) -> &'a [T] {
+    if trip_ready {
+        available_rentals.unwrap_or_default()
+    } else {
+        all_rentals
+    }
 }
 
 const BOOKING_DELIVERY_MAP_SCRIPT: &str = r#"
@@ -543,36 +607,79 @@ fn optimistic_price(
         amount: protection,
     });
 
-    let tax_rate = previous_quote
-        .and_then(|value| {
-            let previous_taxable = value
-                .items
-                .iter()
-                .filter(|item| {
-                    matches!(
-                        item.item_type.as_str(),
-                        "rental" | "addon" | "fee" | "delivery"
-                    )
-                })
-                .map(|item| price_number(&item.amount))
-                .sum::<f64>();
-            let previous_tax = value
+    let mut tax = 0.0;
+    if let Some(previous) = previous_quote {
+        let previous_taxable = previous
+            .items
+            .iter()
+            .filter(|item| {
+                matches!(
+                    item.item_type.as_str(),
+                    "rental" | "addon" | "fee" | "delivery"
+                )
+            })
+            .map(|item| price_number(&item.amount))
+            .sum::<f64>();
+        let previous_protection = previous
+            .items
+            .iter()
+            .filter(|item| item.item_type == "protection")
+            .map(|item| price_number(&item.amount))
+            .sum::<f64>();
+        let primary_tax = previous
+            .items
+            .iter()
+            .find(|item| item.item_key == "tax_primary");
+        let secondary_tax = previous
+            .items
+            .iter()
+            .find(|item| item.item_key == "tax_secondary");
+
+        if primary_tax.is_some() || secondary_tax.is_some() {
+            if let Some(item) = primary_tax {
+                let previous_base = previous_taxable + previous_protection;
+                if previous_base > 0.0 {
+                    let rate = price_number(&item.amount) / previous_base;
+                    let amount = ((taxable_subtotal + protection) * rate * 100.0).round() / 100.0;
+                    tax += amount;
+                    lines.push(OptimisticPriceLine {
+                        key: item.item_key.clone(),
+                        label: item.label.clone(),
+                        detail: None,
+                        amount,
+                    });
+                }
+            }
+            if let Some(item) = secondary_tax {
+                if previous_taxable > 0.0 {
+                    let rate = price_number(&item.amount) / previous_taxable;
+                    let amount = (taxable_subtotal * rate * 100.0).round() / 100.0;
+                    tax += amount;
+                    lines.push(OptimisticPriceLine {
+                        key: item.item_key.clone(),
+                        label: item.label.clone(),
+                        detail: None,
+                        amount,
+                    });
+                }
+            }
+        } else if previous_taxable > 0.0 {
+            let previous_tax = previous
                 .items
                 .iter()
                 .filter(|item| item.item_type == "tax")
                 .map(|item| price_number(&item.amount))
                 .sum::<f64>();
-            (previous_taxable > 0.0).then_some(previous_tax / previous_taxable)
-        })
-        .unwrap_or(0.0);
-    let tax = (taxable_subtotal * tax_rate * 100.0).round() / 100.0;
-    if tax > 0.0 {
-        lines.push(OptimisticPriceLine {
-            key: "tax".into(),
-            label: "Applicable taxes".into(),
-            detail: None,
-            amount: tax,
-        });
+            tax = (taxable_subtotal * (previous_tax / previous_taxable) * 100.0).round() / 100.0;
+            if tax > 0.0 {
+                lines.push(OptimisticPriceLine {
+                    key: "tax".into(),
+                    label: "Applicable taxes".into(),
+                    detail: None,
+                    amount: tax,
+                });
+            }
+        }
     }
 
     Some(OptimisticPrice {
@@ -815,6 +922,12 @@ pub(crate) fn UnifiedBookingOverlay(
     let initial_pending_payment =
         api::load_sensitive_json::<api::CreatedBooking>(SAVED_PENDING_PAYMENT)
             .filter(|created| created.client_secret.is_some() && !created.access_token.is_empty());
+    let initial_locked_quote =
+        api::load_json::<api::QuoteResponse>("vl_active_quote").filter(|quote| {
+            initial_pending_payment
+                .as_ref()
+                .is_some_and(|created| quote_matches_booking(quote, &created.booking))
+        });
     let has_pending_payment = initial_pending_payment.is_some();
     use_effect(move || {
         if !has_pending_payment && !resumed_booking {
@@ -832,6 +945,12 @@ pub(crate) fn UnifiedBookingOverlay(
         .as_ref()
         .map(|draft| draft.rental_slug.clone())
         .filter(|slug| !slug.is_empty())
+        .or_else(|| {
+            initial_locked_quote
+                .as_ref()
+                .map(|quote| quote.quote.rental_slug.clone())
+                .filter(|slug| !slug.is_empty())
+        })
         .or(initial_rental_slug)
         .unwrap_or_default();
     let resumed_initial_step = if resumed_booking { 5 } else { initial_step };
@@ -848,7 +967,7 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut saved_addresses =
         use_signal(|| api::load_json::<Vec<String>>(SAVED_DELIVERY_ADDRESSES).unwrap_or_default());
     let mut addon_keys = use_signal(move || resumed_addons);
-    let mut quote = use_signal(|| None::<api::QuoteResponse>);
+    let mut quote = use_signal(move || initial_locked_quote);
     let mut quote_busy = use_signal(|| false);
     let mut quote_error = use_signal(String::new);
     let mut addon_notice = use_signal(String::new);
@@ -966,7 +1085,7 @@ pub(crate) fn UnifiedBookingOverlay(
     });
 
     use_effect(move || {
-        let _attempt = *payment_attempt_nonce.read();
+        let attempt = *payment_attempt_nonce.read();
         let pending = pending_payment.read().clone();
         let overlay_open = *payment_overlay_open.read();
         let config = payment_config.read().clone();
@@ -988,7 +1107,12 @@ pub(crate) fn UnifiedBookingOverlay(
         }
         payment_phase.set("checking".into());
         spawn(async move {
-            match api::booking_status(&created.booking.booking_id, &created.access_token).await {
+            let status_result =
+                api::booking_status(&created.booking.booking_id, &created.access_token).await;
+            if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                return;
+            }
+            match status_result {
                 Ok(status) if status.confirmed || status.status == "confirmed" => {
                     let mut confirmed = created.clone();
                     confirmed.booking.status = status.status;
@@ -1023,6 +1147,10 @@ pub(crate) fn UnifiedBookingOverlay(
                     return;
                 }
                 Ok(_) | Err(_) => {}
+            }
+
+            if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                return;
             }
 
             let config = match (availability, config) {
@@ -1060,8 +1188,19 @@ pub(crate) fn UnifiedBookingOverlay(
                 serde_json::to_string(&client_secret).unwrap_or_else(|_| "\"\"".into());
             let script = embedded_checkout_script(&publishable_key, &client_secret);
             match document::eval(&script).await {
-                Ok(_) => payment_phase.set("checkout".into()),
+                Ok(_)
+                    if *payment_attempt_nonce.peek() == attempt && *payment_overlay_open.peek() =>
+                {
+                    payment_phase.set("checkout".into())
+                }
+                Ok(_) => {
+                    document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
+                    return;
+                }
                 Err(_) => {
+                    if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                        return;
+                    }
                     payment_phase.set("error".into());
                     booking_error.set(
                         "Secure test checkout could not load. Keep this window open and try again."
@@ -1073,6 +1212,9 @@ pub(crate) fn UnifiedBookingOverlay(
 
             let mut submitted = false;
             for _ in 0..800_u16 {
+                if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                    return;
+                }
                 let checkout_is_mounted = document::eval(
                     "return Boolean(document.getElementById('vl-embedded-checkout'));",
                 )
@@ -1105,8 +1247,15 @@ pub(crate) fn UnifiedBookingOverlay(
 
             payment_phase.set("confirming".into());
             for _ in 0..120_u16 {
-                match api::booking_status(&created.booking.booking_id, &created.access_token).await
-                {
+                if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                    return;
+                }
+                let status_result =
+                    api::booking_status(&created.booking.booking_id, &created.access_token).await;
+                if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                    return;
+                }
+                match status_result {
                     Ok(status) if status.confirmed || status.status == "confirmed" => {
                         let mut confirmed = created.clone();
                         confirmed.booking.status = status.status;
@@ -1302,6 +1451,22 @@ pub(crate) fn UnifiedBookingOverlay(
         .as_ref()
         .and_then(|matches| matches.result.as_ref().err())
         .cloned();
+    let rental_choice_values = displayed_rental_choices(
+        &rental_values,
+        available_rental_values.as_deref(),
+        trip_ready,
+    )
+    .to_vec();
+    let rental_choices_loading = if trip_ready {
+        current_dated_matches.is_none() && available_rentals_error.is_none()
+    } else {
+        all_rentals.read().is_none()
+    };
+    let rental_choices_error = if trip_ready {
+        available_rentals_error.clone()
+    } else {
+        all_rentals_error.clone()
+    };
     let details = rental_details
         .read()
         .as_ref()
@@ -1494,6 +1659,10 @@ pub(crate) fn UnifiedBookingOverlay(
 
     use_effect(move || {
         let _refresh = *quote_refresh_nonce.read();
+        if pending_payment.read().is_some() {
+            quote_busy.set(false);
+            return;
+        }
         let slug = selected_slug.read().clone();
         let start = *starts_on.read();
         let end = *ends_on.read();
@@ -1550,14 +1719,24 @@ pub(crate) fn UnifiedBookingOverlay(
             return;
         }
         closing.set(true);
+        let next_attempt = payment_attempt_nonce().wrapping_add(1);
+        payment_attempt_nonce.set(next_attempt);
         document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
         let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 180));").await;
         on_close.call(());
     };
+    let mut close_payment_overlay = move || {
+        let next_attempt = payment_attempt_nonce().wrapping_add(1);
+        payment_attempt_nonce.set(next_attempt);
+        document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
+        payment_overlay_open.set(false);
+        payment_phase.set("idle".into());
+    };
 
+    let selected_name_for_booking = selected_name.clone();
     rsx! {
         div { class: if *closing.read() { "ub-backdrop is-closing" } else { "ub-backdrop" }, onclick: move |_| close_overlay(),
-            div { class: "ub-shell", role: "dialog", aria_modal: "true", aria_label: "Complete your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| async move { if event.key() == Key::Escape { event.stop_propagation(); close_overlay().await; } },
+            div { class: "ub-shell", role: "dialog", aria_modal: "true", aria_label: "Complete your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| { if event.key() == Key::Escape { event.stop_propagation(); spawn(async move { close_overlay().await; }); } },
                 header { class: "ub-head",
                     div { div { class: "ub-kicker", "ONE-PAGE RV BOOKING" } h2 { "Build your Okanagan stay" } p { "Choose everything here. Completed sections fold into a clear summary." } }
                     button { class: "ub-close", r#type: "button", aria_label: "Close booking", onclick: move |_| close_overlay(), Icon { name: "x", size: 22, color: "var(--vl-ink)" } }
@@ -1639,7 +1818,7 @@ pub(crate) fn UnifiedBookingOverlay(
                             div { class: "ub-step-content",
                                 div { class: "ub-rv-toolbar",
                                     p { class: "ub-choice-guidance",
-                                        if trip_ready { "All models are shown. Available RVs continue with these dates; any booked RV opens its calendar for new dates." }
+                                        if trip_ready { "Only RVs available for your selected dates are shown." }
                                         else { "Choose any RV first to see its live calendar, or choose dates first." }
                                     }
                                     div { class: "ub-rv-guests", role: "group", aria_label: "Number of guests",
@@ -1649,13 +1828,24 @@ pub(crate) fn UnifiedBookingOverlay(
                                         button { r#type: "button", aria_label: "Add one guest", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" }
                                     }
                                 }
-                                if all_rentals_error.is_some() { p { class: "ub-error", "RV models could not be loaded. Check your connection and try again." } }
-                                else if all_rentals.read().is_none() { p { class: "ub-muted", "Loading RV models…" } }
-                                else if rental_values.is_empty() { p { class: "ub-muted", "No RV fits this group size. Reduce the guest count to see available models." } }
+                                if rental_choices_error.is_some() {
+                                    p { class: "ub-error",
+                                        if trip_ready { "Live availability could not be checked. Try again or choose different dates." }
+                                        else { "RV models could not be loaded. Check your connection and try again." }
+                                    }
+                                }
+                                else if rental_choices_loading { p { class: "ub-muted", if trip_ready { "Checking live availability…" } else { "Loading RV models…" } } }
+                                else if rental_choice_values.is_empty() && trip_ready {
+                                    div { class: "ub-rv-empty",
+                                        strong { "No RV is available for these dates" }
+                                        p { "Choose another date range to see bookable models." }
+                                        button { class: "ub-primary", r#type: "button", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, "Choose new dates" }
+                                    }
+                                }
+                                else if rental_choice_values.is_empty() { p { class: "ub-muted", "No RV fits this group size. Reduce the guest count to see available models." } }
                                 else {
-                                    if available_rentals_error.is_some() { p { class: "ub-error", "Live date matching is temporarily unavailable. Choose a model to open its calendar." } }
                                     div { class: "ub-rv-grid",
-                                        for rental in rental_values.clone() {
+                                        for rental in rental_choice_values.clone() {
                                             {
                                                 let available_for_dates = available_rental_values.as_ref().map(|values| values.iter().any(|value| value.slug == rental.slug));
                                                 rsx! { RentalChoice { key: "rv-{rental.slug}", rental: rental.clone(), selected: *selected_slug.read() == rental.slug, available_for_dates, on_select: move |slug| {
@@ -1838,7 +2028,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                     if payment_availability == api::PaymentAvailability::Loading { p { class: "ub-muted", role: "status", "Checking whether this environment uses Stripe test payments…" } }
                                     if payment_availability == api::PaymentAvailability::Blocked { p { class: "ub-error", role: "alert", if payment_config_error.read().is_empty() { "Checkout is blocked because the returned Stripe mode, key, or account is not the approved test configuration." } else { "Payment configuration could not be verified. Retry before creating a reservation." } } button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); }, "Retry payment configuration" } }
                                     if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
-                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nDelivery address: {}\nDelivery distance: {} km one way\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim(), delivery_address.read(), delivery_km.read().clone().unwrap_or_default()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(created) => { let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); payment_overlay_open.set(true); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_sensitive_json("vl_last_booking", &created); let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &created); let return_slug = if created.booking.rental_slug.is_empty() { selected_slug.peek().clone() } else { created.booking.rental_slug.clone() }; navigator.push(Route::RvDetail { slug: return_slug }); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
+                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); let rental_slug = selected_slug.read().clone(); let rental_name = selected_name_for_booking.clone(); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nDelivery address: {}\nDelivery distance: {} km one way\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim(), delivery_address.read(), delivery_km.read().clone().unwrap_or_default()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(mut created) => { fill_booking_rental(&mut created.booking, rental_slug, rental_name); let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); payment_overlay_open.set(true); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_sensitive_json("vl_last_booking", &created); let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &created); let return_slug = if created.booking.rental_slug.is_empty() { selected_slug.peek().clone() } else { created.booking.rental_slug.clone() }; navigator.push(Route::RvDetail { slug: return_slug }); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
                                 } }
                             }
                         }
@@ -1852,10 +2042,14 @@ pub(crate) fn UnifiedBookingOverlay(
                             small { if payment_locked { "Locked" } else { "Edit dates" } }
                         }
                         if let Some(created) = pending_payment.read().as_ref() { div { class: "ub-price-lines ub-locked-price",
-                            div { span { "Booked RV" } b { "{created.booking.rental_name}" } }
-                            div { class: "total", span { "Trip price CAD" } b { "{created.booking.currency} ${created.booking.total}" } }
-                            div { class: "due-now", span { if created.booking.amount_due_now == created.booking.total { "Due now · 100%" } else { "Due now · 30%" } } b { "{created.booking.currency} ${created.booking.amount_due_now}" } }
-                            small { "Stripe Checkout is created from this same backend amount. Dates, RV and extras cannot change while this reservation is active." }
+                            div { span { "Booked RV" } b { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } } }
+                            if let Some(value) = quote.read().as_ref().filter(|value| quote_matches_booking(value, &created.booking)) {
+                                for item in value.items.iter().filter(|item| item.item_type != "deposit") { div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } }
+                            }
+                            div { class: "total", span { "Full trip price" } b { "{created.booking.currency} ${created.booking.total}" } }
+                            div { class: "due-now", span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } b { "{created.booking.currency} ${created.booking.amount_due_now}" } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total}" } }
+                            if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "remaining-balance", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } b { "{created.booking.currency} ${remaining}" } } }
+                            small { "The Stripe Checkout amount is locked to this booking. Closing and reopening the window cannot create a second reservation." }
                         } } else if *quote_busy.read() {
                             if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
                         } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
@@ -1869,38 +2063,47 @@ pub(crate) fn UnifiedBookingOverlay(
                         }
                         if !quote_error.read().is_empty() { p { class: "ub-error", "{quote_error}" } }
                         if !addon_notice.read().is_empty() { p { class: "ub-notice", "{addon_notice}" } }
-                        div { class: "ub-summary-trip", span { "Dates" } b { if let Some(created) = pending_payment.read().as_ref() { "{display_booking_date(&created.booking.starts_at)} → {display_booking_date(&created.booking.ends_at)}" } else if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())}" } else { "Not selected" } } span { "RV" } b { if let Some(created) = pending_payment.read().as_ref() { "{created.booking.rental_name}" } else { "{selected_name}" } } span { "Price" } b { if payment_locked { "Locked to booking" } else if address_ready { "Calculated" } else { "Required" } } }
+                        div { class: "ub-summary-trip", span { "Dates" } b { if let Some(created) = pending_payment.read().as_ref() { "{display_booking_date(&created.booking.starts_at)} → {display_booking_date(&created.booking.ends_at)}" } else if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())}" } else { "Not selected" } } span { "RV" } b { if let Some(created) = pending_payment.read().as_ref() { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } } else { "{selected_name}" } } span { "Price" } b { if payment_locked { "Locked to booking" } else if address_ready { "Calculated" } else { "Required" } } }
                         div { class: "ub-test-note", Icon { name: "shield-check", size: 17, color: "var(--vl-forest)" } span { match payment_availability { api::PaymentAvailability::TestReady => "Stripe test mode: test cards only. Live payments remain disabled.", api::PaymentAvailability::Disabled => "Test mode: no card is collected and no charge is made.", api::PaymentAvailability::Loading => "Checking the test payment configuration…", api::PaymentAvailability::Blocked => "Payment configuration is blocked until the approved Stripe test account is verified.", } } }
                     }
                 }
             }
             if let Some(created) = pending_payment.read().as_ref().filter(|_| *payment_overlay_open.read()) {
-                div { class: "ub-payment-layer", onclick: move |event| { event.stop_propagation(); document::eval(UNMOUNT_EMBEDDED_CHECKOUT); payment_overlay_open.set(false); payment_phase.set("idle".into()); },
-                    section { class: "ub-payment-dialog", role: "dialog", aria_modal: "true", aria_label: "Secure payment for your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); document::eval(UNMOUNT_EMBEDDED_CHECKOUT); payment_overlay_open.set(false); payment_phase.set("idle".into()); },
+                div { class: "ub-payment-layer", onclick: move |event| { event.stop_propagation(); close_payment_overlay(); },
+                    section { class: "ub-payment-dialog", role: "dialog", aria_modal: "true", aria_label: "Secure payment for your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); close_payment_overlay(); },
                         header { class: "ub-payment-dialog-head",
                             div {
                                 span { class: "ub-kicker", "SECURE TEST PAYMENT" }
                                 h2 { "Complete your reservation" }
-                                p { "{created.booking.booking_number} · {created.booking.rental_name}" }
+                                p { "{created.booking.booking_number} · " if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } }
                             }
                             div { class: "ub-payment-dialog-actions",
                                 span { "TEST MODE" }
-                                button { r#type: "button", aria_label: "Close secure payment", onclick: move |_| { document::eval(UNMOUNT_EMBEDDED_CHECKOUT); payment_overlay_open.set(false); payment_phase.set("idle".into()); }, Icon { name: "x", size: 21, color: "var(--vl-ink)" } }
+                                button { r#type: "button", aria_label: "Close secure payment", onclick: move |_| close_payment_overlay(), Icon { name: "x", size: 21, color: "var(--vl-ink)" } }
                             }
                         }
-                        div { class: "ub-payment-dialog-summary",
-                            span { "Due now" }
-                            strong { "{created.booking.currency} ${created.booking.amount_due_now}" }
-                            small { if created.booking.amount_due_now == created.booking.total { "Full locked trip price: {created.booking.currency} ${created.booking.total}. Your booking stays reserved if you close and reopen this window." } else { "30% of the locked trip price {created.booking.currency} ${created.booking.total}. Your booking stays reserved if you close and reopen this window." } }
-                        }
-                        div { class: "ub-payment-dialog-body",
-                            if payment_phase.read().as_str() == "checking" { p { class: "ub-stripe-state", "Checking webhook-backed booking status…" } }
-                            if payment_phase.read().as_str() == "mounting" { p { class: "ub-stripe-state", "Loading secure Checkout…" } }
-                            if payment_availability == api::PaymentAvailability::TestReady { div { id: "vl-embedded-checkout", class: "ub-embedded-checkout", aria_label: "Stripe test checkout" } }
-                            if matches!(payment_phase.read().as_str(), "confirming" | "delayed") { div { class: "ub-confirming-payment", Icon { name: "loader-circle", size: 17, color: "var(--vl-forest)" } span { strong { "Confirming payment…" } small { "We return to this RV only after the backend confirms the Stripe webhook. Do not submit a second payment." } } } }
-                            if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
-                            if matches!(payment_phase.read().as_str(), "error" | "blocked" | "delayed") { button { class: "ub-primary", r#type: "button", onclick: move |_| { booking_error.set(String::new()); payment_phase.set("idle".into()); let next = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next); }, "Check status and reopen Checkout" } }
-                            if payment_availability == api::PaymentAvailability::Blocked { button { class: "ub-payment-secondary", r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); payment_phase.set("idle".into()); }, "Retry test configuration" } }
+                        div { class: "ub-payment-dialog-content",
+                            div { class: "ub-payment-dialog-body",
+                                div { class: "ub-payment-dialog-summary",
+                                    span { "DUE NOW · {booking_payment_percent(&created.booking).unwrap_or(0)}% OF TRIP PRICE" }
+                                    strong { "{created.booking.currency} ${created.booking.amount_due_now}" }
+                                    small { if booking_payment_percent(&created.booking) == Some(100) { "The full trip price is charged today." } else { "The remaining 70% is not charged today." } }
+                                }
+                                if payment_phase.read().as_str() == "checking" { p { class: "ub-stripe-state", "Checking webhook-backed booking status…" } }
+                                if payment_phase.read().as_str() == "mounting" { p { class: "ub-stripe-state", "Loading secure Checkout…" } }
+                                if payment_availability == api::PaymentAvailability::TestReady { div { id: "vl-embedded-checkout", class: "ub-embedded-checkout", aria_label: "Stripe test checkout" } }
+                                if matches!(payment_phase.read().as_str(), "confirming" | "delayed") { div { class: "ub-confirming-payment", Icon { name: "loader-circle", size: 17, color: "var(--vl-forest)" } span { strong { "Confirming payment…" } small { "We return to this RV only after the backend confirms the Stripe webhook. Do not submit a second payment." } } } }
+                                if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
+                                if matches!(payment_phase.read().as_str(), "error" | "blocked" | "delayed") { button { class: "ub-primary", r#type: "button", onclick: move |_| { booking_error.set(String::new()); payment_phase.set("idle".into()); let next = payment_attempt_nonce().wrapping_add(1); payment_attempt_nonce.set(next); }, "Check status and reopen Checkout" } }
+                                if payment_availability == api::PaymentAvailability::Blocked { button { class: "ub-payment-secondary", r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); payment_phase.set("idle".into()); }, "Retry test configuration" } }
+                            }
+                            aside { class: "ub-payment-price-summary", aria_label: "Payment schedule",
+                                h3 { "What you will pay" }
+                                div { class: "ub-payment-price-row is-total", span { "Full trip price" } strong { "{created.booking.currency} ${created.booking.total}" } }
+                                div { class: "ub-payment-price-now", div { span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } strong { "{created.booking.currency} ${created.booking.amount_due_now}" } } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total} — charged today" } }
+                                if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "ub-payment-price-row", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } strong { "{created.booking.currency} ${remaining}" } } }
+                                div { class: "ub-payment-price-row is-deposit", span { "Refundable damage deposit" small { "Separate payment {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. Not included in the trip price." } } strong { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                            }
                         }
                     }
                 }
@@ -2284,9 +2487,9 @@ mod saved_address_tests {
                 units: 4,
                 currency: "CAD".into(),
                 subtotal: "847.00".into(),
-                tax_total: "77.64".into(),
+                tax_total: "87.64".into(),
                 refundable_deposit: "1000.00".into(),
-                total: "924.64".into(),
+                total: "934.64".into(),
                 expires_at: String::new(),
             },
             items: vec![
@@ -2324,11 +2527,19 @@ mod saved_address_tests {
                 },
                 api::QuoteItem {
                     item_type: "tax".into(),
-                    item_key: "combined_tax".into(),
-                    label: "Applicable taxes".into(),
+                    item_key: "tax_primary".into(),
+                    label: "GST (5%)".into(),
                     quantity: "1".into(),
-                    unit_price: "77.64".into(),
-                    amount: "77.64".into(),
+                    unit_price: "42.35".into(),
+                    amount: "42.35".into(),
+                },
+                api::QuoteItem {
+                    item_type: "tax".into(),
+                    item_key: "tax_secondary".into(),
+                    label: "PST (7%)".into(),
+                    quantity: "1".into(),
+                    unit_price: "45.29".into(),
+                    amount: "45.29".into(),
                 },
             ],
         };
@@ -2356,6 +2567,15 @@ mod saved_address_tests {
             .lines
             .iter()
             .any(|line| line.label == "Portable BBQ"));
+        assert_eq!(without_addon.total, 934.64);
+        assert!(without_addon
+            .lines
+            .iter()
+            .any(|line| line.label == "GST (5%)"));
+        assert!(without_addon
+            .lines
+            .iter()
+            .any(|line| line.label == "PST (7%)"));
         assert_eq!(with_addon.total - without_addon.total, 56.0);
     }
 
@@ -2387,6 +2607,8 @@ mod saved_address_tests {
         assert!(script.trim_start().starts_with("return await (async () =>"));
         assert!(script.contains("window.Stripe(\"pk_test_example\")"));
         assert!(script.contains("clientSecret: \"secret_example\""));
+        assert!(script.contains("window.__vlEmbeddedCheckout.destroy()"));
+        assert!(UNMOUNT_EMBEDDED_CHECKOUT.contains(".destroy()"));
     }
 
     #[test]
@@ -2394,6 +2616,7 @@ mod saved_address_tests {
         let mut booking = api::Booking {
             booking_id: "booking-1".into(),
             booking_number: "VL-1".into(),
+            quote_id: "quote-1".into(),
             rental_slug: "test-rv".into(),
             rental_name: "Test RV".into(),
             status: "pending_payment".into(),
@@ -2403,6 +2626,8 @@ mod saved_address_tests {
             currency: "CAD".into(),
             total: "1406.24".into(),
             amount_due_now: "421.87".into(),
+            balance_due_at: None,
+            payment_expires_at: None,
             review_id: None,
             can_review: false,
             review_opportunity_used: false,
@@ -2416,11 +2641,84 @@ mod saved_address_tests {
     }
 
     #[test]
+    fn payment_schedule_uses_cents_and_rejects_a_stale_saved_quote() {
+        let booking = api::Booking {
+            booking_id: "booking-1".into(),
+            booking_number: "VL-1".into(),
+            quote_id: "quote-1".into(),
+            rental_slug: "test-rv".into(),
+            rental_name: "Test RV".into(),
+            status: "pending_payment".into(),
+            payment_status: "unpaid".into(),
+            starts_at: "2030-08-30T21:00:00Z".into(),
+            ends_at: "2030-09-03T18:00:00Z".into(),
+            currency: "CAD".into(),
+            total: "1965.44".into(),
+            amount_due_now: "589.63".into(),
+            balance_due_at: Some("2030-07-31T21:00:00Z".into()),
+            payment_expires_at: None,
+            review_id: None,
+            can_review: false,
+            review_opportunity_used: false,
+        };
+        let mut quote = api::QuoteResponse {
+            quote: api::Quote {
+                quote_id: "quote-1".into(),
+                rental_slug: "test-rv".into(),
+                starts_at: booking.starts_at.clone(),
+                ends_at: booking.ends_at.clone(),
+                guests: 2,
+                units: 4,
+                currency: "CAD".into(),
+                subtotal: "1787.00".into(),
+                tax_total: "178.44".into(),
+                refundable_deposit: "1000.00".into(),
+                total: "1965.44".into(),
+                expires_at: String::new(),
+            },
+            items: Vec::new(),
+        };
+
+        assert_eq!(booking_payment_percent(&booking), Some(30));
+        assert_eq!(
+            booking_remaining_balance(&booking).as_deref(),
+            Some("1375.81")
+        );
+        assert!(quote_matches_booking(&quote, &booking));
+        quote.quote.total = "1965.45".into();
+        assert!(!quote_matches_booking(&quote, &booking));
+    }
+
+    #[test]
+    fn payment_amount_parser_accepts_only_plain_non_negative_cad_values() {
+        assert_eq!(money_cents("1965.44"), Some(196_544));
+        assert_eq!(money_cents("1.2"), Some(120));
+        assert_eq!(money_cents("1"), Some(100));
+        assert_eq!(money_cents("1e3"), None);
+        assert_eq!(money_cents("-1.00"), None);
+        assert_eq!(money_cents("1.001"), None);
+        assert_eq!(money_cents("NaN"), None);
+    }
+
+    #[test]
     fn rental_selection_keeps_dates_only_when_server_marks_it_available() {
         assert!(rental_selection_keeps_dates(true, Some(true)));
         assert!(!rental_selection_keeps_dates(true, Some(false)));
         assert!(!rental_selection_keeps_dates(true, None));
         assert!(!rental_selection_keeps_dates(false, Some(true)));
+    }
+
+    #[test]
+    fn selected_dates_hide_rentals_missing_from_live_availability() {
+        let all = ["available", "booked"];
+        let available = ["available"];
+
+        assert_eq!(
+            displayed_rental_choices(&all, Some(&available), true),
+            available
+        );
+        assert_eq!(displayed_rental_choices(&all, Some(&available), false), all);
+        assert!(displayed_rental_choices(&all, None, true).is_empty());
     }
 
     #[test]

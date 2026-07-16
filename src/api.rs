@@ -1171,6 +1171,8 @@ pub struct Booking {
     pub booking_id: String,
     pub booking_number: String,
     #[serde(default)]
+    pub quote_id: String,
+    #[serde(default)]
     pub rental_slug: String,
     #[serde(default)]
     pub rental_name: String,
@@ -1181,6 +1183,10 @@ pub struct Booking {
     pub currency: String,
     pub total: String,
     pub amount_due_now: String,
+    #[serde(default)]
+    pub balance_due_at: Option<String>,
+    #[serde(default)]
+    pub payment_expires_at: Option<String>,
     #[serde(default)]
     pub review_id: Option<String>,
     #[serde(default)]

@@ -1,8 +1,6 @@
 //! Страница RV Detail / Booking — Pencil-фреймы `l3JikE` (desktop) и `wjWTt` (mobile).
 
-#[cfg(test)]
-use chrono::{DateTime, Duration, LocalResult, TimeZone};
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, LocalResult, Months, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
@@ -114,6 +112,7 @@ fn DynamicRvDetail(
                 } else {
                     div { class: "rvd-highlights", for feature in highlights { div { key: "{feature.feature_id}", class: "rvd-hl", ApiIcon { name: feature.icon_name.clone(), size: 20 } div { class: "rvd-hl-t", "{feature.label}" } div { class: "rvd-hl-d", "{feature.description}" } } } }
                 }
+                InlineAvailabilityCalendar { rental: rental.clone(), starts_on, ends_on }
                 div { class: "rvd-sec", h2 { class: "rvd-h", "About this RV" } p { class: "rvd-p", "{rental.description}" } }
                 div { class: "rvd-sec", h2 { class: "rvd-h", "What this RV offers" }
                     if amenities.is_empty() { p { class: "rvd-p", "Amenities are being updated. Contact us for the complete equipment list." } }
@@ -287,11 +286,24 @@ fn DynamicBookingCard(
 ) -> Element {
     let mut booking_open = use_signal(|| false);
     let mut booking_step = use_signal(|| 1_u8);
-    let planner_starts_on = use_signal(|| selected_date(&starts_on));
-    let planner_ends_on = use_signal(|| selected_date(&ends_on));
+    let mut planner_starts_on = use_signal(|| selected_date(&starts_on));
+    let mut planner_ends_on = use_signal(|| selected_date(&ends_on));
     let planner_guests = use_signal(|| 1_i32);
     let planner_location = use_signal(|| "Kelowna, BC".to_string());
     let planner_radius = use_signal(|| 150_i32);
+    use_effect(move || {
+        if *booking_open.read() {
+            return;
+        }
+        let page_start = selected_date(&starts_on);
+        let page_end = selected_date(&ends_on);
+        if *planner_starts_on.peek() != page_start {
+            planner_starts_on.set(page_start);
+        }
+        if *planner_ends_on.peek() != page_end {
+            planner_ends_on.set(page_end);
+        }
+    });
     let nights = selected_date(&starts_on)
         .zip(selected_date(&ends_on))
         .map(|(start, end)| (end - start).num_days())
@@ -779,18 +791,15 @@ fn BookingCard(
 
 // ===== Live availability calendar =====
 
-#[cfg(any())]
 fn month_start(date: NaiveDate) -> NaiveDate {
     date.with_day(1).expect("valid first day of month")
 }
 
-#[cfg(any())]
 fn add_months(date: NaiveDate, count: u32) -> NaiveDate {
     date.checked_add_months(Months::new(count))
         .expect("calendar range is valid")
 }
 
-#[cfg(any())]
 fn calendar_cells(month: NaiveDate) -> Vec<Option<NaiveDate>> {
     let mut cells = vec![None; month.weekday().num_days_from_sunday() as usize];
     let next = add_months(month, 1);
@@ -805,10 +814,8 @@ fn calendar_cells(month: NaiveDate) -> Vec<Option<NaiveDate>> {
     cells
 }
 
-#[cfg(test)]
 type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
 
-#[cfg(any())]
 fn unavailable_ranges(value: &api::AvailabilityResponse) -> Vec<UnavailableRange> {
     let mut ranges = Vec::new();
     for interval in &value.unavailable {
@@ -823,7 +830,6 @@ fn unavailable_ranges(value: &api::AvailabilityResponse) -> Vec<UnavailableRange
     ranges
 }
 
-#[cfg(test)]
 fn local_moment(day: NaiveDate, hour: u32) -> Option<DateTime<Utc>> {
     let naive = day.and_hms_opt(hour, 0, 0)?;
     match Vancouver.from_local_datetime(&naive) {
@@ -832,7 +838,6 @@ fn local_moment(day: NaiveDate, hour: u32) -> Option<DateTime<Utc>> {
     }
 }
 
-#[cfg(test)]
 fn range_is_available(
     start: DateTime<Utc>,
     end: DateTime<Utc>,
@@ -843,7 +848,6 @@ fn range_is_available(
         .all(|(blocked_start, blocked_end)| *blocked_start >= end || *blocked_end <= start)
 }
 
-#[cfg(test)]
 fn stay_is_available(
     starts_on: NaiveDate,
     ends_on: NaiveDate,
@@ -855,7 +859,6 @@ fn stay_is_available(
     }
 }
 
-#[cfg(test)]
 fn minimum_stay_can_start(
     day: NaiveDate,
     minimum_nights: i64,
@@ -864,7 +867,6 @@ fn minimum_stay_can_start(
     stay_is_available(day, day + Duration::days(minimum_nights), unavailable)
 }
 
-#[cfg(test)]
 fn date_is_selectable(
     day: NaiveDate,
     selected_start: Option<NaiveDate>,
@@ -884,7 +886,6 @@ fn date_is_selectable(
     minimum_stay_can_start(day, minimum_nights, unavailable)
 }
 
-#[cfg(test)]
 fn next_date_selection(
     day: NaiveDate,
     selected_start: Option<NaiveDate>,
@@ -898,6 +899,191 @@ fn next_date_selection(
         (Some(day), None)
     } else {
         (selected_start, Some(day))
+    }
+}
+
+#[component]
+fn InlineAvailabilityCalendar(
+    rental: api::Rental,
+    mut starts_on: Signal<String>,
+    mut ends_on: Signal<String>,
+) -> Element {
+    let today = Utc::now().with_timezone(&Vancouver).date_naive();
+    let first_month = month_start(today);
+    let availability_starts_on = first_month.to_string();
+    let availability_ends_on = (add_months(first_month, 3) + Duration::days(3)).to_string();
+    let availability_slug = rental.slug.clone();
+    let availability = use_resource(move || {
+        let slug = availability_slug.clone();
+        let range_start = availability_starts_on.clone();
+        let range_end = availability_ends_on.clone();
+        async move { api::availability(&slug, &range_start, &range_end).await }
+    });
+    let response = availability
+        .read()
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned();
+    let availability_error = availability
+        .read()
+        .as_ref()
+        .and_then(|result| result.as_ref().err())
+        .cloned();
+    let availability_loaded = response.is_some();
+    let unavailable = response
+        .as_ref()
+        .map(unavailable_ranges)
+        .unwrap_or_default();
+    let minimum_nights = response
+        .as_ref()
+        .map(|value| value.minimum_nights.max(3))
+        .unwrap_or(3);
+    let selected_start = selected_date(&starts_on);
+    let selected_end = selected_date(&ends_on);
+    let selected_nights = selected_start
+        .zip(selected_end)
+        .map(|(start, end)| (end - start).num_days())
+        .unwrap_or(0);
+    let mut booking_open = use_signal(|| false);
+    let mut planner_starts_on = use_signal(move || selected_start);
+    let mut planner_ends_on = use_signal(move || selected_end);
+    let planner_guests = use_signal(|| 1_i32);
+    let planner_location = use_signal(|| "Kelowna, BC".to_string());
+    let planner_radius = use_signal(|| 150_i32);
+    let overlay_slug = rental.slug.clone();
+
+    rsx! {
+        section { class: "rvd-inline-availability", aria_label: "Live availability for {rental.name}",
+            div { class: "rvd-inline-availability-head",
+                div {
+                    h2 { class: "rvd-h", "Available dates" }
+                    p { "Choose delivery and return dates for the next three months." }
+                }
+                div { class: "rvd-inline-availability-legend", aria_label: "Calendar legend",
+                    span { i {} "Available" }
+                    span { class: "booked", i {} "Unavailable" }
+                }
+            }
+            if let Some(message) = availability_error.as_ref() {
+                p { class: "rvd-inline-availability-state is-error", role: "alert", "Live availability could not be loaded: {message}" }
+            } else if !availability_loaded {
+                p { class: "rvd-inline-availability-state", role: "status", "Loading live availability…" }
+            }
+            div { class: "rvd-inline-months",
+                for offset in 0..3_u32 {
+                    InlineAvailabilityMonth {
+                        key: "inline-month-{offset}",
+                        month: add_months(first_month, offset),
+                        today,
+                        availability_loaded,
+                        unavailable: unavailable.clone(),
+                        minimum_nights,
+                        selected_start,
+                        selected_end,
+                        on_select: move |day| {
+                            let current_start = selected_date(&starts_on);
+                            let current_end = selected_date(&ends_on);
+                            let (next_start, next_end) = next_date_selection(day, current_start, current_end);
+                            starts_on.set(next_start.map(|value| value.to_string()).unwrap_or_default());
+                            ends_on.set(next_end.map(|value| value.to_string()).unwrap_or_default());
+                            planner_starts_on.set(next_start);
+                            planner_ends_on.set(next_end);
+                            if next_start.is_some() && next_end.is_some() {
+                                booking_open.set(true);
+                            }
+                        },
+                    }
+                }
+            }
+            div { class: "rvd-inline-availability-foot", aria_live: "polite",
+                Icon { name: "calendar-check", size: 16, color: "var(--vl-forest)" }
+                if let Some(start) = selected_start {
+                    if let Some(end) = selected_end {
+                        span { "{start} → {end} · {selected_nights} nights" }
+                    } else {
+                        span { "Delivery {start} selected · choose a return date ({minimum_nights}+ nights)" }
+                    }
+                } else {
+                    span { "Select an available delivery date to begin" }
+                }
+            }
+        }
+        if *booking_open.read() {
+            UnifiedBookingOverlay {
+                location: planner_location,
+                radius: planner_radius,
+                starts_on: planner_starts_on,
+                ends_on: planner_ends_on,
+                guests: planner_guests,
+                initial_rental_slug: Some(overlay_slug),
+                initial_step: 3,
+                resume_after_auth: None,
+                on_search_change: move |_| {
+                    starts_on.set((*planner_starts_on.read()).map(|date| date.to_string()).unwrap_or_default());
+                    ends_on.set((*planner_ends_on.read()).map(|date| date.to_string()).unwrap_or_default());
+                    let search = api::CatalogSearchDraft {
+                        location: planner_location.read().clone(),
+                        radius_km: *planner_radius.read(),
+                        starts_on: (*planner_starts_on.read()).map(|date| date.to_string()),
+                        ends_on: (*planner_ends_on.read()).map(|date| date.to_string()),
+                        guests: *planner_guests.read(),
+                    };
+                    let _ = api::save_json("vl_catalog_search", &search);
+                },
+                on_close: move |_| booking_open.set(false),
+            }
+        }
+    }
+}
+
+#[component]
+fn InlineAvailabilityMonth(
+    month: NaiveDate,
+    today: NaiveDate,
+    availability_loaded: bool,
+    unavailable: Vec<UnavailableRange>,
+    minimum_nights: i64,
+    selected_start: Option<NaiveDate>,
+    selected_end: Option<NaiveDate>,
+    on_select: EventHandler<NaiveDate>,
+) -> Element {
+    let title = month.format("%B %Y").to_string();
+    rsx! {
+        div { class: "rvd-month rvd-inline-month",
+            div { class: "rvd-month-head", div { class: "rvd-month-t", "{title}" } }
+            div { class: "rvd-wd",
+                for (index, weekday) in ["S", "M", "T", "W", "T", "F", "S"].iter().enumerate() {
+                    div { key: "inline-weekday-{index}", "{weekday}" }
+                }
+            }
+            div { class: "rvd-days",
+                for (index, cell) in calendar_cells(month).into_iter().enumerate() {
+                    if let Some(day) = cell {
+                        {
+                            let valid_choice = date_is_selectable(day, selected_start, selected_end, minimum_nights, &unavailable);
+                            let disabled = !availability_loaded || day <= today || !valid_choice;
+                            let edge = selected_start == Some(day) || selected_end == Some(day);
+                            let in_stay = selected_start.zip(selected_end).is_some_and(|(start, end)| day > start && day < end);
+                            let class = if edge { "edge" } else if in_stay { "stay" } else if disabled { "booked" } else { "" };
+                            let aria_label = if disabled { format!("{} unavailable", day.format("%B %-d")) } else { format!("Select {}", day.format("%B %-d")) };
+                            rsx! {
+                                button {
+                                    key: "inline-day-{day}",
+                                    class: "rvd-day {class}",
+                                    r#type: "button",
+                                    disabled,
+                                    aria_label,
+                                    onclick: move |_| on_select.call(day),
+                                    div { class: "rvd-day-n", "{day.day()}" }
+                                }
+                            }
+                        }
+                    } else {
+                        div { key: "inline-blank-{index}", class: "rvd-day blank", aria_hidden: "true" }
+                    }
+                }
+            }
+        }
     }
 }
 
