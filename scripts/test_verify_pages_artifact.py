@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.verify_pages_artifact import verify_html
+from scripts.verify_pages_artifact import verify_artifact, verify_html
 
 
 HTML = """<!doctype html>
@@ -12,7 +12,11 @@ HTML = """<!doctype html>
 <head>
   <style id="vl-critical-shell"></style>
   <link rel="stylesheet" href="/viktor_rv_front/assets/main-dxhtest.css">
-  <script>const recovery = "vl-css-recovery";</script>
+  <script>
+    let localStylesheetFailed = false;
+    addEventListener("error", () => { localStylesheetFailed = true; });
+    const recovery = "vl-css-recovery";
+  </script>
 </head>
 <body><script src="/viktor_rv_front/assets/app-dxhtest.js"></script></body>
 </html>
@@ -46,6 +50,38 @@ class VerifyPagesArtifactTests(unittest.TestCase):
         root, html_path = self.make_artifact(":root{color:#17261c}")
         failures = verify_html(root, html_path)
         self.assertTrue(any("readiness marker" in failure for failure in failures))
+
+    def test_unpinned_external_asset_fails(self) -> None:
+        root, html_path = self.make_artifact()
+        html_path.write_text(
+            HTML.replace(
+                "</head>",
+                '<link rel="stylesheet" href="https://cdn.example.com/icons@latest/icons.css">\n</head>',
+            ),
+            encoding="utf-8",
+        )
+        failures = verify_html(root, html_path)
+        self.assertTrue(any("pin external asset versions" in failure for failure in failures))
+
+    def test_incomplete_recovery_script_fails(self) -> None:
+        root, html_path = self.make_artifact()
+        html_path.write_text(
+            HTML.replace("localStylesheetFailed", "stylesheetFailure"),
+            encoding="utf-8",
+        )
+        failures = verify_html(root, html_path)
+        self.assertTrue(any("fallback or recovery" in failure for failure in failures))
+
+    def test_more_than_two_asset_generations_fails(self) -> None:
+        root, html_path = self.make_artifact()
+        (root / "404.html").write_text(html_path.read_text(encoding="utf-8"), encoding="utf-8")
+        for generation in ("111111", "222222", "333333"):
+            (root / "assets" / f"main-dxh{generation}.css").write_text(
+                ":root{--vl-css-ready:1}",
+                encoding="utf-8",
+            )
+        failures = verify_artifact(root)
+        self.assertTrue(any("more than two generations" in failure for failure in failures))
 
 
 if __name__ == "__main__":

@@ -51,6 +51,9 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
     collector = AssetCollector()
     collector.feed(html)
 
+    if any("@latest" in url for url in collector.urls):
+        failures.append(f"{html_path.name} must pin external asset versions")
+
     for url in sorted(collector.urls):
         path = artifact_path(root, url)
         if path is not None and not path.is_file():
@@ -66,8 +69,44 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
             if not re.search(r"--vl-css-ready\s*:\s*1", css):
                 failures.append(f"{main_path.name} is missing the CSS readiness marker")
 
-    if 'id="vl-critical-shell"' not in html or "vl-css-recovery" not in html:
+    recovery_markers = (
+        'id="vl-critical-shell"',
+        "vl-css-recovery",
+        "localStylesheetFailed",
+        'addEventListener("error"',
+    )
+    if any(marker not in html for marker in recovery_markers):
         failures.append(f"{html_path.name} is missing CSS fallback or recovery markup")
+
+    return failures
+
+
+def verify_artifact(root: Path) -> list[str]:
+    failures: list[str] = []
+    for name in ("index.html", "404.html"):
+        path = root / name
+        if not path.is_file():
+            failures.append(f"missing {name}")
+        else:
+            failures.extend(verify_html(root, path))
+
+    generations: dict[tuple[str, str], list[str]] = {}
+    assets = root / "assets"
+    if assets.is_dir():
+        for path in assets.rglob("*"):
+            if not path.is_file():
+                continue
+            match = re.match(r"^(.+)-dxh[0-9a-f]+\.([^.]+)$", path.name)
+            if match:
+                key = (match.group(1), match.group(2))
+                generations.setdefault(key, []).append(path.name)
+
+    for (stem, suffix), names in sorted(generations.items()):
+        if len(names) > 2:
+            failures.append(
+                f"assets contain more than two generations of {stem}.{suffix}: "
+                + ", ".join(sorted(names))
+            )
 
     return failures
 
@@ -78,13 +117,7 @@ def main() -> int:
         return 2
 
     root = Path(sys.argv[1]).resolve()
-    failures: list[str] = []
-    for name in ("index.html", "404.html"):
-        path = root / name
-        if not path.is_file():
-            failures.append(f"missing {name}")
-        else:
-            failures.extend(verify_html(root, path))
+    failures = verify_artifact(root)
 
     if failures:
         print("GitHub Pages artifact verification failed:", file=sys.stderr)

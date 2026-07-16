@@ -58,6 +58,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version 0.7.9 --locked
+      - name: Start with a fresh Pages output directory
+        run: |
+          output=target/dx/viktor_rv_front/release/web/public
+          if [ -d "$output" ]; then
+            mv "$output" "$RUNNER_TEMP/viktor-rv-pages-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
       - name: Build site
         env:
           VL_FRONTEND_BASE_URL: https://${{ github.repository_owner }}.github.io/viktor_rv_front
@@ -66,10 +72,15 @@ jobs:
         run: |
           output=target/dx/viktor_rv_front/release/web/public/assets
           if [ -d .pages-assets-cache ]; then
-            mv .pages-assets-cache .pages-assets-previous
+            if [ -f .pages-assets-cache/.vl-pages-generation-v1 ]; then
+              mv .pages-assets-cache .pages-assets-previous
+            else
+              mv .pages-assets-cache "$RUNNER_TEMP/viktor-rv-unversioned-assets-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            fi
           fi
           mkdir -p .pages-assets-cache
           cp -a "$output/." .pages-assets-cache/
+          touch .pages-assets-cache/.vl-pages-generation-v1
           if [ -d .pages-assets-previous ]; then
             cp -a -n .pages-assets-previous/. "$output/"
           fi
