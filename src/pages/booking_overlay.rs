@@ -1617,11 +1617,13 @@ pub(crate) fn UnifiedBookingOverlay(
                                                 let current = *visible_month.read();
                                                 visible_month.set(add_months(current, 1));
                                             }
-                                            -1 if *visible_month.read() > initial_month => {
+                                            -1 => {
                                                 event.prevent_default();
                                                 let current = *visible_month.read();
-                                                if let Some(previous) = current.checked_sub_months(Months::new(1)) {
-                                                    visible_month.set(previous.max(initial_month));
+                                                if current > initial_month {
+                                                    if let Some(previous) = current.checked_sub_months(Months::new(1)) {
+                                                        visible_month.set(previous.max(initial_month));
+                                                    }
                                                 }
                                             }
                                             _ => {}
