@@ -824,6 +824,22 @@ pub(crate) fn CatalogSearchOverlay(
     }
 }
 
+fn catalog_day_is_disabled(
+    day: NaiveDate,
+    today: NaiveDate,
+    too_short: bool,
+    unavailable: bool,
+    availability_pending: bool,
+    availability_blocked: bool,
+    is_selected_edge: bool,
+) -> bool {
+    availability_blocked
+        || day <= today
+        || too_short
+        || unavailable
+        || (availability_pending && !is_selected_edge)
+}
+
 #[component]
 pub(crate) fn CatalogSearchMonth(
     month: NaiveDate,
@@ -832,6 +848,7 @@ pub(crate) fn CatalogSearchMonth(
     mut ends_on: Signal<Option<NaiveDate>>,
     #[props(default)] unavailable_dates: Vec<NaiveDate>,
     #[props(default = false)] availability_pending: bool,
+    #[props(default = false)] availability_blocked: bool,
 ) -> Element {
     let start = *starts_on.read();
     let end = *ends_on.read();
@@ -848,7 +865,15 @@ pub(crate) fn CatalogSearchMonth(
                             let in_range = start.zip(end).map(|(first, last)| day > first && day < last).unwrap_or(false);
                             let too_short = start.filter(|_| end.is_none()).map(|first| day > first && (day - first).num_days() < 3).unwrap_or(false);
                             let unavailable = unavailable_dates.contains(&day) && !is_start && !is_end;
-                            let disabled = day <= today || too_short || unavailable || (availability_pending && !is_start && !is_end);
+                            let disabled = catalog_day_is_disabled(
+                                day,
+                                today,
+                                too_short,
+                                unavailable,
+                                availability_pending,
+                                availability_blocked,
+                                is_start || is_end,
+                            );
                             let class = if is_start || is_end { "selected" } else if in_range { "in-range" } else { "" };
                             rsx! { button { key: "day-{index}", r#type: "button", class, disabled, aria_label: "{day}", onclick: move |_| {
                                 let current_start = *starts_on.read();
@@ -891,6 +916,29 @@ mod catalog_search_tests {
             next_catalog_date_selection(day("2030-08-13"), Some(selected), None),
             (Some(selected), Some(day("2030-08-13")))
         );
+    }
+
+    #[test]
+    fn availability_error_locks_even_a_previously_selected_edge() {
+        let selected = day("2030-08-10");
+        assert!(catalog_day_is_disabled(
+            selected,
+            day("2030-08-01"),
+            false,
+            false,
+            false,
+            true,
+            true,
+        ));
+        assert!(!catalog_day_is_disabled(
+            selected,
+            day("2030-08-01"),
+            false,
+            false,
+            true,
+            false,
+            true,
+        ));
     }
 
     #[test]

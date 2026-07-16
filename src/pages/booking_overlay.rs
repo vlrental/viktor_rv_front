@@ -1541,7 +1541,7 @@ pub(crate) fn UnifiedBookingOverlay(
     let availability_pending = !selected_slug.read().is_empty()
         && availability_error.is_none()
         && !availability_is_current;
-    let calendar_unavailable = availability_pending || availability_error.is_some();
+    let calendar_blocked = availability_error.is_some();
     let minimum_nights = availability_response
         .as_ref()
         .filter(|_| availability_is_current)
@@ -1856,7 +1856,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                         }
                                     },
                                     ontouchcancel: move |_| calendar_swipe_start.set(None),
-                                    for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending: calendar_unavailable } }
+                                    for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_pending, availability_blocked: calendar_blocked } }
                                 }
                                 div { class: "ub-guests", span { "Guests" } button { r#type: "button", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" } strong { "{guests}" } button { r#type: "button", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" } }
                             }
