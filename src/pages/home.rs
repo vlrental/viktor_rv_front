@@ -356,6 +356,15 @@ mod booking_entry_tests {
             2
         );
     }
+
+    #[test]
+    fn home_search_fields_open_their_matching_rv_steps() {
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Dates, true), 1);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Guests, true), 1);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Rvs, false), 2);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Search, false), 1);
+        assert_eq!(home_booking_entry_step(HomeBookingEntry::Search, true), 2);
+    }
 }
 
 #[component]

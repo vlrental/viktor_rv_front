@@ -1,4 +1,4 @@
-use crate::{api, pricing, Route};
+use crate::{api, pricing, AuthSession, Route};
 use dioxus::prelude::*;
 
 fn local_booking_moment(value: &str) -> String {
@@ -33,7 +33,8 @@ pub fn AuthCallback() -> Element {
 pub fn Account() -> Element {
     let rentals_href = api::frontend_path("/#home-rentals");
     let nav = use_navigator();
-    let user = api::current_user();
+    let mut auth_session = use_context::<AuthSession>().0;
+    let user = auth_session.read().clone();
     let has_user = user.is_some();
     let mut bookings = use_signal(Vec::<api::Booking>::new);
     let mut load_error = use_signal(String::new);
@@ -103,7 +104,7 @@ pub fn Account() -> Element {
                     }
                 }
             }
-            button { class: "account-signout", onclick: move |_| async move { api::logout().await; nav.push(Route::Login {}); }, "Sign out" }
+            button { class: "account-signout", onclick: move |_| async move { api::logout().await; auth_session.set(None); nav.push(Route::Login {}); }, "Sign out" }
         } else {
             div { class: "account-empty", h1 { "Sign in required" } Link { class: "btn-forest", to: Route::Login {}, "Sign in" } }
         }

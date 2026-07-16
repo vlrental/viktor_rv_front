@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::api;
 use crate::components::Icon;
 use crate::data::PHONE;
-use crate::{booking_launch_requires_home, BookingLaunchRequest, Route};
+use crate::{booking_launch_requires_home, AuthSession, BookingLaunchRequest, Route};
 
 const LOGO: Asset = asset!("/assets/img/logo.png");
 
@@ -13,6 +13,7 @@ pub fn Header() -> Element {
     let route = use_route::<Route>();
     let navigator = use_navigator();
     let mut booking_launch_request = use_context::<BookingLaunchRequest>();
+    let mut auth_session = use_context::<AuthSession>().0;
     let inline_auth = api::take_inline_auth_request();
     let initial_account_open = inline_auth.is_some();
     let initial_register = inline_auth.as_ref().is_some_and(|value| value.0);
@@ -24,9 +25,7 @@ pub fn Header() -> Element {
     let mut password = use_signal(String::new);
     let mut error = use_signal(move || initial_error);
     let mut busy = use_signal(|| false);
-    let mut session_version = use_signal(|| 0_u32);
-    let _session_version = *session_version.read();
-    let current_user = api::current_user();
+    let current_user = auth_session.read().clone();
     let rentals_href = api::frontend_path("/#home-rentals");
     let auth_return_route = route.clone();
     let overlay = matches!(route, Route::Home {});
@@ -51,8 +50,8 @@ pub fn Header() -> Element {
             match api::login(&email_value, &password_value, creating_account).await {
                 Ok(tokens) => match api::save_session(&tokens) {
                     Ok(()) => {
-                        session_version += 1;
-                        account_open.set(false);
+                        auth_session.set(Some(tokens.user));
+                        account_open.set(true);
                         password.set(String::new());
                     }
                     Err(message) => error.set(message),
@@ -129,7 +128,7 @@ pub fn Header() -> Element {
                                 }
                                 button { class: "nav-account-signout", r#type: "button", onclick: move |_| async move {
                                     api::logout().await;
-                                    session_version += 1;
+                                    auth_session.set(None);
                                     account_open.set(false);
                                 }, "Sign out" }
                             } else {

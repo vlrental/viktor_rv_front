@@ -3,7 +3,7 @@ use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
 use super::catalog::{add_months, month_start, rental_image, CatalogSearchMonth};
-use crate::{api, components::Icon, data::rv_gallery, pricing, Route};
+use crate::{api, components::Icon, data::rv_gallery, pricing, AuthSession, Route};
 
 const SAVED_DELIVERY_ADDRESSES: &str = "vl_delivery_addresses";
 const MAX_SAVED_DELIVERY_ADDRESSES: usize = 5;
@@ -708,6 +708,7 @@ pub(crate) fn UnifiedBookingOverlay(
     on_search_change: EventHandler<()>,
     on_close: EventHandler<()>,
 ) -> Element {
+    let mut user = use_context::<AuthSession>().0;
     let resumed_draft = resume_after_auth
         .as_ref()
         .map(|continuation| continuation.draft.clone());
@@ -726,7 +727,7 @@ pub(crate) fn UnifiedBookingOverlay(
     let resumed_delivery_estimate = resume_after_auth
         .as_ref()
         .and_then(|continuation| continuation.delivery_estimate.clone());
-    let current_user = api::current_user();
+    let current_user = user.read().clone();
     let resumed_first_name = resume_after_auth
         .as_ref()
         .map(|continuation| continuation.first_name.clone())
@@ -826,7 +827,6 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut addon_notice = use_signal(String::new);
     let mut quote_version = use_signal(|| 0_u32);
     let mut quote_refresh_nonce = use_signal(|| 0_u32);
-    let mut user = use_signal(move || current_user);
     let mut auth_profile_loaded = use_signal(|| false);
     let mut contact_editing = use_signal(move || !initial_contact_complete);
     let mut auth_email = use_signal(String::new);

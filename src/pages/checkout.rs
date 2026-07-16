@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{api, components::Icon, pricing, Route};
+use crate::{api, components::Icon, pricing, AuthSession, Route};
 
 const CSS: Asset = asset!("/assets/css/checkout.css");
 
@@ -14,7 +14,8 @@ pub fn Checkout() -> Element {
         .as_ref()
         .and_then(|draft| (!api::rv_delivery_ready(draft)).then(|| draft.rental_slug.clone()));
     let draft = saved_draft.filter(api::rv_delivery_ready);
-    let user = api::current_user();
+    let auth_session = use_context::<AuthSession>().0;
+    let user = auth_session.read().clone();
     let first_name = use_signal(String::new);
     let last_name = use_signal(String::new);
     let email = use_signal(|| {

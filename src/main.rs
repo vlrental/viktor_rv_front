@@ -65,13 +65,16 @@ pub enum Route {
 #[derive(Clone, Copy)]
 pub struct BookingLaunchRequest(pub Signal<bool>);
 
+#[derive(Clone, Copy)]
+pub struct AuthSession(pub Signal<Option<api::AuthUser>>);
+
 pub fn booking_launch_requires_home(route: &Route) -> bool {
     !matches!(route, Route::Home {})
 }
 
 const SITE_URL: &str = match option_env!("VL_FRONTEND_BASE_URL") {
     Some(value) => value,
-    None => "https://vlrental.ca",
+    None => "https://gaponovalexey.github.io/viktor_rv_front",
 };
 
 #[derive(Clone, PartialEq)]
@@ -227,7 +230,9 @@ fn App() -> Element {
 #[component]
 fn SiteShell() -> Element {
     let booking_launch_request = use_signal(|| false);
+    let auth_session = use_signal(api::current_user);
     use_context_provider(|| BookingLaunchRequest(booking_launch_request));
+    use_context_provider(|| AuthSession(auth_session));
 
     rsx! {
         SeoHead {}

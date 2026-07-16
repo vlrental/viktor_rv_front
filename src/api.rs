@@ -20,7 +20,7 @@ pub fn frontend_base_url() -> String {
                 .and_then(|window| window.location().origin().ok())
                 .map(|value| value.trim_end_matches('/').to_string())
         })
-        .unwrap_or_else(|| "https://vlrental.ca".to_string())
+        .unwrap_or_else(|| "https://gaponovalexey.github.io/viktor_rv_front".to_string())
 }
 
 fn browser_github_pages_base() -> Option<String> {
