@@ -64,6 +64,7 @@ const TERMS_CSS: Asset = asset!(
 const PARALLAX_JS: Asset = asset!("/assets/parallax.js");
 
 fn main() {
+    api::capture_google_auth_callback();
     dioxus::launch(App);
 }
 

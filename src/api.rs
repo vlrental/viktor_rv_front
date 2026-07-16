@@ -3,6 +3,8 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
 
+const GOOGLE_AUTH_CALLBACK_STORAGE: &str = "vl_google_auth_callback";
+
 pub const API_BASE: &str = match option_env!("VL_API_BASE_URL") {
     Some(value) => value,
     None => "https://api.vlrental.ca",
@@ -165,6 +167,20 @@ fn google_callback_present() -> bool {
     let Some(window) = web_sys::window() else {
         return false;
     };
+    if window
+        .session_storage()
+        .ok()
+        .flatten()
+        .and_then(|storage| {
+            storage
+                .get_item(GOOGLE_AUTH_CALLBACK_STORAGE)
+                .ok()
+                .flatten()
+        })
+        .is_some()
+    {
+        return true;
+    }
     auth_parameters(
         &window.location().hash().unwrap_or_default(),
         &window.location().search().unwrap_or_default(),
@@ -249,15 +265,7 @@ fn valid_google_login_code(code: &str) -> bool {
     secret.len() == 64 && secret.bytes().all(|value| value.is_ascii_hexdigit())
 }
 
-pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
-    let window = web_sys::window().ok_or("Google sign in could not access this browser window.")?;
-    let fragment = window.location().hash().unwrap_or_default();
-    let search = window.location().search().unwrap_or_default();
-    let Some(values) = auth_parameters(&fragment, &search) else {
-        return Ok(None);
-    };
-    // Remove the one-time code from the address bar and browser history before
-    // validation or the server exchange can fail.
+fn sanitize_google_callback_url(window: &web_sys::Window) -> Result<(), String> {
     let safe_path = window
         .location()
         .pathname()
@@ -266,7 +274,59 @@ pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
         .history()
         .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?
         .replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&safe_path))
-        .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())?;
+        .map_err(|_| "Google sign in could not sanitize the callback URL.".to_string())
+}
+
+/// Preserve the OAuth callback before Dioxus Router normalizes the initial URL.
+/// The one-time code is removed from the address bar immediately and consumed
+/// from session storage by `finish_google_sign_in` on the first render.
+pub fn capture_google_auth_callback() {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let fragment = window.location().hash().unwrap_or_default();
+    let search = window.location().search().unwrap_or_default();
+    let Some(values) = auth_parameters(&fragment, &search) else {
+        return;
+    };
+    let Some(storage) = window.session_storage().ok().flatten() else {
+        return;
+    };
+    let Ok(serialized) = serde_json::to_string(&values) else {
+        return;
+    };
+    if storage
+        .set_item(GOOGLE_AUTH_CALLBACK_STORAGE, &serialized)
+        .is_ok()
+    {
+        let _ = sanitize_google_callback_url(&window);
+    }
+}
+
+fn take_captured_google_auth_callback(window: &web_sys::Window) -> Option<HashMap<String, String>> {
+    let storage = window.session_storage().ok().flatten()?;
+    let serialized = storage
+        .get_item(GOOGLE_AUTH_CALLBACK_STORAGE)
+        .ok()
+        .flatten()?;
+    let _ = storage.remove_item(GOOGLE_AUTH_CALLBACK_STORAGE);
+    serde_json::from_str(&serialized).ok()
+}
+
+pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
+    let window = web_sys::window().ok_or("Google sign in could not access this browser window.")?;
+    let values = if let Some(values) = take_captured_google_auth_callback(&window) {
+        values
+    } else {
+        let fragment = window.location().hash().unwrap_or_default();
+        let search = window.location().search().unwrap_or_default();
+        let Some(values) = auth_parameters(&fragment, &search) else {
+            return Ok(None);
+        };
+        // Compatibility fallback for callbacks received after startup.
+        sanitize_google_callback_url(&window)?;
+        values
+    };
     if values.contains_key("access_token") || values.contains_key("refresh_token") {
         return Err("Google returned an outdated sign-in response. Please try again.".to_string());
     }
@@ -3830,6 +3890,13 @@ mod delivery_draft_tests {
         assert!(valid_google_login_code(&direct["code"]));
         assert!(valid_google_login_code(&hash_router["code"]));
         assert!(!direct.contains_key("access_token"));
+
+        let root_callback = auth_parameters(
+            "#vl_google_auth=1&code=rv_oauth_code_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "?vl_auth_callback=1",
+        )
+        .unwrap();
+        assert!(valid_google_login_code(&root_callback["code"]));
 
         let legacy = auth_parameters("#access_token=old&refresh_token=old", "").unwrap();
         assert!(!legacy.contains_key("code"));
