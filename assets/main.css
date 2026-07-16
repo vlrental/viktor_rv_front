@@ -931,6 +931,7 @@ body:has(.cat-planner-backdrop) {
   .cat-filter-panel.is-open { display: flex; }
   .cat-grid { grid-template-columns: 1fr; }
   .cat-results-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .home-catalog-toolbar .sort-dropdown-menu, .cat-results-head .sort-dropdown-menu { right: auto; left: 0; }
   .cat-planner-backdrop { padding: 0; place-items: stretch; }
   .cat-planner-shell { width: 100%; max-height: 100vh; border-radius: 0; }
   .cat-planner { max-height: 100vh; }

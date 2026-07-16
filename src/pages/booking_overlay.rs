@@ -1871,17 +1871,25 @@ fn RentalChoice(
     let mut reviews = use_signal(|| None::<api::RentalReviewsResponse>);
     let mut review_context = use_signal(|| None::<api::RentalReviewContext>);
     let mut like_busy = use_signal(std::collections::HashSet::<String>::new);
-    let rating = rental.review_rating.clone().unwrap_or_else(|| "New".into());
-    let rounded_rating = rental
-        .review_rating
-        .as_deref()
-        .and_then(|value| value.parse::<f64>().ok())
+    let live_summary = reviews.read().as_ref().map(|value| value.summary.clone());
+    let rating = live_summary
+        .as_ref()
+        .and_then(|summary| summary.average_rating.clone())
+        .or_else(|| rental.review_rating.clone())
+        .unwrap_or_else(|| "New".into());
+    let review_count = live_summary
+        .as_ref()
+        .map(|summary| summary.review_count)
+        .unwrap_or(rental.review_count);
+    let rounded_rating = rating
+        .parse::<f64>()
+        .ok()
         .map(|value| value.round() as i32)
         .unwrap_or(0);
-    let review_label = if rental.review_count == 1 {
+    let review_label = if review_count == 1 {
         "1 review".to_string()
     } else {
-        format!("{} reviews", rental.review_count)
+        format!("{review_count} reviews")
     };
     rsx! {
         article {
@@ -1911,7 +1919,7 @@ fn RentalChoice(
                 button { class: "ub-rv-rating", r#type: "button", aria_label: "Read {review_label} for {rental.name}", onclick: { let slug = slug.clone(); move |event| { event.stop_propagation(); reviews_open.set(true); if reviews.peek().is_none() && !*reviews_busy.peek() { reviews_busy.set(true); reviews_error.set(String::new()); let slug_for_reviews = slug.clone(); spawn(async move { match api::rental_reviews(&slug_for_reviews).await { Ok(value) => reviews.set(Some(value)), Err(message) => reviews_error.set(message) } reviews_busy.set(false); }); }; if api::access_token().is_some() && review_context.peek().is_none() { let slug_for_context = slug.clone(); spawn(async move { if let Ok(context) = api::rental_review_context(&slug_for_context).await { review_context.set(Some(context)); } }); } } },
                     RatingStars { rating: rounded_rating }
                     b { "{rating}" }
-                    span { "({rental.review_count})" }
+                    span { "({review_count})" }
                     small { "Read comments" }
                 }
             }
