@@ -1497,7 +1497,13 @@ fn CalendarSyncRow(
             div { class: "admin-calendar-setup-steps",
                 p { strong { "1" } span { "In {provider_label}, copy this RV’s calendar URL and paste it above." } }
                 p { strong { "2" } span { "Copy the VL URL, open {provider_label} → Add Calendar, paste it, and name it " code { "{setup_name}" } "." } }
-                small { if provider == "outdoorsy" { "Outdoorsy normally imports the VL feed about every 2 hours." } else { "RVezy normally imports the VL feed about every 3 hours." } }
+                small {
+                    if provider == "outdoorsy" {
+                        "Outdoorsy normally imports the VL feed about every 2 hours."
+                    } else {
+                        "RVezy rejected the direct VL feed, so Outdoorsy → RVezy is connected instead. VL-only bookings must also be blocked manually in RVezy."
+                    }
+                }
             }
             if !connection_id.is_empty() {
                 button { class: "admin-calendar-disconnect", r#type: "button", disabled: !busy_action().is_empty(), onclick: move |_| disconnect_open.set(true), "Disconnect calendar" }
