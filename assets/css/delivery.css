@@ -8,11 +8,8 @@
   padding: 64px 72px;
   background: var(--vl-surface);
 }
-.dv-hero-img {
-  flex: 1 1 0; min-width: 0; height: 430px;
-  border-radius: 18px;
-  background-position: center; background-size: cover; background-repeat: no-repeat;
-}
+.dv-hero-media { flex: 1 1 0; min-width: 0; }
+.dv-hero-img { display: block; width: 100%; height: auto; border-radius: 18px; }
 .dv-hero-copy { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
 .dv-title {
   font-family: var(--font-heading); font-weight: 400;
@@ -70,7 +67,7 @@
 /* ---------- Mobile (по мотивам PHnuS) ---------- */
 @media (max-width: 860px) {
   .dv-hero { flex-direction: column; align-items: flex-start; gap: 12px; padding: 32px 18px; }
-  .dv-hero-img { display: none; }
+  .dv-hero-media { display: none; }
   .dv-title { font-size: 34px; line-height: 36px; }
   .dv-sub { font-size: 15px; line-height: 24px; }
   .dv-btn { width: 100%; justify-content: center; padding: 15px; border-radius: 12px; }

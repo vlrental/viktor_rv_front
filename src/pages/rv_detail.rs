@@ -630,7 +630,7 @@ fn GoodToKnow() -> Element {
                     GtkCard {
                         icon: "truck",
                         title: "Delivery up to 150 km",
-                        desc: "CA$150 through 50 km, then CA$3.50 per additional one-way kilometre — calculated automatically.",
+                        desc: "CA$150 through 50 km, then CA$2 per additional kilometre, two way — calculated automatically.",
                     }
                     GtkCard {
                         icon: "shield-check",
@@ -1571,7 +1571,7 @@ fn BookingCalendarOverlay(
                         }
                         div { class: "rvd-address-card",
                                 div { class: "rvd-trip-option-title", Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" } "Delivery address & live distance" }
-                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 50 km, then CA$3.50 per additional one-way kilometre · maximum 150 km." }
+                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 50 km, then CA$2 per additional kilometre, two way · maximum 150 km." }
                                 div { class: "rvd-address-search",
                                     div { class: "rvd-address-combobox",
                                         div { class: "rvd-address-input-wrap",

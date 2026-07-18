@@ -88,6 +88,55 @@ fn close_evidence_preview(target: &str) {
     ));
 }
 
+async fn copy_calendar_url(value: &str) -> Result<(), String> {
+    let value = serde_json::to_string(value).map_err(|error| error.to_string())?;
+    document::eval(&format!(
+        "if (!navigator.clipboard) throw new Error('Clipboard is unavailable'); await navigator.clipboard.writeText({value});"
+    ))
+    .await
+    .map(|_| ())
+    .map_err(|_| "The calendar URL could not be copied".into())
+}
+
+fn calendar_provider_label(provider: &str) -> &'static str {
+    match provider {
+        "rvezy" => "RVezy",
+        "outdoorsy" => "Outdoorsy",
+        _ => "External calendar",
+    }
+}
+
+fn calendar_connection_status(status: &str) -> &'static str {
+    match status {
+        "connected" => "Connected",
+        "error" => "Error",
+        "conflict" => "Conflict",
+        _ => "Needs setup",
+    }
+}
+
+fn calendar_block_provider(block: &api::AdminAvailabilityBlock) -> Option<&str> {
+    block.provider.as_deref().or(match block.source.as_str() {
+        "rvezy" => Some("rvezy"),
+        "outdoorsy" => Some("outdoorsy"),
+        _ => None,
+    })
+}
+
+fn calendar_block_class(block: &api::AdminAvailabilityBlock) -> String {
+    if block.has_conflict {
+        "conflict".into()
+    } else if let Some(provider) = calendar_block_provider(block) {
+        provider.to_string()
+    } else {
+        "block".into()
+    }
+}
+
+fn is_external_calendar_block(block: &api::AdminAvailabilityBlock) -> bool {
+    block.external_calendar_id.is_some() || calendar_block_provider(block).is_some()
+}
+
 fn status_label(status: &str) -> &'static str {
     match status {
         "pending_payment" => "Pending payment",
@@ -489,7 +538,9 @@ pub fn Admin() -> Element {
     let dashboard_value = dashboard.read().clone();
     let metric_active = dashboard_value.confirmed.max(active_count);
     let metric_pending = dashboard_value.pending_payments.max(pending_count);
-    let metric_failures = dashboard_value.payment_errors.max(payment_failures);
+    let metric_failures = dashboard_value.payment_errors.max(payment_failures)
+        + dashboard_value.calendar_sync_failures
+        + dashboard_value.calendar_conflicts;
     let payment_availability = api::payment_availability(
         payment_config.read().as_ref(),
         !payment_config_error.read().is_empty(),
@@ -552,7 +603,7 @@ pub fn Admin() -> Element {
                     div { class: "admin-metrics admin-center-metrics",
                         article { span { "CONFIRMED" } strong { "{metric_active}" } small { "active and upcoming" } }
                         article { span { "AWAITING PAYMENT" } strong { "{metric_pending}" } small { "reserved, not confirmed" } }
-                        article { span { "PAYMENT / EMAIL ERRORS" } strong { "{metric_failures}" } small { "need attention" } }
+                        article { span { "PAYMENT / EMAIL / CALENDAR" } strong { "{metric_failures}" } small { "need attention" } }
                         article { span { "OVERDUE ACTIONS" } strong { "{dashboard_value.overdue_actions}" } small { "deposit or return decisions" } }
                     }
 
@@ -675,9 +726,9 @@ fn OverviewTab(
     rsx! {
         div { class: "admin-overview-grid",
             section { class: "admin-panel admin-attention-panel",
-                div { class: "admin-panel-head", div { h2 { "Needs attention" } p { "Payment and delivery gates that need an admin decision." } } span { "{dashboard.attention.len()} items" } }
+                div { class: "admin-panel-head", div { h2 { "Needs attention" } p { "Payment, delivery and calendar sync issues that need an admin decision." } } span { "{dashboard.attention.len() + dashboard.calendar_attention.len()} items" } }
                 if loading { AdminLoading {} }
-                else if dashboard.attention.is_empty() {
+                else if dashboard.attention.is_empty() && dashboard.calendar_attention.is_empty() {
                     div { class: "admin-empty admin-empty-positive", Icon { name: "circle-check-big", size: 24, color: "var(--vl-forest)" } "No urgent actions right now." }
                 } else {
                     div { class: "admin-attention-list",
@@ -686,6 +737,13 @@ fn OverviewTab(
                                 span { class: "admin-attention-icon", if item.severity == "critical" { Icon { name: "triangle-alert", size: 17, color: "currentColor" } } else { Icon { name: "clock-3", size: 17, color: "currentColor" } } }
                                 span { strong { if item.title.is_empty() { "{payment_label(&item.item_type)} · {item.booking_number}" } else { "{item.title}" } } small { "{item.detail}" if let Some(due) = item.due_at.as_ref() { " · due {display_moment(due)}" } } }
                                 Icon { name: "chevron-right", size: 16, color: "var(--vl-muted)" }
+                            }
+                        }
+                        for item in dashboard.calendar_attention.iter() {
+                            article { class: "admin-attention-item",
+                                span { class: "admin-attention-icon", Icon { name: "calendar-warning", size: 17, color: "currentColor" } }
+                                span { strong { "{calendar_provider_label(&item.provider)} · {item.rental_name}" } small { "{item.message}" if let Some(attempted) = item.last_attempted_at.as_ref() { " · checked {display_moment(attempted)}" } } }
+                                span { class: if item.kind == "calendar_conflict" { "admin-status admin-status-failed" } else { "admin-status admin-status-pending" }, if item.kind == "calendar_conflict" { "Conflict" } else { "Sync error" } }
                             }
                         }
                     }
@@ -1214,6 +1272,253 @@ fn PaymentsTab(
 }
 
 #[component]
+fn CalendarSyncDrawer(
+    rentals: Vec<api::Rental>,
+    on_close: EventHandler<()>,
+    on_calendar_changed: EventHandler<()>,
+) -> Element {
+    let mut connections = use_signal(Vec::<api::AdminCalendarConnection>::new);
+    let mut loading = use_signal(|| true);
+    let mut message = use_signal(String::new);
+    let mut reload_nonce = use_signal(|| 0_u32);
+
+    use_effect(move || {
+        let _reload = reload_nonce();
+        loading.set(true);
+        message.set(String::new());
+        spawn(async move {
+            match api::admin_calendar_connections().await {
+                Ok(values) => connections.set(values),
+                Err(error) => message.set(error.message),
+            }
+            loading.set(false);
+        });
+    });
+
+    rsx! {
+        div { class: "admin-overlay admin-drawer-backdrop", onclick: move |_| on_close.call(()),
+            aside {
+                class: "admin-booking-drawer admin-calendar-sync-drawer",
+                role: "dialog",
+                aria_modal: "true",
+                aria_label: "Calendar sync",
+                tabindex: "-1",
+                autofocus: true,
+                onclick: move |event| event.stop_propagation(),
+                onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); on_close.call(()); },
+                header { class: "admin-drawer-head",
+                    div { h2 { "Calendar sync" } p { "RVezy and Outdoorsy · incoming feeds refresh every 15 minutes" } }
+                    button { r#type: "button", aria_label: "Close calendar sync", onclick: move |_| on_close.call(()), Icon { name: "x", size: 19, color: "currentColor" } }
+                }
+                div { class: "admin-drawer-scroll admin-calendar-sync-scroll",
+                    section { class: "admin-calendar-sync-note",
+                        Icon { name: "info", size: 18, color: "currentColor" }
+                        p { "VL Rental imports only occupied dates. Customer names, phone numbers, addresses and prices never enter a calendar feed. Refresh VL now cannot force RVezy or Outdoorsy to refresh their copy." }
+                    }
+                    if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
+                    if loading() { AdminLoading {} }
+                    else {
+                        for rental in rentals.iter() {
+                            section { key: "sync-{rental.slug}", class: "admin-calendar-sync-rental",
+                                header { h3 { "{rental.name}" } small { "{rental.slug}" } }
+                                for provider in ["rvezy", "outdoorsy"] {
+                                    CalendarSyncRow {
+                                        key: "{rental.slug}-{provider}",
+                                        rental_slug: rental.slug.clone(),
+                                        rental_name: rental.name.clone(),
+                                        provider: provider.to_string(),
+                                        connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == provider).cloned(),
+                                        on_changed: move |_| {
+                                            reload_nonce.set(reload_nonce().wrapping_add(1));
+                                            on_calendar_changed.call(());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn CalendarSyncRow(
+    rental_slug: String,
+    rental_name: String,
+    provider: String,
+    connection: Option<api::AdminCalendarConnection>,
+    on_changed: EventHandler<()>,
+) -> Element {
+    let mut calendar_url = use_signal(String::new);
+    let mut busy_action = use_signal(String::new);
+    let mut result_message = use_signal(String::new);
+    let mut result_error = use_signal(|| false);
+    let mut disconnect_open = use_signal(|| false);
+    let connection_id = connection
+        .as_ref()
+        .map(|value| value.external_calendar_id.clone())
+        .unwrap_or_default();
+    let status = connection
+        .as_ref()
+        .map(|value| value.status.as_str())
+        .unwrap_or("needs_setup");
+    let provider_label = calendar_provider_label(&provider);
+    let setup_name = format!("VL Rental — {rental_name}");
+
+    rsx! {
+        article { class: "admin-calendar-sync-row provider-{provider}",
+            div { class: "admin-calendar-sync-row-head",
+                div { span { class: "admin-calendar-provider-dot" } strong { "{provider_label}" } }
+                span { class: "admin-calendar-connection-status status-{status}", "{calendar_connection_status(status)}" }
+            }
+            if let Some(value) = connection.as_ref() {
+                div { class: "admin-calendar-sync-meta",
+                    span { "Last successful sync" strong { if let Some(last_sync) = value.last_synced_at.as_ref() { "{display_moment(last_sync)}" } else { "Not yet synced" } } }
+                    span { "Imported periods" strong { "{value.imported_event_count}" } }
+                    if value.conflict_count > 0 { span { class: "is-conflict", "Conflicts" strong { "{value.conflict_count}" } } }
+                }
+                if let Some(error) = value.last_error.as_ref() { p { class: "admin-calendar-sync-error", role: "alert", "{error}" } }
+            }
+            label { class: "admin-calendar-url-field",
+                span { "{provider_label} Calendar URL" }
+                input {
+                    r#type: "url",
+                    autocomplete: "off",
+                    spellcheck: "false",
+                    placeholder: if connection.as_ref().is_some_and(|value| value.has_external_url) { "Saved securely · paste a URL to replace it" } else { "Paste the provider iCal URL" },
+                    value: "{calendar_url}",
+                    oninput: move |event| { calendar_url.set(event.value()); result_message.set(String::new()); }
+                }
+            }
+            div { class: "admin-calendar-sync-actions",
+                button {
+                    r#type: "button",
+                    disabled: !busy_action().is_empty() || calendar_url().trim().is_empty(),
+                    onclick: {
+                        let provider = provider.clone();
+                        move |_| {
+                            let provider = provider.clone();
+                            let url = calendar_url();
+                            async move {
+                                busy_action.set("test".into());
+                                result_message.set(String::new());
+                                match api::test_admin_calendar(&provider, url.trim()).await {
+                                    Ok(result) => { result_error.set(false); result_message.set(format!("Calendar is valid · {} current periods found", result.imported_periods)); }
+                                    Err(error) => { result_error.set(true); result_message.set(error.message); }
+                                }
+                                busy_action.set(String::new());
+                            }
+                        }
+                    },
+                    if busy_action() == "test" { "Testing…" } else { "Test calendar" }
+                }
+                button {
+                    class: "primary",
+                    r#type: "button",
+                    disabled: !busy_action().is_empty() || calendar_url().trim().is_empty(),
+                    onclick: {
+                        let slug = rental_slug.clone();
+                        let provider = provider.clone();
+                        let id = connection_id.clone();
+                        move |_| {
+                            let slug = slug.clone();
+                            let provider = provider.clone();
+                            let id = id.clone();
+                            let url = calendar_url();
+                            async move {
+                                busy_action.set("save".into());
+                                result_message.set(String::new());
+                                let saved = if id.is_empty() {
+                                    api::save_admin_calendar(&slug, &provider, url.trim()).await.map(|connection| connection.status)
+                                } else {
+                                    match api::update_admin_calendar(&id, Some(url.trim()), None, None).await {
+                                        Ok(_) => api::sync_admin_calendar(&id).await.map(|result| result.status),
+                                        Err(error) => Err(error),
+                                    }
+                                };
+                                match saved {
+                                    Ok(status) => {
+                                        let needs_attention = matches!(status.as_str(), "error" | "conflict" | "suspicious_empty");
+                                        result_error.set(needs_attention);
+                                        result_message.set(if needs_attention { "Saved, but the first VL sync needs attention.".into() } else { "Saved and synced with VL Rental.".into() });
+                                        calendar_url.set(String::new());
+                                        on_changed.call(());
+                                    }
+                                    Err(error) => { result_error.set(true); result_message.set(error.message); on_changed.call(()); }
+                                }
+                                busy_action.set(String::new());
+                            }
+                        }
+                    },
+                    if busy_action() == "save" { "Saving…" } else { "Save & sync" }
+                }
+                if !connection_id.is_empty() {
+                    button {
+                        r#type: "button",
+                        disabled: !busy_action().is_empty(),
+                        onclick: {
+                            let id = connection_id.clone();
+                            move |_| {
+                                let id = id.clone();
+                                async move {
+                                    busy_action.set("sync".into());
+                                    result_message.set(String::new());
+                                    match api::sync_admin_calendar(&id).await {
+                                        Ok(result) => { result_error.set(result.conflict_count > 0); result_message.set(format!("VL refreshed · {} periods · {} conflicts", result.imported_blocks, result.conflict_count)); on_changed.call(()); }
+                                        Err(error) => { result_error.set(true); result_message.set(error.message); }
+                                    }
+                                    busy_action.set(String::new());
+                                }
+                            }
+                        },
+                        if busy_action() == "sync" { "Refreshing…" } else { "Refresh VL now" }
+                    }
+                }
+                if let Some(export_url) = connection.as_ref().and_then(|value| value.export_url.clone()) {
+                    button {
+                        r#type: "button",
+                        disabled: !busy_action().is_empty(),
+                        onclick: move |_| {
+                            let url = export_url.clone();
+                            async move {
+                                match copy_calendar_url(&url).await {
+                                    Ok(()) => { result_error.set(false); result_message.set("VL Calendar URL copied.".into()); }
+                                    Err(error) => { result_error.set(true); result_message.set(error); }
+                                }
+                            }
+                        },
+                        "Copy VL URL"
+                    }
+                }
+            }
+            if !result_message.read().is_empty() { p { class: if result_error() { "admin-calendar-sync-result is-error" } else { "admin-calendar-sync-result" }, role: if result_error() { "alert" } else { "status" }, "{result_message}" } }
+            div { class: "admin-calendar-setup-steps",
+                p { strong { "1" } span { "In {provider_label}, copy this RV’s calendar URL and paste it above." } }
+                p { strong { "2" } span { "Copy the VL URL, open {provider_label} → Add Calendar, paste it, and name it " code { "{setup_name}" } "." } }
+                small { if provider == "outdoorsy" { "Outdoorsy normally imports the VL feed about every 2 hours." } else { "RVezy normally imports the VL feed about every 3 hours." } }
+            }
+            if !connection_id.is_empty() {
+                button { class: "admin-calendar-disconnect", r#type: "button", disabled: !busy_action().is_empty(), onclick: move |_| disconnect_open.set(true), "Disconnect calendar" }
+            }
+        }
+        if disconnect_open() {
+            div { class: "admin-confirm-layer", onclick: move |_| if busy_action().is_empty() { disconnect_open.set(false); },
+                section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", aria_label: "Disconnect calendar", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if busy_action().is_empty() { disconnect_open.set(false); } },
+                    header { h3 { "Disconnect {provider_label}?" } button { r#type: "button", disabled: !busy_action().is_empty(), aria_label: "Close disconnect confirmation", onclick: move |_| disconnect_open.set(false), Icon { name: "x", size: 19, color: "currentColor" } } }
+                    p { "Imported {provider_label} periods for {rental_name} will be removed and its VL export URL will be revoked. This does not change bookings on {provider_label}." }
+                    footer {
+                        button { r#type: "button", disabled: !busy_action().is_empty(), onclick: move |_| disconnect_open.set(false), "Go back" }
+                        button { class: "danger", r#type: "button", disabled: !busy_action().is_empty(), onclick: { let id = connection_id.clone(); move |_| { let id = id.clone(); async move { busy_action.set("disconnect".into()); match api::disconnect_admin_calendar(&id).await { Ok(()) => { disconnect_open.set(false); on_changed.call(()); }, Err(error) => { result_error.set(true); result_message.set(error.message); } } busy_action.set(String::new()); } } }, if busy_action() == "disconnect" { "Disconnecting…" } else { "Disconnect" } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn CalendarTab(
     bookings: Vec<api::AdminBooking>,
     blocks: Vec<api::AdminAvailabilityBlock>,
@@ -1225,6 +1530,7 @@ fn CalendarTab(
     let mut window_start = use_signal(|| today);
     let mut fleet_filter = use_signal(|| "all".to_string());
     let mut panel_open = use_signal(|| false);
+    let mut sync_open = use_signal(|| false);
     let mut rental_slug = use_signal(|| {
         rentals
             .first()
@@ -1259,9 +1565,10 @@ fn CalendarTab(
                     button { r#type: "button", aria_label: "Previous two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current - Duration::days(14)); }, Icon { name: "chevron-left", size: 16, color: "currentColor" } }
                     button { r#type: "button", onclick: move |_| window_start.set(today), "Today" }
                     button { r#type: "button", aria_label: "Next two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current + Duration::days(14)); }, Icon { name: "chevron-right", size: 16, color: "currentColor" } }
+                    button { class: "admin-calendar-sync-open", r#type: "button", onclick: move |_| { panel_open.set(false); sync_open.set(true); }, Icon { name: "refresh-cw", size: 15, color: "currentColor" } "Calendar sync" }
                     button { class: "admin-primary-small", r#type: "button", onclick: move |_| panel_open.set(true), Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" }
                 } }
-                div { class: "admin-calendar-legend", span { class: "booking", "Customer booking" } span { class: "block", "Closed by admin" } }
+                div { class: "admin-calendar-legend", span { class: "booking", "VL booking" } span { class: "block", "Closed by admin" } span { class: "rvezy", "RVezy" } span { class: "outdoorsy", "Outdoorsy" } span { class: "conflict", "Conflict" } }
                 div { class: "admin-fleet-scroll",
                     div { class: "admin-fleet-calendar", style: "--admin-calendar-days: {days.len()}",
                         div { class: "admin-fleet-corner", strong { "RV / DATE" } small { "{admin_calendar_short_date(*window_start.read())} – {admin_calendar_short_date(window_end)}" } }
@@ -1276,7 +1583,7 @@ fn CalendarTab(
                                         span { "{booking.last_name}" }
                                     }
                                 }
-                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) { span { class: "admin-calendar-chip block", title: "{block.reason}", small { "CLOSED" } span { "{block.reason}" } } }
+                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) { span { class: "admin-calendar-chip {calendar_block_class(block)}", title: "{block.reason}", small { if block.has_conflict { "CONFLICT" } else if let Some(provider) = calendar_block_provider(block) { "{calendar_provider_label(provider)}" } else { "CLOSED" } } span { "{block.reason}" } } }
                             } }
                         }
                     }
@@ -1285,7 +1592,7 @@ fn CalendarTab(
                     h3 { "Upcoming schedule" }
                     if upcoming.is_empty() && blocks.is_empty() { div { class: "admin-empty", "No upcoming bookings or closed dates." } }
                     for booking in upcoming.iter().filter(|booking| fleet_filter() == "all" || booking.rental_slug == fleet_filter()) { button { class: "booking", r#type: "button", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) }, div { time { "{display_date(&booking.starts_at)} 2 PM → {display_date(&booking.ends_at)} 11 AM" } strong { "{booking.rental_name}" } span { "{booking.first_name} {booking.last_name} · {booking.booking_number}" } } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } } }
-                    for block in blocks.iter().filter(|block| fleet_filter() == "all" || block.rental_slug == fleet_filter()) { article { class: "block", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" } } button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } }
+                    for block in blocks.iter().filter(|block| fleet_filter() == "all" || block.rental_slug == fleet_filter()) { article { class: "{calendar_block_class(block)}", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" if let Some(provider) = calendar_block_provider(block) { " · {calendar_provider_label(provider)}" } } } if is_external_calendar_block(block) { button { class: "manage-external", r#type: "button", onclick: move |_| sync_open.set(true), if block.has_conflict { "Review conflict" } else { "Manage sync" } } } else { button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } } }
                 }
                 if !message.read().is_empty() { p { class: "admin-inline-message", "{message}" } }
             }
@@ -1297,6 +1604,13 @@ fn CalendarTab(
                     label { "Reason (admin only)" input { value: "{reason}", maxlength: 300, oninput: move |event| reason.set(event.value()) } }
                     button { class: "admin-submit", r#type: "button", disabled: busy() || rental_slug().is_empty(), onclick: move |_| { let values = (rental_slug(), starts_on(), ends_on(), reason()); async move { if values.2 <= values.1 { message.set("The reopening date must be later than the closing date.".into()); return; } busy.set(true); match api::create_admin_availability_block(&values.0, &values.1, &values.2, &values.3).await { Ok(_) => { message.set("Dates closed for customers.".into()); panel_open.set(false); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } }, if busy() { "Saving…" } else { "Close dates" } }
                 }
+            }
+        }
+        if sync_open() {
+            CalendarSyncDrawer {
+                rentals: rentals.clone(),
+                on_close: move |_| sync_open.set(false),
+                on_calendar_changed: move |_| on_refresh.call(()),
             }
         }
     }
@@ -1361,7 +1675,7 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
     rsx! {
         section { class: "admin-panel admin-full-panel admin-reviews-panel",
             div { class: "admin-panel-head admin-list-head",
-                div { h2 { "Reviews" } p { "Verified guest comments and engagement. Deletion is permanent." } }
+                div { h2 { "Reviews" } p { "VL Rental and trusted-platform guest comments. Deletion is permanent." } }
                 div { class: "admin-audit-tools",
                     label { class: "admin-search", Icon { name: "search", size: 16, color: "var(--vl-muted)" } input { r#type: "search", maxlength: "100", placeholder: "Guest, booking or comment", value: "{search}", oninput: move |event| { offset.set(0); search.set(event.value()); } } }
                     select { class: "admin-compact-filter", aria_label: "Filter reviews by RV", value: "{rental_filter}", onchange: move |event| { offset.set(0); rental_filter.set(event.value()); }, option { value: "", "All RVs" } for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } }
@@ -1379,7 +1693,7 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
                         td { span { class: "admin-review-rating", "★ {review.rating}/5" } }
                         td { if !review.title.is_empty() { strong { "{review.title}" } } p { class: "admin-review-body", "{review.body}" } }
                         td { "♥ {review.like_count}" }
-                        td { "{display_moment(&review.created_at)}" }
+                        td { if review.reviewed_at_label.is_empty() { "{display_moment(&review.created_at)}" } else { "{review.reviewed_at_label}" } }
                         td { button { class: "admin-review-delete", r#type: "button", aria_label: "Delete review by {review.reviewer_name}", onclick: { let review = review.clone(); move |_| delete_target.set(Some(review.clone())) }, Icon { name: "trash-2", size: 15, color: "currentColor" } "Delete" } }
                     } } }
                 } }
@@ -1689,6 +2003,37 @@ mod tests {
         assert!(is_admin_role("admin"));
         assert!(!is_admin_role("default"));
         assert!(!is_admin_role(""));
+    }
+
+    #[test]
+    fn external_calendar_blocks_are_never_treated_as_admin_reopen_actions() {
+        let external = api::AdminAvailabilityBlock {
+            source: "rvezy".into(),
+            external_calendar_id: Some("calendar-id".into()),
+            provider: Some("rvezy".into()),
+            ..api::AdminAvailabilityBlock::default()
+        };
+        let admin = api::AdminAvailabilityBlock {
+            source: "admin".into(),
+            ..api::AdminAvailabilityBlock::default()
+        };
+
+        assert!(is_external_calendar_block(&external));
+        assert_eq!(calendar_block_class(&external), "rvezy");
+        assert!(!is_external_calendar_block(&admin));
+        assert_eq!(calendar_block_class(&admin), "block");
+    }
+
+    #[test]
+    fn calendar_conflict_color_overrides_the_provider_color() {
+        let block = api::AdminAvailabilityBlock {
+            source: "outdoorsy".into(),
+            provider: Some("outdoorsy".into()),
+            has_conflict: true,
+            ..api::AdminAvailabilityBlock::default()
+        };
+
+        assert_eq!(calendar_block_class(&block), "conflict");
     }
 
     #[test]

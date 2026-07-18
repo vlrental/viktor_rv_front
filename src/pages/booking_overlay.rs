@@ -562,6 +562,19 @@ fn price_number(value: &str) -> f64 {
         .unwrap_or(0.0)
 }
 
+fn delivery_distance_detail(delivery: &api::DeliveryEstimate) -> String {
+    let one_way_km = price_number(&delivery.one_way_km);
+    if one_way_km <= 50.0 {
+        format!("{} km one way · covered by CA$150", delivery.one_way_km)
+    } else {
+        format!(
+            "{} km one way · {:.1} km extra × CA$2 · two way",
+            delivery.one_way_km,
+            one_way_km - 50.0
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct OptimisticPriceLine {
     key: String,
@@ -659,7 +672,7 @@ fn optimistic_price(
     lines.push(OptimisticPriceLine {
         key: "delivery".into(),
         label: "Delivery and setup".into(),
-        detail: None,
+        detail: Some(delivery_distance_detail(delivery)),
         amount: delivery_amount,
     });
 
@@ -1688,6 +1701,10 @@ pub(crate) fn UnifiedBookingOverlay(
         quote.read().as_ref(),
     );
     let preview_total = optimistic_price.as_ref().map(|value| value.total);
+    let delivery_distance = delivery_result
+        .read()
+        .as_ref()
+        .map(delivery_distance_detail);
 
     use_effect(move || {
         let address_step_open = *open_step.read() == 3;
@@ -2181,7 +2198,7 @@ pub(crate) fn UnifiedBookingOverlay(
                         if let Some(created) = pending_payment.read().as_ref() { div { class: "ub-price-lines ub-locked-price",
                             div { span { "Booked RV" } b { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } } }
                             if let Some(value) = quote.read().as_ref().filter(|value| quote_matches_booking(value, &created.booking)) {
-                                for item in value.items.iter().filter(|item| item.item_type != "deposit") { div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } }
+                                for item in value.items.iter().filter(|item| item.item_type != "deposit") { div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } }
                             }
                             div { class: "total", span { "Full trip price" } b { "{created.booking.currency} ${created.booking.total}" } }
                             div { class: "due-now", span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } b { "{created.booking.currency} ${created.booking.amount_due_now}" } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total}" } }
@@ -2189,7 +2206,7 @@ pub(crate) fn UnifiedBookingOverlay(
                             small { "The Stripe Checkout amount is locked to this booking. Closing and reopening the window cannot create a second reservation." }
                         } } else if *quote_busy.read() {
                             if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
-                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
+                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
                         div { class: "ub-deposit-card",
                             div { span { "REFUNDABLE DAMAGE DEPOSIT" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
                             p { "Charged separately {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery and refunded to the original payment method after return and inspection, less any documented damage." }
@@ -2252,8 +2269,8 @@ pub(crate) fn UnifiedBookingOverlay(
                                             div { class: "ub-all-in-row", span { "Full trip price" } strong { "{offer.currency} ${offer.trip_price}" } }
                                             div { class: "ub-all-in-row", span { "Refundable damage deposit" } strong { "{offer.currency} ${offer.refundable_deposit}" } }
                                             div { class: "ub-all-in-total", span { "Total paid today" } strong { "{offer.currency} ${offer.total_due_today}" } }
-                                            button { r#type: "button", disabled: true, "Included in this Checkout" }
-                                            small { "The deposit remains refundable after return and inspection, less any documented damage." }
+                                            button { r#type: "button", disabled: *all_in_busy.read(), onclick: move |_| { let created = pending_payment.read().clone(); async move { let Some(mut created) = created else { return; }; all_in_busy.set(true); all_in_error.set(String::new()); booking_error.set(String::new()); payment_phase.set("switching".into()); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); document::eval(UNMOUNT_EMBEDDED_CHECKOUT); match api::switch_booking_to_scheduled(&created.booking.booking_id, &created.access_token).await { Ok(response) => { created.client_secret = Some(response.checkout_client_secret); created.checkout_session_id = Some(response.checkout_session_id); created.payment_option = response.payment_option; let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); pending_payment.set(Some(created)); }, Err(error) => all_in_error.set(error.message) } all_in_busy.set(false); payment_phase.set("idle".into()); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); } }, if *all_in_busy.read() { "Restoring 30% payment…" } else { "Return to 30% payment" } }
+                                            small { "Return to 30% today, with the remaining 70% due 30 days before delivery and the refundable deposit charged separately later." }
                                         }
                                     }
                                 } else {
@@ -2324,6 +2341,31 @@ fn set_review_like_membership(
 
 fn review_like_action_disabled(can_like: bool, is_liked: bool, busy: bool) -> bool {
     (!can_like && !is_liked) || busy
+}
+
+fn rounded_review_rating(rating: &str) -> i32 {
+    rating
+        .parse::<f64>()
+        .ok()
+        .map(|value| value.round() as i32)
+        .unwrap_or_default()
+}
+
+fn displayed_review_rating(rating: &str) -> String {
+    let trimmed = rating.trim_end_matches('0').trim_end_matches('.');
+    if trimmed.is_empty() {
+        rating.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn booking_review_source_label(source: &str) -> &'static str {
+    match source {
+        "rvezy" => "Verified on RVezy",
+        "outdoorsy" => "Verified on Outdoorsy",
+        _ => "Verified booking",
+    }
 }
 
 #[component]
@@ -2416,7 +2458,7 @@ fn RentalChoice(
                             if *reviews_busy.read() { p { class: "ub-review-state", "Loading reviews…" } }
                             else if !reviews_error.read().is_empty() { p { class: "ub-error", role: "alert", "{reviews_error}" } }
                             else if let Some(value) = reviews.read().as_ref() {
-                                div { class: "ub-review-summary", b { if let Some(average) = value.summary.average_rating.as_ref() { "{average}" } else { "New" } } span { "out of 5 · {value.summary.review_count} verified reviews" } }
+                                div { class: "ub-review-summary", b { if let Some(average) = value.summary.average_rating.as_ref() { "{average}" } else { "New" } } span { "out of 5 · {value.summary.review_count} guest reviews" } }
                                 if !like_error.read().is_empty() { p { class: "ub-review-action-error", role: "alert", "{like_error}" } }
                                 if let Some(context) = review_context.read().as_ref() {
                                     if let Some(booking_id) = context.reviewable_booking_id.as_ref() {
@@ -2429,11 +2471,19 @@ fn RentalChoice(
                                 }
                                 if value.reviews.is_empty() { p { class: "ub-review-state", "No guest comments yet." } }
                                 for review in value.reviews.iter() {
-                                    article { class: "ub-review-item", key: "{review.rental_review_id}",
-                                        div { RatingStars { rating: review.rating } b { "{review.rating}/5" } time { "{review.created_at.get(0..10).unwrap_or(&review.created_at)}" } }
+                                    {
+                                        let rating_label = displayed_review_rating(&review.rating);
+                                        let source_label = booking_review_source_label(&review.source);
+                                        let reviewed_at_label = if review.reviewed_at_label.is_empty() {
+                                            review.created_at.get(0..10).unwrap_or(&review.created_at)
+                                        } else {
+                                            &review.reviewed_at_label
+                                        };
+                                        rsx! { article { class: "ub-review-item", key: "{review.rental_review_id}",
+                                        div { RatingStars { rating: rounded_review_rating(&review.rating) } b { "{rating_label}/5" } time { "{reviewed_at_label}" } }
                                         if !review.title.is_empty() { h4 { "{review.title}" } }
-                                        p { "{review.body}" }
-                                        div { class: "ub-review-foot", small { "{review.reviewer_name} · Verified booking" }
+                                        if !review.body.is_empty() { p { "{review.body}" } }
+                                        div { class: "ub-review-foot", small { "{review.reviewer_name} · {source_label}" }
                                             if let Some(context) = review_context.read().as_ref() {
                                                 if context.own_review_ids.contains(&review.rental_review_id) {
                                                     span { class: "ub-like-own", "Your review · {review.like_count} likes" }
@@ -2512,6 +2562,7 @@ fn RentalChoice(
                                                 }
                                             } else { span { class: "ub-like-own", "♥ {review.like_count}" } }
                                         }
+                                        } }
                                     }
                                 }
                             }
@@ -2561,6 +2612,40 @@ fn BookingStep(
 #[cfg(test)]
 mod saved_address_tests {
     use super::*;
+
+    #[test]
+    fn delivery_price_line_explains_the_each_way_charge_after_fifty_km() {
+        let delivery = api::DeliveryEstimate {
+            resolved_address: "Bear Creek Provincial Park".into(),
+            one_way_km: "58.4".into(),
+            round_trip_km: "116.8".into(),
+            delivery_fee: "183.60".into(),
+            maximum_km: "150.0".into(),
+            within_range: true,
+        };
+
+        assert_eq!(
+            delivery_distance_detail(&delivery),
+            "58.4 km one way · 8.4 km extra × CA$2 · two way"
+        );
+    }
+
+    #[test]
+    fn delivery_price_line_marks_distances_through_fifty_km_as_covered() {
+        let delivery = api::DeliveryEstimate {
+            resolved_address: "Kelowna, BC".into(),
+            one_way_km: "30.0".into(),
+            round_trip_km: "60.0".into(),
+            delivery_fee: "150.00".into(),
+            maximum_km: "150.0".into(),
+            within_range: true,
+        };
+
+        assert_eq!(
+            delivery_distance_detail(&delivery),
+            "30.0 km one way · covered by CA$150"
+        );
+    }
 
     #[test]
     fn newest_address_is_first_and_duplicates_are_removed() {
@@ -2996,10 +3081,13 @@ mod saved_address_tests {
         let review = |id: &str, like_count| api::RentalReview {
             rental_review_id: id.into(),
             rental_slug: "test-rv".into(),
-            rating: 5,
+            rating: "5.00".into(),
             title: String::new(),
             body: "A verified review".into(),
             reviewer_name: "Guest".into(),
+            source: "vl_rental".into(),
+            source_url: None,
+            reviewed_at_label: "Aug 1, 2030".into(),
             like_count,
             created_at: "2030-08-01T12:00:00Z".into(),
         };

@@ -27,6 +27,31 @@ fn like_disabled(can_like: bool, is_liked: bool, busy: bool) -> bool {
     (!can_like && !is_liked) || busy
 }
 
+fn rounded_rating(rating: &str) -> i32 {
+    rating
+        .parse::<f64>()
+        .ok()
+        .map(|value| value.round() as i32)
+        .unwrap_or_default()
+}
+
+fn display_rating(rating: &str) -> String {
+    let trimmed = rating.trim_end_matches('0').trim_end_matches('.');
+    if trimmed.is_empty() {
+        rating.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn review_source_label(source: &str) -> &'static str {
+    match source {
+        "rvezy" => "Verified on RVezy",
+        "outdoorsy" => "Verified on Outdoorsy",
+        _ => "Verified booking",
+    }
+}
+
 fn refresh_reviews(
     slug: String,
     mut reviews: Signal<Option<api::RentalReviewsResponse>>,
@@ -118,25 +143,21 @@ pub fn RentalReviewsSection(
         .as_ref()
         .map(|summary| summary.review_count)
         .unwrap_or_default();
-    let rounded_rating = average_rating
-        .parse::<f64>()
-        .ok()
-        .map(|value| value.round() as i32)
-        .unwrap_or_default();
+    let rounded_summary_rating = rounded_rating(&average_rating);
 
     rsx! {
         section { id: "guest-reviews", class: "rvd-reviews", aria_label: "Guest reviews for {rental_name}",
             header { class: "rvd-reviews-head",
                 div { class: "rvd-reviews-heading",
-                    span { "VERIFIED GUEST EXPERIENCES" }
+                    span { "GUEST EXPERIENCES" }
                     h2 { "Guest reviews" }
-                    p { "Comments from customers who completed a paid stay in this RV." }
+                    p { "Reviews from completed VL Rental trips and trusted rental platforms." }
                 }
-                div { class: "rvd-reviews-summary", aria_label: "{average_rating} out of 5 from {review_count} verified reviews",
+                div { class: "rvd-reviews-summary", aria_label: "{average_rating} out of 5 from {review_count} guest reviews",
                     b { "{average_rating}" }
                     div {
-                        ReviewStars { rating: rounded_rating }
-                        small { "{review_count} verified reviews" }
+                        ReviewStars { rating: rounded_summary_rating }
+                        small { "{review_count} guest reviews" }
                     }
                 }
             }
@@ -198,15 +219,23 @@ pub fn RentalReviewsSection(
                             p { class: "rvd-reviews-empty", "No guest comments yet. A verified customer can be the first after their RV is returned." }
                         }
                         for review in value.reviews.iter() {
-                            article { class: "rvd-review-item", key: "{review.rental_review_id}",
+                            {
+                                let rating_label = display_rating(&review.rating);
+                                let source_label = review_source_label(&review.source);
+                                let reviewed_at_label = if review.reviewed_at_label.is_empty() {
+                                    review.created_at.get(0..10).unwrap_or(&review.created_at)
+                                } else {
+                                    &review.reviewed_at_label
+                                };
+                                rsx! { article { class: "rvd-review-item", key: "{review.rental_review_id}",
                                 div { class: "rvd-review-meta",
-                                    div { ReviewStars { rating: review.rating } b { "{review.rating}/5" } }
-                                    time { datetime: "{review.created_at}", "{review.created_at.get(0..10).unwrap_or(&review.created_at)}" }
+                                    div { ReviewStars { rating: rounded_rating(&review.rating) } b { "{rating_label}/5" } }
+                                    time { datetime: "{review.created_at}", "{reviewed_at_label}" }
                                 }
                                 if !review.title.is_empty() { h3 { "{review.title}" } }
-                                p { class: "rvd-review-comment", "{review.body}" }
+                                if !review.body.is_empty() { p { class: "rvd-review-comment", "{review.body}" } }
                                 div { class: "rvd-review-foot",
-                                    small { "{review.reviewer_name} · Verified booking" }
+                                    small { "{review.reviewer_name} · {source_label}" }
                                     if let Some(context) = review_context.read().as_ref() {
                                         if context.own_review_ids.contains(&review.rental_review_id) {
                                             span { class: "rvd-review-own", "Your review · {review.like_count} likes" }
@@ -288,6 +317,7 @@ pub fn RentalReviewsSection(
                                         span { class: "rvd-review-own", "♥ {review.like_count}" }
                                     }
                                 }
+                                } }
                             }
                         }
                     }
@@ -310,7 +340,7 @@ fn ReviewStars(rating: i32) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::like_disabled;
+    use super::{display_rating, like_disabled, review_source_label, rounded_rating};
 
     #[test]
     fn paid_customer_can_toggle_and_busy_request_is_locked() {
@@ -323,5 +353,19 @@ mod tests {
     fn existing_like_can_be_removed_even_if_new_likes_are_not_allowed() {
         assert!(like_disabled(false, false, false));
         assert!(!like_disabled(false, true, false));
+    }
+
+    #[test]
+    fn imported_fractional_ratings_remain_exact() {
+        assert_eq!(display_rating("4.75"), "4.75");
+        assert_eq!(display_rating("5.00"), "5");
+        assert_eq!(rounded_rating("4.75"), 5);
+    }
+
+    #[test]
+    fn review_sources_are_named_without_claiming_a_local_booking() {
+        assert_eq!(review_source_label("rvezy"), "Verified on RVezy");
+        assert_eq!(review_source_label("outdoorsy"), "Verified on Outdoorsy");
+        assert_eq!(review_source_label("vl_rental"), "Verified booking");
     }
 }

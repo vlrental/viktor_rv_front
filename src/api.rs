@@ -598,10 +598,16 @@ fn default_rv_type() -> String {
 pub struct RentalReview {
     pub rental_review_id: String,
     pub rental_slug: String,
-    pub rating: i32,
+    pub rating: String,
     pub title: String,
     pub body: String,
     pub reviewer_name: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    pub reviewed_at_label: String,
     #[serde(default)]
     pub like_count: i64,
     pub created_at: String,
@@ -630,9 +636,15 @@ pub struct AdminRentalReview {
     pub rental_name: String,
     pub booking_number: String,
     pub reviewer_name: String,
-    pub rating: i32,
+    pub rating: String,
     pub title: String,
     pub body: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    pub reviewed_at_label: String,
     pub like_count: i64,
     pub created_at: String,
 }
@@ -1077,7 +1089,7 @@ async fn client_delivery_estimate(address: &str) -> Result<DeliveryEstimate, Str
     let delivery_fee = if one_way_km <= 50.0 {
         150.0
     } else {
-        150.0 + (one_way_km - 50.0) * 3.5
+        150.0 + (one_way_km - 50.0) * 4.0
     };
     Ok(DeliveryEstimate {
         resolved_address: resolved.display_name,
@@ -1244,6 +1256,13 @@ pub struct AllInCheckoutResponse {
     pub offer: AllInPaymentOffer,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ScheduledCheckoutResponse {
+    pub payment_option: String,
+    pub checkout_session_id: String,
+    pub checkout_client_secret: String,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct BookingPaymentStatus {
     #[serde(default)]
@@ -1390,6 +1409,12 @@ pub struct AdminDashboard {
     #[serde(default)]
     pub overdue_actions: i64,
     #[serde(default)]
+    pub calendar_sync_failures: i64,
+    #[serde(default)]
+    pub calendar_conflicts: i64,
+    #[serde(default)]
+    pub calendar_attention: Vec<AdminCalendarAttentionItem>,
+    #[serde(default)]
     pub attention: Vec<AdminAttentionItem>,
     #[serde(default)]
     pub today: Vec<AdminScheduleItem>,
@@ -1397,6 +1422,26 @@ pub struct AdminDashboard {
     pub confirmed: i64,
     #[serde(default)]
     pub returns_today: i64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminCalendarAttentionItem {
+    #[serde(default)]
+    pub external_calendar_id: String,
+    #[serde(default)]
+    pub rental_slug: String,
+    #[serde(default)]
+    pub rental_name: String,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub conflict_count: i32,
+    #[serde(default)]
+    pub last_attempted_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -2188,6 +2233,27 @@ pub async fn switch_booking_to_all_in(
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
+pub async fn switch_booking_to_scheduled(
+    booking_id: &str,
+    booking_token: &str,
+) -> Result<ScheduledCheckoutResponse, ApiError> {
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/bookings/{}/payment-option/scheduled",
+        urlencoding::encode(booking_id)
+    ))
+    .header("x-booking-token", booking_token)
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<ScheduledCheckoutResponse>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
 pub async fn create_booking(
     quote_id: &str,
     first_name: &str,
@@ -2246,15 +2312,113 @@ async fn send_booking_request(
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct AdminAvailabilityBlock {
     pub availability_block_id: String,
     pub rental_slug: String,
     pub rental_name: String,
     pub starts_at: String,
     pub ends_at: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub external_calendar_id: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub has_conflict: bool,
     pub reason: String,
     pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminCalendarConnection {
+    pub external_calendar_id: String,
+    #[serde(default)]
+    pub rental_id: String,
+    pub rental_slug: String,
+    pub rental_name: String,
+    pub provider: String,
+    pub status: String,
+    #[serde(default)]
+    pub has_external_url: bool,
+    #[serde(default)]
+    pub export_url: Option<String>,
+    #[serde(default)]
+    pub last_synced_at: Option<String>,
+    #[serde(default)]
+    pub last_attempted_at: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub imported_event_count: i32,
+    #[serde(default)]
+    pub conflict_count: i32,
+    #[serde(default)]
+    pub import_enabled: bool,
+    #[serde(default)]
+    pub export_enabled: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminCalendarTestResult {
+    pub provider: String,
+    pub valid: bool,
+    #[serde(default)]
+    pub imported_periods: usize,
+    #[serde(default)]
+    pub ignored_past_periods: usize,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct AdminCalendarSyncResult {
+    pub calendar_id: String,
+    #[serde(default)]
+    pub imported_blocks: usize,
+    #[serde(default)]
+    pub removed_blocks: usize,
+    #[serde(default)]
+    pub conflict_count: usize,
+    pub status: String,
+}
+
+#[derive(Deserialize)]
+struct AdminCalendarConnectionsResponse {
+    #[serde(default)]
+    calendar_connections: Vec<AdminCalendarConnection>,
+}
+
+#[derive(Serialize)]
+struct AdminCalendarUrlPayload<'a> {
+    provider: &'a str,
+    calendar_url: &'a str,
+}
+
+#[derive(Serialize)]
+struct SaveAdminCalendarPayload<'a> {
+    rental_slug: &'a str,
+    provider: &'a str,
+    calendar_url: &'a str,
+}
+
+#[derive(Serialize)]
+struct UpdateAdminCalendarPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    calendar_url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    import_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    export_enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct AdminCalendarDisconnectResponse {
+    disconnected: bool,
+}
+
+#[derive(Serialize)]
+struct AdminCalendarDisconnectPayload<'a> {
+    confirmation: &'a str,
 }
 
 #[derive(Deserialize)]
@@ -2324,6 +2488,157 @@ pub async fn admin_availability_blocks() -> Result<Vec<AdminAvailabilityBlock>, 
         .await
         .map(|value| value.availability_blocks)
         .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn admin_calendar_connections() -> Result<Vec<AdminCalendarConnection>, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::get(&format!("{API_BASE}/api/v1/admin/calendar-connections"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarConnectionsResponse>()
+        .await
+        .map(|value| value.calendar_connections)
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn test_admin_calendar(
+    provider: &str,
+    calendar_url: &str,
+) -> Result<AdminCalendarTestResult, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/calendar-connections/test"
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&AdminCalendarUrlPayload {
+        provider,
+        calendar_url,
+    })
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarTestResult>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn save_admin_calendar(
+    rental_slug: &str,
+    provider: &str,
+    calendar_url: &str,
+) -> Result<AdminCalendarConnection, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!("{API_BASE}/api/v1/admin/calendar-connections"))
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"))
+        .json(&SaveAdminCalendarPayload {
+            rental_slug,
+            provider,
+            calendar_url,
+        })
+        .map_err(|error| ApiError::client(error.to_string()))?
+        .send()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarConnection>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn update_admin_calendar(
+    calendar_id: &str,
+    calendar_url: Option<&str>,
+    import_enabled: Option<bool>,
+    export_enabled: Option<bool>,
+) -> Result<AdminCalendarConnection, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::patch(&format!(
+        "{API_BASE}/api/v1/admin/calendar-connections/{}",
+        urlencoding::encode(calendar_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&UpdateAdminCalendarPayload {
+        calendar_url,
+        import_enabled,
+        export_enabled,
+    })
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarConnection>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn sync_admin_calendar(calendar_id: &str) -> Result<AdminCalendarSyncResult, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/calendar-connections/{}/sync",
+        urlencoding::encode(calendar_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarSyncResult>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn disconnect_admin_calendar(calendar_id: &str) -> Result<(), ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/calendar-connections/{}/disconnect",
+        urlencoding::encode(calendar_id)
+    ))
+    .header("Content-Type", "application/json")
+    .header("Authorization", &format!("Bearer {token}"))
+    .json(&AdminCalendarDisconnectPayload {
+        confirmation: "disconnect",
+    })
+    .map_err(|error| ApiError::client(error.to_string()))?
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    let result = response
+        .json::<AdminCalendarDisconnectResponse>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))?;
+    if !result.disconnected {
+        return Err(ApiError::client(
+            "The calendar connection was not disconnected",
+        ));
+    }
+    Ok(())
 }
 
 pub async fn admin_bookings() -> Result<Vec<AdminBooking>, ApiError> {
