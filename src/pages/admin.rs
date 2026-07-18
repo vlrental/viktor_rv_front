@@ -1499,7 +1499,7 @@ fn CalendarSyncRow(
                 p { strong { "2" } span { "Copy the VL URL, open {provider_label} → Add Calendar, paste it, and name it " code { "{setup_name}" } "." } }
                 small {
                     if provider == "outdoorsy" {
-                        "Outdoorsy normally imports the VL feed about every 2 hours."
+                        "Outdoorsy blocks direct server imports into VL, so its occupied dates reach VL through Outdoorsy → RVezy → VL. The VL feed is still connected in Outdoorsy for VL bookings."
                     } else {
                         "RVezy rejected the direct VL feed, so Outdoorsy → RVezy is connected instead. VL-only bookings must also be blocked manually in RVezy."
                     }
