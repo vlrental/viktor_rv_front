@@ -1537,6 +1537,7 @@ fn CalendarTab(
     let mut fleet_filter = use_signal(|| "all".to_string());
     let mut panel_open = use_signal(|| false);
     let mut sync_open = use_signal(|| false);
+    let mut selected_block = use_signal(|| None::<api::AdminAvailabilityBlock>);
     let mut rental_slug = use_signal(|| {
         rentals
             .first()
@@ -1571,16 +1572,16 @@ fn CalendarTab(
                     button { r#type: "button", aria_label: "Previous two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current - Duration::days(14)); }, Icon { name: "chevron-left", size: 16, color: "currentColor" } }
                     button { r#type: "button", onclick: move |_| window_start.set(today), "Today" }
                     button { r#type: "button", aria_label: "Next two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current + Duration::days(14)); }, Icon { name: "chevron-right", size: 16, color: "currentColor" } }
-                    button { class: "admin-calendar-sync-open", r#type: "button", onclick: move |_| { panel_open.set(false); sync_open.set(true); }, Icon { name: "refresh-cw", size: 15, color: "currentColor" } "Calendar sync" }
-                    button { class: "admin-primary-small", r#type: "button", onclick: move |_| panel_open.set(true), Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" }
+                    button { class: "admin-calendar-sync-open", r#type: "button", onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, Icon { name: "refresh-cw", size: 15, color: "currentColor" } "Calendar sync" }
+                    button { class: "admin-primary-small", r#type: "button", onclick: move |_| { selected_block.set(None); panel_open.set(true); }, Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" }
                 } }
-                div { class: "admin-calendar-legend", span { class: "booking", "VL booking" } span { class: "block", "Closed by admin" } span { class: "rvezy", "RVezy" } span { class: "outdoorsy", "Outdoorsy" } span { class: "conflict", "Conflict" } }
+                div { class: "admin-calendar-legend", span { class: "booking", "VL booking" } span { class: "block", "Closed by admin" } span { class: "rvezy", "RVezy" } span { class: "outdoorsy", "Outdoorsy" } span { class: "conflict", "Conflict" } small { "Click an item for details · + closes an open day" } }
                 div { class: "admin-fleet-scroll",
                     div { class: "admin-fleet-calendar", style: "--admin-calendar-days: {days.len()}",
                         div { class: "admin-fleet-corner", strong { "RV / DATE" } small { "{admin_calendar_short_date(*window_start.read())} – {admin_calendar_short_date(window_end)}" } }
                         for day in days.iter() { div { key: "head-{day}", class: if *day == today { "admin-fleet-day is-today" } else { "admin-fleet-day" }, span { "{admin_calendar_weekday(*day)}" } strong { "{admin_calendar_day_number(*day)}" } } }
                         for rental in visible_rentals.iter() {
-                            div { key: "rental-{rental.slug}", class: "admin-fleet-rental", strong { "{rental.name}" } small { "Delivery only" } }
+                            button { key: "rental-{rental.slug}", class: "admin-fleet-rental", r#type: "button", aria_label: "Show only {rental.name}", title: "Show only this RV", onclick: { let slug = rental.slug.clone(); move |_| fleet_filter.set(slug.clone()) }, strong { "{rental.name}" } small { "Delivery only · click to focus" } }
                             for day in days.iter() { div { key: "cell-{rental.slug}-{day}", class: if *day == today { "admin-fleet-cell is-today" } else { "admin-fleet-cell" },
                                 for booking in bookings.iter().filter(|booking| booking.rental_slug == rental.slug && booking_occupies_day(booking, *day)) {
                                     button { class: "admin-calendar-chip booking", r#type: "button", title: "{booking.first_name} {booking.last_name} · {booking.booking_number}", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) },
@@ -1589,7 +1590,16 @@ fn CalendarTab(
                                         span { "{booking.last_name}" }
                                     }
                                 }
-                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) { span { class: "admin-calendar-chip {calendar_block_class(block)}", title: "{block.reason}", small { if block.has_conflict { "CONFLICT" } else if let Some(provider) = calendar_block_provider(block) { "{calendar_provider_label(provider)}" } else { "CLOSED" } } span { "{block.reason}" } } }
+                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) {
+                                    if is_external_calendar_block(block) {
+                                        button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", title: "{block.reason} · open calendar sync", aria_label: if block.has_conflict { format!("Review conflict for {}", rental.name) } else { format!("Manage external calendar for {}", rental.name) }, onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, small { if block.has_conflict { "CONFLICT" } else if let Some(provider) = calendar_block_provider(block) { "{calendar_provider_label(provider)}" } } span { "{block.reason}" } }
+                                    } else {
+                                        button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", title: "{block.reason} · view details", aria_label: "View closed dates for {rental.name}", onclick: { let block = block.clone(); move |_| { panel_open.set(false); selected_block.set(Some(block.clone())); } }, small { "CLOSED" } span { "{block.reason}" } }
+                                    }
+                                }
+                                if *day >= today && !bookings.iter().any(|booking| booking.rental_slug == rental.slug && booking_occupies_day(booking, *day)) && !blocks.iter().any(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) {
+                                    button { class: "admin-calendar-cell-close", r#type: "button", title: "Close dates starting here", aria_label: "Close {rental.name} starting {day}", onclick: { let slug = rental.slug.clone(); let day = *day; move |_| { selected_block.set(None); rental_slug.set(slug.clone()); starts_on.set(day.to_string()); ends_on.set((day + Duration::days(3)).to_string()); reason.set("Owner use".into()); panel_open.set(true); } }, Icon { name: "plus", size: 12, color: "currentColor" } span { "Close" } }
+                                }
                             } }
                         }
                     }
@@ -1602,7 +1612,19 @@ fn CalendarTab(
                 }
                 if !message.read().is_empty() { p { class: "admin-inline-message", "{message}" } }
             }
-            if panel_open() {
+            if let Some(block) = selected_block.read().clone() {
+                aside { class: "admin-panel admin-calendar-editor admin-calendar-block-detail", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); selected_block.set(None); },
+                    header { div { h3 { "Closed dates" } p { "Local admin block · customers cannot book this RV." } } button { r#type: "button", aria_label: "Close block details", onclick: move |_| selected_block.set(None), Icon { name: "x", size: 19, color: "currentColor" } } }
+                    dl {
+                        div { dt { "RV" } dd { "{block.rental_name}" } }
+                        div { dt { "Closed from" } dd { "{display_date(&block.starts_at)} · 2:00 PM" } }
+                        div { dt { "Open again" } dd { "{display_date(&block.ends_at)} · 11:00 AM" } }
+                        div { dt { "Reason" } dd { "{block.reason}" } }
+                    }
+                    p { class: "admin-calendar-block-note", "Reopening removes only this local block. External dates must be changed on their original platform." }
+                    button { class: "admin-submit danger", r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { selected_block.set(None); message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, if busy() { "Reopening…" } else { "Reopen these dates" } }
+                }
+            } else if panel_open() {
                 aside { class: "admin-panel admin-calendar-editor", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); panel_open.set(false); },
                     header { div { h3 { "Close dates" } p { "The RV becomes unavailable in customer search." } } button { r#type: "button", aria_label: "Close date editor", onclick: move |_| panel_open.set(false), Icon { name: "x", size: 19, color: "currentColor" } } }
                     label { "RV" select { value: "{rental_slug}", onchange: move |event| rental_slug.set(event.value()), for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } } }

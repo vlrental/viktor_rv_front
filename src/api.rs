@@ -1146,6 +1146,26 @@ pub struct AvailabilityResponse {
     pub minimum_nights: i64,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct FleetRentalAvailability {
+    pub rental_slug: String,
+    pub unavailable: Vec<UnavailableInterval>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct FleetAvailabilityResponse {
+    pub starts_on: String,
+    pub ends_on: String,
+    #[serde(alias = "pickup_time")]
+    pub delivery_time: String,
+    pub return_time: String,
+    pub timezone: String,
+    pub minimum_nights: i64,
+    pub total_rentals: usize,
+    pub rentals: Vec<FleetRentalAvailability>,
+    pub unavailable_start_dates: Vec<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Quote {
     pub quote_id: String,
@@ -2071,6 +2091,26 @@ pub async fn availability(
         urlencoding::encode(slug),
         urlencoding::encode(starts_on),
         urlencoding::encode(ends_on)
+    ))
+    .send()
+    .await
+    .map_err(|e| e.to_string())?;
+    if !response.ok() {
+        return Err(response_error(response).await.message);
+    }
+    response.json().await.map_err(|e| e.to_string())
+}
+
+pub async fn fleet_availability(
+    starts_on: &str,
+    ends_on: &str,
+    guests: i32,
+) -> Result<FleetAvailabilityResponse, String> {
+    let response = Request::get(&format!(
+        "{API_BASE}/api/v1/fleet-availability?starts_on={}&ends_on={}&guests={}",
+        urlencoding::encode(starts_on),
+        urlencoding::encode(ends_on),
+        guests
     ))
     .send()
     .await

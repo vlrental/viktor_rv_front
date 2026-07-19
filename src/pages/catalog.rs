@@ -847,6 +847,8 @@ pub(crate) fn CatalogSearchMonth(
     mut starts_on: Signal<Option<NaiveDate>>,
     mut ends_on: Signal<Option<NaiveDate>>,
     #[props(default)] unavailable_dates: Vec<NaiveDate>,
+    #[props(default)] availability_counts: Vec<(NaiveDate, usize)>,
+    #[props(default = false)] show_availability_counts: bool,
     #[props(default = false)] availability_pending: bool,
     #[props(default = false)] availability_blocked: bool,
 ) -> Element {
@@ -865,6 +867,9 @@ pub(crate) fn CatalogSearchMonth(
                             let in_range = start.zip(end).map(|(first, last)| day > first && day < last).unwrap_or(false);
                             let too_short = start.filter(|_| end.is_none()).map(|first| day > first && (day - first).num_days() < 3).unwrap_or(false);
                             let unavailable = unavailable_dates.contains(&day) && !is_start && !is_end;
+                            let available_rv_count = availability_counts
+                                .iter()
+                                .find_map(|(availability_day, count)| (*availability_day == day).then_some(*count));
                             let disabled = catalog_day_is_disabled(
                                 day,
                                 today,
@@ -874,8 +879,25 @@ pub(crate) fn CatalogSearchMonth(
                                 availability_blocked,
                                 is_start || is_end,
                             );
-                            let class = if is_start || is_end { "selected" } else if in_range { "in-range" } else { "" };
-                            rsx! { button { key: "day-{index}", r#type: "button", class, disabled, aria_label: "{day}", onclick: move |_| {
+                            let limited = show_availability_counts
+                                && available_rv_count.is_some_and(|count| (1..=2).contains(&count));
+                            let class = if is_start || is_end { "selected" } else if in_range { "in-range" } else if limited { "limited" } else { "" };
+                            let availability_label = if show_availability_counts {
+                                match available_rv_count {
+                                    Some(0) => "No RVs available for this date selection".to_string(),
+                                    Some(1) => "Only 1 RV available for this date selection".to_string(),
+                                    Some(count) => format!("{count} RVs available for this date selection"),
+                                    None => "Availability is being checked".to_string(),
+                                }
+                            } else {
+                                String::new()
+                            };
+                            let aria_label = if availability_label.is_empty() {
+                                day.to_string()
+                            } else {
+                                format!("{day}, {availability_label}")
+                            };
+                            rsx! { button { key: "day-{index}", r#type: "button", class, disabled, aria_label, title: availability_label, onclick: move |_| {
                                 let current_start = *starts_on.read();
                                 let current_end = *ends_on.read();
                                 let (next_start, next_end) = next_catalog_date_selection(day, current_start, current_end);
