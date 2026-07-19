@@ -137,6 +137,48 @@ fn is_external_calendar_block(block: &api::AdminAvailabilityBlock) -> bool {
     block.external_calendar_id.is_some() || calendar_block_provider(block).is_some()
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct AdminCalendarExternalGroup {
+    key: String,
+    label: String,
+    css_class: String,
+    reason: String,
+    count: usize,
+}
+
+fn aggregate_external_calendar_blocks<'a>(
+    blocks: impl Iterator<Item = &'a api::AdminAvailabilityBlock>,
+) -> Vec<AdminCalendarExternalGroup> {
+    let mut groups = Vec::<AdminCalendarExternalGroup>::new();
+    for block in blocks.filter(|block| is_external_calendar_block(block)) {
+        let (key, label, css_class) = if block.has_conflict {
+            ("conflict", "Conflict", "conflict")
+        } else if let Some(provider) = calendar_block_provider(block) {
+            (provider, calendar_provider_label(provider), provider)
+        } else {
+            ("external", "External", "block")
+        };
+        if let Some(group) = groups.iter_mut().find(|group| group.key == key) {
+            group.count += 1;
+        } else {
+            groups.push(AdminCalendarExternalGroup {
+                key: key.into(),
+                label: label.into(),
+                css_class: css_class.into(),
+                reason: block.reason.clone(),
+                count: 1,
+            });
+        }
+    }
+    groups.sort_by_key(|group| match group.key.as_str() {
+        "rvezy" => 0,
+        "outdoorsy" => 1,
+        "conflict" => 2,
+        _ => 3,
+    });
+    groups
+}
+
 fn status_label(status: &str) -> &'static str {
     match status {
         "pending_payment" => "Pending payment",
@@ -1590,12 +1632,11 @@ fn CalendarTab(
                                         span { "{booking.last_name}" }
                                     }
                                 }
-                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) {
-                                    if is_external_calendar_block(block) {
-                                        button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", title: "{block.reason} · open calendar sync", aria_label: if block.has_conflict { format!("Review conflict for {}", rental.name) } else { format!("Manage external calendar for {}", rental.name) }, onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, small { if block.has_conflict { "CONFLICT" } else if let Some(provider) = calendar_block_provider(block) { "{calendar_provider_label(provider)}" } } span { "{block.reason}" } }
-                                    } else {
-                                        button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", title: "{block.reason} · view details", aria_label: "View closed dates for {rental.name}", onclick: { let block = block.clone(); move |_| { panel_open.set(false); selected_block.set(Some(block.clone())); } }, small { "CLOSED" } span { "{block.reason}" } }
-                                    }
+                                for group in aggregate_external_calendar_blocks(blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day))) {
+                                    button { class: "admin-calendar-chip {group.css_class}", r#type: "button", title: "{group.reason} · {group.count} external periods · open calendar sync", aria_label: if group.key == "conflict" { format!("Review {} conflicts for {}", group.count, rental.name) } else { format!("Manage {} calendar for {}", group.label, rental.name) }, onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, small { "{group.label}" } span { "{group.reason}" } if group.count > 1 { small { class: "admin-calendar-chip-count", "+{group.count - 1} periods" } } }
+                                }
+                                for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day) && !is_external_calendar_block(block)) {
+                                    button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", title: "{block.reason} · view details", aria_label: "View closed dates for {rental.name}", onclick: { let block = block.clone(); move |_| { panel_open.set(false); selected_block.set(Some(block.clone())); } }, small { "CLOSED" } span { "{block.reason}" } }
                                 }
                                 if *day >= today && !bookings.iter().any(|booking| booking.rental_slug == rental.slug && booking_occupies_day(booking, *day)) && !blocks.iter().any(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) {
                                     button { class: "admin-calendar-cell-close", r#type: "button", title: "Close dates starting here", aria_label: "Close {rental.name} starting {day}", onclick: { let slug = rental.slug.clone(); let day = *day; move |_| { selected_block.set(None); rental_slug.set(slug.clone()); starts_on.set(day.to_string()); ends_on.set((day + Duration::days(3)).to_string()); reason.set("Owner use".into()); panel_open.set(true); } }, Icon { name: "plus", size: 12, color: "currentColor" } span { "Close" } }
@@ -2062,6 +2103,52 @@ mod tests {
         };
 
         assert_eq!(calendar_block_class(&block), "conflict");
+    }
+
+    #[test]
+    fn fleet_calendar_groups_external_periods_by_provider_and_conflict_state() {
+        let outdoorsy = || api::AdminAvailabilityBlock {
+            source: "outdoorsy".into(),
+            provider: Some("outdoorsy".into()),
+            reason: "Outdoorsy booking".into(),
+            ..api::AdminAvailabilityBlock::default()
+        };
+        let blocks = [
+            outdoorsy(),
+            outdoorsy(),
+            api::AdminAvailabilityBlock {
+                source: "rvezy".into(),
+                provider: Some("rvezy".into()),
+                reason: "RVezy booking".into(),
+                ..api::AdminAvailabilityBlock::default()
+            },
+            api::AdminAvailabilityBlock {
+                source: "outdoorsy".into(),
+                provider: Some("outdoorsy".into()),
+                has_conflict: true,
+                reason: "Outdoorsy booking".into(),
+                ..api::AdminAvailabilityBlock::default()
+            },
+            api::AdminAvailabilityBlock {
+                source: "rvezy".into(),
+                provider: Some("rvezy".into()),
+                has_conflict: true,
+                reason: "RVezy booking".into(),
+                ..api::AdminAvailabilityBlock::default()
+            },
+            api::AdminAvailabilityBlock {
+                source: "admin".into(),
+                reason: "Owner use".into(),
+                ..api::AdminAvailabilityBlock::default()
+            },
+        ];
+
+        let groups = aggregate_external_calendar_blocks(blocks.iter());
+
+        assert_eq!(groups.len(), 3);
+        assert_eq!((groups[0].key.as_str(), groups[0].count), ("rvezy", 1));
+        assert_eq!((groups[1].key.as_str(), groups[1].count), ("outdoorsy", 2));
+        assert_eq!((groups[2].key.as_str(), groups[2].count), ("conflict", 2));
     }
 
     #[test]

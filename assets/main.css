@@ -1514,6 +1514,7 @@ body:has(.cat-planner-backdrop) {
 .admin-calendar-chip.conflict { border: 1px solid #B33A2B; background: repeating-linear-gradient(135deg, #FBE9E5 0 6px, #F5D5CF 6px 12px); color: #8D261C; }
 .admin-calendar-chip small { font: 750 7px var(--font-mono); }
 .admin-calendar-chip span { overflow: hidden; font-size: 8px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.admin-calendar-chip .admin-calendar-chip-count { padding-top: 2px; border-top: 1px solid currentColor; opacity: .78; }
 .admin-calendar-cell-close { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: calc(100% - 4px); min-height: 26px; margin: auto 2px; border: 1px dashed #9FB0A3; border-radius: 6px; color: var(--vl-muted); font-size: 8px; font-weight: 750; opacity: .7; }
 .admin-calendar-cell-close:hover { border-style: solid; border-color: var(--vl-forest); background: #EDF4EE; color: var(--vl-forest); opacity: 1; }
 .admin-calendar-cell-close:focus-visible { outline: 2px solid var(--vl-forest); outline-offset: 1px; opacity: 1; }
