@@ -1307,13 +1307,13 @@ fn CalendarSyncDrawer(
                 onclick: move |event| event.stop_propagation(),
                 onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); on_close.call(()); },
                 header { class: "admin-drawer-head",
-                    div { h2 { "Calendar sync" } p { "RVezy and Outdoorsy · incoming feeds refresh every 15 minutes" } }
+                    div { h2 { "Calendar sync" } p { "RVezy and Outdoorsy · secure incoming feeds refresh every 15 minutes" } }
                     button { r#type: "button", aria_label: "Close calendar sync", onclick: move |_| on_close.call(()), Icon { name: "x", size: 19, color: "currentColor" } }
                 }
                 div { class: "admin-drawer-scroll admin-calendar-sync-scroll",
                     section { class: "admin-calendar-sync-note",
                         Icon { name: "info", size: 18, color: "currentColor" }
-                        p { "VL Rental imports only occupied dates. Customer names, phone numbers, addresses and prices never enter a calendar feed. Refresh VL now cannot force RVezy or Outdoorsy to refresh their copy." }
+                        p { "VL Rental securely imports only occupied dates. Customer names, phone numbers, addresses and prices never enter a calendar feed. Refresh VL now updates incoming feeds in VL; each provider refreshes the VL export on its own schedule." }
                     }
                     if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
                     if loading() { AdminLoading {} }
@@ -1499,9 +1499,9 @@ fn CalendarSyncRow(
                 p { strong { "2" } span { "Copy the VL URL, open {provider_label} → Add Calendar, paste it, and name it " code { "{setup_name}" } "." } }
                 small {
                     if provider == "outdoorsy" {
-                        "Outdoorsy blocks direct server imports into VL, so its occupied dates reach VL through Outdoorsy → RVezy → VL. The VL feed is still connected in Outdoorsy for VL bookings."
+                        "Outdoorsy bookings reach VL through VL’s secure calendar relay, without passing through RVezy. VL checks the Outdoorsy feed every 15 minutes; Outdoorsy refreshes the VL export on its own schedule."
                     } else {
-                        "RVezy rejected the direct VL feed, so Outdoorsy → RVezy is connected instead. VL-only bookings must also be blocked manually in RVezy."
+                        "RVezy bookings are imported directly into VL. VL checks the RVezy feed every 15 minutes; RVezy refreshes the VL export on its own schedule."
                     }
                 }
             }
