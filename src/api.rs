@@ -233,6 +233,79 @@ pub struct AuthTokens {
     pub user: AuthUser,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct PushConfig {
+    pub enabled: bool,
+    pub api_key: Option<String>,
+    pub auth_domain: Option<String>,
+    pub project_id: Option<String>,
+    pub storage_bucket: Option<String>,
+    pub messaging_sender_id: Option<String>,
+    pub app_id: Option<String>,
+    pub vapid_public_key: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PushDevicePayload<'a> {
+    token: &'a str,
+}
+
+#[derive(Deserialize)]
+struct PushDeviceResponse {
+    registered: bool,
+}
+
+pub async fn push_config() -> Result<PushConfig, String> {
+    let response = Request::get(&format!("{API_BASE}/api/v1/push/config"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.ok() {
+        return Err("Push notifications are unavailable.".into());
+    }
+    response.json().await.map_err(|error| error.to_string())
+}
+
+pub async fn set_push_device(token: &str, registered: bool) -> Result<bool, String> {
+    let mut access_token = access_token().ok_or("Sign in to manage notifications.")?;
+    let mut response = send_push_device(token, registered, &access_token).await?;
+    if response.status() == 401 {
+        access_token = refresh_session()
+            .await
+            .map_err(|_| "Sign in again to manage notifications.".to_string())?
+            .access_token;
+        response = send_push_device(token, registered, &access_token).await?;
+    }
+    if !response.ok() {
+        return Err("Could not update notification settings.".into());
+    }
+    response
+        .json::<PushDeviceResponse>()
+        .await
+        .map(|value| value.registered)
+        .map_err(|error| error.to_string())
+}
+
+async fn send_push_device(
+    token: &str,
+    registered: bool,
+    access_token: &str,
+) -> Result<Response, String> {
+    let request = if registered {
+        Request::post(&format!("{API_BASE}/api/v1/me/push-devices"))
+    } else {
+        Request::delete(&format!("{API_BASE}/api/v1/me/push-devices"))
+    };
+    request
+        .header("Authorization", &format!("Bearer {access_token}"))
+        .header("Content-Type", "application/json")
+        .json(&PushDevicePayload { token })
+        .map_err(|error| error.to_string())?
+        .send()
+        .await
+        .map_err(|error| error.to_string())
+}
+
 fn auth_parameters(fragment: &str, search: &str) -> Option<HashMap<String, String>> {
     [fragment, search].into_iter().find_map(|source| {
         let mut value = source.trim().trim_start_matches(['#', '?']);
@@ -506,11 +579,14 @@ fn migrate_legacy_auth_values(auth_storage: &web_sys::Storage) {
 }
 
 pub async fn logout() {
-    if let Some(token) = access_token() {
-        let _ = Request::post(&format!("{API_BASE}/api/v1/auth/logout"))
-            .header("Authorization", &format!("Bearer {token}"))
-            .send()
-            .await;
+    if access_token().is_some() {
+        crate::push_notifications::unregister_before_logout().await;
+        if let Some(token) = access_token() {
+            let _ = Request::post(&format!("{API_BASE}/api/v1/auth/logout"))
+                .header("Authorization", &format!("Bearer {token}"))
+                .send()
+                .await;
+        }
     }
     clear_session();
 }
@@ -1424,6 +1500,8 @@ pub struct AdminDashboard {
     pub payment_errors: i64,
     #[serde(default)]
     pub notification_failures: i64,
+    #[serde(default)]
+    pub push_notification_failures: i64,
     #[serde(default, alias = "deliveries_today")]
     pub upcoming_deliveries: i64,
     #[serde(default)]

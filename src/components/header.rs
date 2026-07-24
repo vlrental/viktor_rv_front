@@ -3,7 +3,9 @@ use dioxus::prelude::*;
 use crate::api;
 use crate::components::Icon;
 use crate::data::PHONE;
-use crate::{booking_launch_requires_home, AuthSession, BookingLaunchRequest, Route};
+use crate::{
+    booking_launch_requires_home, push_notifications, AuthSession, BookingLaunchRequest, Route,
+};
 
 const LOGO: Asset = asset!(
     "/assets/img/logo.png",
@@ -43,7 +45,11 @@ pub fn Header() -> Element {
     let mut password = use_signal(String::new);
     let mut error = use_signal(move || initial_error);
     let mut busy = use_signal(|| false);
+    let mut push_state = use_signal(|| "loading".to_string());
+    let mut push_busy = use_signal(|| false);
+    let mut push_error = use_signal(String::new);
     let current_user = auth_session.read().clone();
+    let signed_in = current_user.is_some();
     let rentals_href = api::frontend_path("/#home-rentals");
     let auth_return_route = route.clone();
     let mobile_booking_route = route.clone();
@@ -59,6 +65,20 @@ pub fn Header() -> Element {
     } else {
         "Open navigation"
     };
+    let push_icon: &'static str = if push_state.read().as_str() == "enabled" {
+        "bell-ring"
+    } else {
+        "bell"
+    };
+    use_effect(move || {
+        if !signed_in {
+            push_state.set("available".into());
+            return;
+        }
+        spawn(async move {
+            push_state.set(push_notifications::status().await);
+        });
+    });
     use_effect(move || {
         if *mobile_open.read() {
             document::eval(
@@ -254,6 +274,47 @@ pub fn Header() -> Element {
                                         Icon { name: "layout-dashboard", size: 16, color: "var(--vl-forest)" }
                                         span { "Open admin dashboard" }
                                     }
+                                }
+                                button {
+                                    class: "nav-account-admin",
+                                    r#type: "button",
+                                    disabled: *push_busy.read() || matches!(push_state.read().as_str(), "loading" | "denied" | "unsupported"),
+                                    onclick: move |_| async move {
+                                        push_busy.set(true);
+                                        push_error.set(String::new());
+                                        let enabled = push_state.read().as_str() == "enabled";
+                                        let result = if enabled {
+                                            push_notifications::disable().await
+                                        } else {
+                                            push_notifications::enable().await
+                                        };
+                                        match result {
+                                            Ok(()) => push_state.set(if enabled { "available".into() } else { "enabled".into() }),
+                                            Err(message) => push_error.set(message),
+                                        }
+                                        push_busy.set(false);
+                                    },
+                                    Icon {
+                                        name: push_icon,
+                                        size: 16,
+                                        color: "var(--vl-forest)"
+                                    }
+                                    span {
+                                        if *push_busy.read() {
+                                            "Please wait…"
+                                        } else {
+                                            match push_state.read().as_str() {
+                                                "enabled" => "Notifications on",
+                                                "denied" => "Notifications blocked in browser",
+                                                "unsupported" => "Notifications unavailable",
+                                                "loading" => "Checking notifications…",
+                                                _ => "Turn on notifications",
+                                            }
+                                        }
+                                    }
+                                }
+                                if !push_error.read().is_empty() {
+                                    p { class: "nav-account-error", role: "alert", "{push_error}" }
                                 }
                                 button { class: "nav-account-signout", r#type: "button", onclick: move |_| async move {
                                     api::logout().await;

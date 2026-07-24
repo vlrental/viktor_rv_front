@@ -3,6 +3,7 @@ mod components;
 mod data;
 mod pages;
 mod pricing;
+mod push_notifications;
 mod timezone;
 
 use components::{Footer, Header};

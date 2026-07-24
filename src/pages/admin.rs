@@ -581,6 +581,8 @@ pub fn Admin() -> Element {
     let metric_active = dashboard_value.confirmed.max(active_count);
     let metric_pending = dashboard_value.pending_payments.max(pending_count);
     let metric_failures = dashboard_value.payment_errors.max(payment_failures)
+        + dashboard_value.notification_failures
+        + dashboard_value.push_notification_failures
         + dashboard_value.calendar_sync_failures
         + dashboard_value.calendar_conflicts;
     let payment_availability = api::payment_availability(
@@ -645,7 +647,7 @@ pub fn Admin() -> Element {
                     div { class: "admin-metrics admin-center-metrics",
                         article { span { "CONFIRMED" } strong { "{metric_active}" } small { "active and upcoming" } }
                         article { span { "AWAITING PAYMENT" } strong { "{metric_pending}" } small { "reserved, not confirmed" } }
-                        article { span { "PAYMENT / EMAIL / CALENDAR" } strong { "{metric_failures}" } small { "need attention" } }
+                        article { span { "PAYMENT / EMAIL / PUSH / CALENDAR" } strong { "{metric_failures}" } small { "need attention" } }
                         article { span { "OVERDUE ACTIONS" } strong { "{dashboard_value.overdue_actions}" } small { "deposit or return decisions" } }
                     }
 
@@ -768,7 +770,7 @@ fn OverviewTab(
     rsx! {
         div { class: "admin-overview-grid",
             section { class: "admin-panel admin-attention-panel",
-                div { class: "admin-panel-head", div { h2 { "Needs attention" } p { "Payment, delivery and calendar sync issues that need an admin decision." } } span { "{dashboard.attention.len() + dashboard.calendar_attention.len()} items" } }
+                div { class: "admin-panel-head", div { h2 { "Needs attention" } p { "Payment, delivery, notification and calendar sync issues that need an admin decision." } } span { "{dashboard.attention.len() + dashboard.calendar_attention.len()} items" } }
                 if loading { AdminLoading {} }
                 else if dashboard.attention.is_empty() && dashboard.calendar_attention.is_empty() {
                     div { class: "admin-empty admin-empty-positive", Icon { name: "circle-check-big", size: 24, color: "var(--vl-forest)" } "No urgent actions right now." }
