@@ -355,6 +355,88 @@ Deployment разрешён данным утверждённым планом, 
 
 ## Статус
 
-Текущий этап: локальные исправления внесены, базовые Rust/WASM проверки зелёные.
+### Выполнено 2026-07-23
 
-Следующий этап: disposable PostgreSQL regression checks, затем полный diff/security review и только после этого selective commit/push/deployment.
+- Production migration `20260723120000_suppress_legacy_email_retries.sql`
+  применена и проверена:
+  - 26 из 26 старых SES authentication/sender failures имеют
+    `retry_suppressed=true`;
+  - старые строки сохранены;
+  - активных старых ошибок для retry: 0.
+- Backend production SHA:
+  `344ba9df59338a0a663e8ade7605d3741a9b34ea`.
+- Frontend production SHA:
+  `0aa5c8ea40ad90d42ed67a546c488ed772923f28`.
+- Backend DB workflow:
+  `https://github.com/GaponovAlexey/viktor_rv_back/actions/runs/30067269665`
+  — `success`.
+- Backend test/build/deploy workflow:
+  `https://github.com/GaponovAlexey/viktor_rv_back/actions/runs/30067270271`
+  — `success`.
+- Frontend test/build/Pages workflow:
+  `https://github.com/GaponovAlexey/viktor_rv_front/actions/runs/30067736434`
+  — `success`.
+- Backend CI подтвердил:
+  - formatting;
+  - disposable PostgreSQL schema;
+  - SQL safety contracts;
+  - 145 backend tests;
+  - payment/auth/push/concurrency database tests;
+  - warning-free clippy.
+- Frontend CI подтвердил:
+  - formatting;
+  - 107 tests;
+  - Pages artifact verification;
+  - warning-free clippy;
+  - WASM/browser target.
+- Production smoke:
+  - `/health` → `200`;
+  - `/api/v1/push/config` → `200`, `enabled=true`;
+  - unauthenticated `POST /api/v1/me/push-devices` → `401`;
+  - `/api/v1/payments/config` → `mode=test`;
+  - `push.js`, `firebase-messaging-sw.js`, `site.webmanifest` → `200`;
+  - browser marker `data-vl-push-client=ready`;
+  - домен, DNS и live Stripe не менялись.
+- Admin `Test email` успешно отправлен и фактически получен в
+  `Vlrental.ca@gmail.com`.
+- Production database подтверждает:
+  - 2 `balance_payment_link` → `sent`;
+  - 2 `damage_hold_payment_link` → `sent`;
+  - старые 26 ошибок не переотправлены.
+- Проведён отдельный Stripe test E2E:
+  - booking `VL-20260723-00000011`;
+  - trip price CA$1,055.74;
+  - initial 30% CA$316.72;
+  - balance CA$739.02, due 2027-03-06 13:00 PST;
+  - refundable damage deposit CA$1,000, due 2027-04-03 14:00 PDT;
+  - verified webhook перевёл booking в `confirmed/partially_paid`;
+  - customer/admin confirmation email созданы ровно по одному и имеют
+    `sent`;
+  - оба письма фактически получены в Gmail;
+  - Stripe `checkout_session` и `payment_intent` — разные provider objects,
+    обязательство зачтено один раз;
+  - после проверки booking отменена, полный test refund CA$316.72 имеет
+    `succeeded`, future obligations отменены, даты освобождены;
+  - refund/cancellation customer/admin emails имеют `sent`.
+
+### Единственный незавершённый production smoke
+
+- В `push_devices`: 0 enabled rows.
+- В SNS `vl-rental-web`: 0 endpoints.
+- Google admin sign-in и кнопка `Turn on notifications` работают, но macOS
+  показал системный prompt `ChatGPT would like to access data from other
+  apps`.
+- Этот широкий системный доступ не был разрешён, потому что он выходит за
+  рамки узкого разрешения notifications для VL Rental.
+- Для завершения необходимо:
+  1. закрыть macOS prompt без выдачи широкого доступа;
+  2. в Chrome разрешить notifications только для
+     `https://gaponovalexey.github.io`;
+  3. снова нажать `Turn on notifications`;
+  4. проверить одну enabled строку `push_devices` и один SNS endpoint;
+  5. выполнить один SNS test delivery и подтвердить `sent` плюс
+     `provider_reference=message_id`.
+
+Текущий этап: email и Stripe webhook полностью активированы и проверены;
+FCM backend/frontend развёрнуты, но регистрация первого production browser
+device ожидает узкого пользовательского разрешения Chrome.
