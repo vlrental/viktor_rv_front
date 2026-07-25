@@ -1189,7 +1189,9 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut edit_booking_error = use_signal(String::new);
     let navigator = use_navigator();
     let google_href = api::google_login_url();
+    let facebook_href = api::FACEBOOK_AUTH_ENABLED.then(api::facebook_login_url);
     let google_return = use_route::<Route>().to_string();
+    let facebook_return = google_return.clone();
 
     use_effect(move || {
         if *auth_profile_loaded.read() || user.read().is_none() {
@@ -2093,7 +2095,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                     Icon { name: "arrow-right", size: 17, color: "var(--vl-muted)" }
                                     span { "Return · 11:00 AM" } strong { "{date_text(*ends_on.read())}" }
                                 }
-                                div { class: if calendar_error.is_some() { "ub-calendar-context is-warning" } else { "ub-calendar-context" },
+                                div { class: if calendar_error.is_some() { "ub-calendar-context is-warning" } else { "ub-calendar-context" }, role: if calendar_error.is_some() { "alert" } else { "status" }, aria_live: "polite",
                                     Icon { name: "calendar", size: 16, color: "var(--vl-forest)" }
                                     span {
                                         if selected_calendar_active {
@@ -2171,7 +2173,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                     ontouchcancel: move |_| calendar_swipe_start.set(None),
                                     for offset in 0..2_u32 { CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on, unavailable_dates: unavailable_dates.clone(), availability_counts: availability_counts.clone(), show_availability_counts: !selected_calendar_active && availability_is_current, availability_pending, availability_blocked: calendar_blocked } }
                                 }
-                                div { class: "ub-guests", span { "Guests" } button { r#type: "button", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" } strong { "{guests}" } button { r#type: "button", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" } }
+                                div { class: "ub-guests", role: "group", aria_label: "Number of guests", span { "Guests" } button { r#type: "button", aria_label: "Remove one guest", disabled: *guests.read() <= 1, onclick: move |_| { let current = *guests.read(); guests.set((current - 1).max(1)); }, "−" } strong { aria_live: "polite", "{guests}" } button { r#type: "button", aria_label: "Add one guest", disabled: *guests.read() >= 10, onclick: move |_| { let current = *guests.read(); guests.set((current + 1).min(10)); }, "+" } }
                             }
                         }
                         BookingStep { number: 2, title: "Choose your RV", summary: selected_name.clone(), complete: !selected_slug.read().is_empty(), open: *open_step.read() == 2, disabled: payment_locked, on_toggle: move |_| if !payment_locked { open_step.set(if *open_step.peek() == 2 { 0 } else { 2 }) },
@@ -2360,6 +2362,19 @@ pub(crate) fn UnifiedBookingOverlay(
                                     },
                                         span { class: "auth-google-mark", "G" }
                                         "Continue with Google"
+                                    }
+                                    if let Some(facebook_href) = facebook_href.clone() {
+                                        a { class: "ub-facebook", href: facebook_href, onclick: move |event| {
+                                            let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false);
+                                            let continuation = api::BookingAuthContinuation { draft: draft.clone(), location: location.read().clone(), radius_km: *radius.read(), delivery_estimate: delivery_result.read().clone(), first_name: first_name.read().clone(), last_name: last_name.read().clone(), booking_email: booking_email.read().clone(), phone: phone.read().clone(), notes: notes.read().clone(), accepted_terms: *accepted.read() };
+                                            match api::save_booking_auth_continuation(&continuation) {
+                                                Ok(()) => { let search = api::CatalogSearchDraft { location: location.read().clone(), radius_km: *radius.read(), starts_on: Some(draft.starts_on), ends_on: Some(draft.ends_on), guests: draft.guests }; let _ = api::save_json("vl_catalog_search", &search); on_search_change.call(()); api::remember_auth_return(&facebook_return); }
+                                                Err(message) => { event.prevent_default(); auth_error.set(message); }
+                                            }
+                                        },
+                                            span { class: "auth-facebook-mark", "f" }
+                                            "Continue with Facebook"
+                                        }
                                     }
                                     div { class: "ub-auth-divider", span { "or use email" } }
                                     div { class: "ub-field-grid", input { r#type: "email", autocomplete: "email", value: "{auth_email}", placeholder: "Email", oninput: move |event| auth_email.set(event.value()) } input { r#type: "password", autocomplete: if *auth_register.read() { "new-password" } else { "current-password" }, value: "{auth_password}", placeholder: "Password", oninput: move |event| auth_password.set(event.value()) } }
@@ -3299,6 +3314,23 @@ mod saved_address_tests {
         assert_eq!(
             fleet_available_rental_count(return_day, None, None, 3, &schedules),
             1
+        );
+    }
+
+    #[test]
+    fn fleet_calendar_keeps_three_night_rule_across_month_boundary() {
+        let starts_on = NaiveDate::from_ymd_opt(2030, 8, 30).unwrap();
+        let valid_return = NaiveDate::from_ymd_opt(2030, 9, 2).unwrap();
+        let too_early = NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
+        let schedules = vec![Vec::new()];
+
+        assert_eq!(
+            fleet_available_rental_count(valid_return, Some(starts_on), None, 3, &schedules,),
+            1
+        );
+        assert_eq!(
+            fleet_available_rental_count(too_early, Some(starts_on), None, 3, &schedules,),
+            0
         );
     }
 

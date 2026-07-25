@@ -287,6 +287,17 @@ fn block_occupies_day(block: &api::AdminAvailabilityBlock, day: NaiveDate) -> bo
         .is_some_and(|(start, end)| start <= day && day <= end)
 }
 
+fn calendar_interval_overlaps_window(
+    starts_at: &str,
+    ends_at: &str,
+    window_start: NaiveDate,
+    window_end: NaiveDate,
+) -> bool {
+    admin_calendar_date(starts_at)
+        .zip(admin_calendar_date(ends_at))
+        .is_some_and(|(start, end)| start <= window_end && end >= window_start)
+}
+
 fn is_admin_role(role: &str) -> bool {
     role == "admin"
 }
@@ -700,7 +711,20 @@ pub fn Admin() -> Element {
                         match active_tab().as_str() {
                             "overview" => rsx! { OverviewTab { dashboard: dashboard_value, bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking } },
                             "bookings" => rsx! { BookingsTab { bookings: bookings.read().clone(), rentals: rentals.read().clone(), loading: loading(), on_open_booking: open_booking } },
-                            "rvs" => rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: loading(), on_open_rental: open_rental, on_add_rental: move |_| { selected_rental.set(None); rv_editor_new.set(true); rv_editor_open.set(true); } } },
+                            "rvs" => if rv_editor_open() {
+                                rsx! { RvEditorPanel {
+                                    detail: selected_rental.read().clone(),
+                                    is_new: rv_editor_new(),
+                                    on_close: move |_| { rv_editor_open.set(false); selected_rental.set(None); },
+                                    on_changed: move |value: api::AdminRentalDetail| {
+                                        rv_editor_new.set(false);
+                                        selected_rental.set(Some(value));
+                                        spawn(async move { load_admin_data().await; });
+                                    }
+                                } }
+                            } else {
+                                rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: loading(), on_open_rental: open_rental, on_add_rental: move |_| { selected_rental.set(None); rv_editor_new.set(true); rv_editor_open.set(true); } } }
+                            },
                             "payments" => rsx! { PaymentsTab { payments: payments.read().clone(), bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
                             "calendar" => rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
                             "reviews" => rsx! { ReviewsTab { rentals: admin_rentals.read().clone() } },
@@ -737,18 +761,6 @@ pub fn Admin() -> Element {
                     }
                 }
 
-                if rv_editor_open() {
-                    RvEditorDrawer {
-                        detail: selected_rental.read().clone(),
-                        is_new: rv_editor_new(),
-                        on_close: move |_| { rv_editor_open.set(false); selected_rental.set(None); },
-                        on_changed: move |value: api::AdminRentalDetail| {
-                            rv_editor_new.set(false);
-                            selected_rental.set(Some(value));
-                            spawn(async move { load_admin_data().await; });
-                        }
-                    }
-                }
             }
         }
     }
@@ -962,14 +974,18 @@ fn RvsTab(
 }
 
 #[component]
-fn RvEditorDrawer(
+fn RvEditorPanel(
     detail: Option<api::AdminRentalDetail>,
     is_new: bool,
     on_close: EventHandler<()>,
     on_changed: EventHandler<api::AdminRentalDetail>,
 ) -> Element {
     if !is_new && detail.is_none() {
-        return rsx! { div { class: "admin-drawer-backdrop", div { class: "admin-booking-drawer admin-rv-drawer", AdminLoading {} } } };
+        return rsx! {
+            section { class: "admin-panel admin-rv-editor-panel", aria_label: "Loading RV editor",
+                AdminLoading {}
+            }
+        };
     }
     let initial = detail.clone();
     let mut name = use_signal(|| {
@@ -1162,9 +1178,8 @@ fn RvEditorDrawer(
         });
     };
     rsx! {
-        div { class: "admin-drawer-backdrop", tabindex: "-1", onkeydown: move |event| { event.stop_propagation(); if event.key()==Key::Escape { request_close(); } },
-            aside { class: "admin-booking-drawer admin-rv-drawer", role: "dialog", aria_modal: "true", aria_label: if is_new { "Add RV" } else { "Edit RV" },
-                header { class: "admin-drawer-head", div { p { if published { "PUBLISHED RV" } else if is_new { "NEW DRAFT RV" } else { "ARCHIVED / DRAFT RV" } } h2 { if is_new { "Add RV" } else { "{name}" } } span { "Slug: {slug}" } } button { r#type:"button", disabled:busy(), aria_label:"Close RV editor", onclick:move |_|request_close(), Icon{name:"x",size:18,color:"currentColor"} } }
+        section { class: "admin-panel admin-rv-editor-panel", role: "region", aria_label: if is_new { "Add RV" } else { "Edit RV" }, tabindex: "-1", autofocus: true, onkeydown: move |event| { event.stop_propagation(); if event.key()==Key::Escape { request_close(); } },
+                header { class: "admin-drawer-head", div { p { if published { "PUBLISHED RV" } else if is_new { "NEW DRAFT RV" } else { "ARCHIVED / DRAFT RV" } } h2 { if is_new { "Add RV" } else { "{name}" } } span { "Slug: {slug}" } } button { r#type:"button", disabled:busy(), aria_label:"Back to RV list", onclick:move |_|request_close(), Icon{name:"arrow-left",size:18,color:"currentColor"} span { "Back to RV list" } } }
                 div { class: "admin-drawer-scroll admin-rv-editor-scroll",
                     if !message.read().is_empty() { p { class: if message().contains("saved") { "admin-success" } else { "admin-error" }, "{message}" } }
                     section { class:"admin-drawer-section", h3 { "RV details" }
@@ -1205,7 +1220,6 @@ fn RvEditorDrawer(
                 footer { class:"admin-drawer-actions", button { r#type:"button", disabled:busy(), onclick:move |_|save(), if busy(){"Saving…"}else{"Save changes"} }
                     if !is_new { button { r#type:"button", class:if published{"danger"}else{""}, disabled:busy(), onclick:{let id=rental_id.clone();move |_|{let action=if published{"archive"}else{"publish"};let prompt=if published{"Archive this RV? Existing bookings remain unchanged."}else{"Publish this RV? It will immediately appear in booking."};if !web_sys::window().and_then(|w|w.confirm_with_message(prompt).ok()).unwrap_or(false){return}let id=id.clone();busy.set(true);let _=spawn(async move{match api::admin_rental_publication_action(&id,action).await{Ok(value)=>on_changed.call(value),Err(error)=>message.set(error.message)}busy.set(false)});}}, if published{"Archive RV"}else{"Publish RV"} } }
                 }
-            }
         }
     }
 }
@@ -1593,12 +1607,6 @@ fn CalendarTab(
     let mut reason = use_signal(|| "Owner use".to_string());
     let mut busy = use_signal(|| false);
     let mut message = use_signal(String::new);
-    let mut upcoming = bookings
-        .iter()
-        .filter(|booking| is_future_booking(booking, Utc::now()))
-        .cloned()
-        .collect::<Vec<_>>();
-    upcoming.sort_by(|left, right| left.starts_at.cmp(&right.starts_at));
     let days = (0..14)
         .map(|offset| *window_start.read() + Duration::days(offset))
         .collect::<Vec<_>>();
@@ -1608,6 +1616,35 @@ fn CalendarTab(
         .cloned()
         .collect::<Vec<_>>();
     let window_end = days.last().copied().unwrap_or(*window_start.read());
+    let mut schedule_bookings = bookings
+        .iter()
+        .filter(|booking| {
+            !matches!(booking.status.as_str(), "cancelled" | "expired")
+                && (fleet_filter() == "all" || booking.rental_slug == fleet_filter())
+                && calendar_interval_overlaps_window(
+                    &booking.starts_at,
+                    &booking.ends_at,
+                    *window_start.read(),
+                    window_end,
+                )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    schedule_bookings.sort_by(|left, right| left.starts_at.cmp(&right.starts_at));
+    let mut schedule_blocks = blocks
+        .iter()
+        .filter(|block| {
+            (fleet_filter() == "all" || block.rental_slug == fleet_filter())
+                && calendar_interval_overlaps_window(
+                    &block.starts_at,
+                    &block.ends_at,
+                    *window_start.read(),
+                    window_end,
+                )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    schedule_blocks.sort_by(|left, right| left.starts_at.cmp(&right.starts_at));
     rsx! {
         div { class: "admin-calendar-layout",
             section { class: "admin-panel admin-calendar-panel",
@@ -1648,10 +1685,10 @@ fn CalendarTab(
                     }
                 }
                 div { class: "admin-calendar-agenda",
-                    h3 { "Upcoming schedule" }
-                    if upcoming.is_empty() && blocks.is_empty() { div { class: "admin-empty", "No upcoming bookings or closed dates." } }
-                    for booking in upcoming.iter().filter(|booking| fleet_filter() == "all" || booking.rental_slug == fleet_filter()) { button { class: "booking", r#type: "button", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) }, div { time { "{display_date(&booking.starts_at)} 2 PM → {display_date(&booking.ends_at)} 11 AM" } strong { "{booking.rental_name}" } span { "{booking.first_name} {booking.last_name} · {booking.booking_number}" } } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } } }
-                    for block in blocks.iter().filter(|block| fleet_filter() == "all" || block.rental_slug == fleet_filter()) { article { class: "{calendar_block_class(block)}", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" if let Some(provider) = calendar_block_provider(block) { " · {calendar_provider_label(provider)}" } } } if is_external_calendar_block(block) { button { class: "manage-external", r#type: "button", onclick: move |_| sync_open.set(true), if block.has_conflict { "Review conflict" } else { "Manage sync" } } } else { button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } } }
+                    h3 { "Schedule · {admin_calendar_short_date(*window_start.read())}–{admin_calendar_short_date(window_end)}" }
+                    if schedule_bookings.is_empty() && schedule_blocks.is_empty() { div { class: "admin-empty", "No bookings or closed dates in this two-week window." } }
+                    for booking in schedule_bookings.iter() { button { class: "booking", r#type: "button", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) }, div { time { "{display_date(&booking.starts_at)} 2 PM → {display_date(&booking.ends_at)} 11 AM" } strong { "{booking.rental_name}" } span { "{booking.first_name} {booking.last_name} · {booking.booking_number}" } } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } } }
+                    for block in schedule_blocks.iter() { article { class: "{calendar_block_class(block)}", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" if let Some(provider) = calendar_block_provider(block) { " · {calendar_provider_label(provider)}" } } } if is_external_calendar_block(block) { button { class: "manage-external", r#type: "button", onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, if block.has_conflict { "Review conflict" } else { "Manage sync" } } } else { button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { selected_block.set(None); message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } } }
                 }
                 if !message.read().is_empty() { p { class: "admin-inline-message", "{message}" } }
             }
@@ -2356,5 +2393,48 @@ mod tests {
 
         assert!(booking_occupies_day(&returning, turnover_day));
         assert!(booking_occupies_day(&arriving, turnover_day));
+    }
+
+    #[test]
+    fn mobile_calendar_agenda_matches_the_inclusive_visible_window() {
+        let window_start = NaiveDate::from_ymd_opt(2030, 7, 10).unwrap();
+        let window_end = NaiveDate::from_ymd_opt(2030, 7, 23).unwrap();
+
+        assert!(calendar_interval_overlaps_window(
+            "2030-07-08T21:00:00Z",
+            "2030-07-10T18:00:00Z",
+            window_start,
+            window_end,
+        ));
+        assert!(calendar_interval_overlaps_window(
+            "2030-07-23T21:00:00Z",
+            "2030-07-26T18:00:00Z",
+            window_start,
+            window_end,
+        ));
+        assert!(!calendar_interval_overlaps_window(
+            "2030-07-24T21:00:00Z",
+            "2030-07-27T18:00:00Z",
+            window_start,
+            window_end,
+        ));
+        assert!(!calendar_interval_overlaps_window(
+            "invalid",
+            "2030-07-12T18:00:00Z",
+            window_start,
+            window_end,
+        ));
+    }
+
+    #[test]
+    fn admin_calendar_dates_use_vancouver_day_boundaries() {
+        assert_eq!(
+            admin_calendar_date("2030-07-10T06:30:00Z"),
+            NaiveDate::from_ymd_opt(2030, 7, 9)
+        );
+        assert_eq!(
+            admin_calendar_date("2030-01-10T07:30:00Z"),
+            NaiveDate::from_ymd_opt(2030, 1, 9)
+        );
     }
 }

@@ -56,6 +56,17 @@ pub fn google_login_url() -> String {
     )
 }
 
+// Keep the completed OAuth implementation available, but do not expose entry
+// points until the Meta application secret and production setup are approved.
+pub const FACEBOOK_AUTH_ENABLED: bool = false;
+
+pub fn facebook_login_url() -> String {
+    format!(
+        "{API_BASE}/api/v1/auth/facebook?return_to={}",
+        urlencoding::encode(&frontend_base_url())
+    )
+}
+
 pub fn frontend_path(path: &str) -> String {
     frontend_path_for_base(&frontend_base_url(), path)
 }
@@ -324,7 +335,10 @@ fn auth_parameters(fragment: &str, search: &str) -> Option<HashMap<String, Strin
             .collect::<HashMap<_, _>>();
         let marked_one_time_code = parameters
             .get("vl_google_auth")
-            .is_some_and(|value| value == "1");
+            .is_some_and(|value| value == "1")
+            || parameters
+                .get("vl_facebook_auth")
+                .is_some_and(|value| value == "1");
         let contains_legacy_tokens =
             parameters.contains_key("access_token") || parameters.contains_key("refresh_token");
         (marked_one_time_code || contains_legacy_tokens).then_some(parameters)
@@ -423,7 +437,15 @@ pub async fn finish_google_sign_in() -> Result<Option<String>, String> {
     if !valid_google_login_code(&code) {
         return Err("Google did not return a valid sign-in session.".to_string());
     }
-    let response = Request::post(&format!("{API_BASE}/api/v1/auth/google/exchange"))
+    let provider = if values
+        .get("vl_facebook_auth")
+        .is_some_and(|value| value == "1")
+    {
+        "facebook"
+    } else {
+        "google"
+    };
+    let response = Request::post(&format!("{API_BASE}/api/v1/auth/{provider}/exchange"))
         .header("Content-Type", "application/json")
         .json(&GoogleExchangePayload { code: &code })
         .map_err(|_| "Google sign in could not be completed.".to_string())?
@@ -4523,7 +4545,7 @@ mod delivery_draft_tests {
     }
 
     #[test]
-    fn google_one_time_code_is_read_from_path_and_hash_router_fragments() {
+    fn social_one_time_code_is_read_from_path_and_hash_router_fragments() {
         let direct = auth_parameters(
             "#vl_google_auth=1&code=rv_oauth_code_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             "",
@@ -4545,6 +4567,13 @@ mod delivery_draft_tests {
         )
         .unwrap();
         assert!(valid_google_login_code(&root_callback["code"]));
+
+        let facebook = auth_parameters(
+            "#vl_facebook_auth=1&code=rv_oauth_code_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "?vl_auth_callback=1",
+        )
+        .unwrap();
+        assert!(valid_google_login_code(&facebook["code"]));
 
         let legacy = auth_parameters("#access_token=old&refresh_token=old", "").unwrap();
         assert!(!legacy.contains_key("code"));

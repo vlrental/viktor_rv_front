@@ -52,6 +52,7 @@ pub fn Header() -> Element {
     let signed_in = current_user.is_some();
     let rentals_href = api::frontend_path("/#home-rentals");
     let auth_return_route = route.clone();
+    let facebook_auth_return_route = route.clone();
     let mobile_booking_route = route.clone();
     let mobile_navigator = navigator;
     let overlay = matches!(route, Route::Home {});
@@ -333,6 +334,12 @@ pub fn Header() -> Element {
                                 a { class: "nav-account-google", href: api::google_login_url(), onclick: move |_| api::remember_auth_return(&auth_return_route.to_string()),
                                     span { class: "auth-google-mark", "G" }
                                     "Continue with Google"
+                                }
+                                if api::FACEBOOK_AUTH_ENABLED {
+                                    a { class: "nav-account-facebook", href: api::facebook_login_url(), onclick: move |_| api::remember_auth_return(&facebook_auth_return_route.to_string()),
+                                        span { class: "auth-facebook-mark", "f" }
+                                        "Continue with Facebook"
+                                    }
                                 }
                                 div { class: "nav-account-or", span { "or" } }
                                 label { r#for: "header-auth-email", "Email" }

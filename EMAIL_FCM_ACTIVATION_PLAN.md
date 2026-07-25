@@ -1,6 +1,6 @@
 # Активация Amazon SES email и FCM-уведомлений
 
-Дата последней проверки: 2026-07-23
+Дата последней проверки: 2026-07-25
 
 Frontend: `/Users/viktoriiakarpova/Projects/it_work/viktor_rv_front`
 
@@ -419,24 +419,48 @@ Deployment разрешён данным утверждённым планом, 
     `succeeded`, future obligations отменены, даты освобождены;
   - refund/cancellation customer/admin emails имеют `sent`.
 
-### Единственный незавершённый production smoke
+### FCM production smoke 2026-07-25
 
-- В `push_devices`: 0 enabled rows.
-- В SNS `vl-rental-web`: 0 endpoints.
-- Google admin sign-in и кнопка `Turn on notifications` работают, но macOS
-  показал системный prompt `ChatGPT would like to access data from other
-  apps`.
-- Этот широкий системный доступ не был разрешён, потому что он выходит за
-  рамки узкого разрешения notifications для VL Rental.
-- Для завершения необходимо:
-  1. закрыть macOS prompt без выдачи широкого доступа;
-  2. в Chrome разрешить notifications только для
-     `https://gaponovalexey.github.io`;
-  3. снова нажать `Turn on notifications`;
-  4. проверить одну enabled строку `push_devices` и один SNS endpoint;
-  5. выполнить один SNS test delivery и подтвердить `sent` плюс
-     `provider_reference=message_id`.
+- Chrome notification permission для
+  `https://gaponovalexey.github.io` выдан.
+- Первый backend registration вызвал:
+  - успешный `CreatePlatformEndpoint`;
+  - `AccessDenied` на `SNS:SetEndpointAttributes`;
+  - отсутствие database row, хотя orphan endpoint появился в SNS.
+- CloudTrail подтвердил точную причину: IAM user `vl-rental-push` не мог
+  выполнить `SNS:SetEndpointAttributes` для platform application ARN.
+- Inline policy `VlRentalPushSns` исправлена по принципу least privilege:
+  - широкие `sns:*` и `Resource: "*"` не добавлялись;
+  - существующий список действий сохранён;
+  - к endpoint ARN добавлен только ARN приложения
+    `arn:aws:sns:ca-central-1:812607972157:app/GCM/vl-rental-web`.
+- После исправления повторная регистрация через production frontend/backend
+  успешна:
+  - account panel показывает `Notifications on`;
+  - `push_devices`: 1 row, 1 enabled, 1 user;
+  - SNS `vl-rental-web`: 1 enabled endpoint;
+  - повторно используется тот же endpoint, дубликат не создан.
+- Два контрольных FCM v1 payload приняты SNS с `Message ID`, последний:
+  `afc14fe7-db7d-5196-a76a-2d38d1347b04`.
+- Endpoint после отправок остаётся `Enabled`.
 
-Текущий этап: email и Stripe webhook полностью активированы и проверены;
-FCM backend/frontend развёрнуты, но регистрация первого production browser
-device ожидает узкого пользовательского разрешения Chrome.
+### Единственный незавершённый FCM-критерий
+
+- Визуальное получение push в Chrome/macOS пока не подтверждено.
+- У SNS platform application не настроены:
+  - IAM role для successful deliveries;
+  - IAM role для failed deliveries;
+  - successful delivery sample rate.
+- Поэтому успешный ответ `Publish` доказывает принятие сообщения SNS, но не
+  позволяет отличить доставку FCM от асинхронного отказа FCM.
+- Для окончательной диагностики необходимо:
+  1. включить CloudWatch delivery status logging для `vl-rental-web`;
+  2. отправить ещё один контрольный FCM v1 payload;
+  3. проверить FCM provider response в CloudWatch;
+  4. при успешной доставке проверить локальные настройки Chrome/macOS;
+  5. при provider failure исправить только конкретную FCM credential/config
+     причину и повторить тест.
+
+Текущий этап: email, Stripe webhook и регистрация FCM device полностью
+активированы и проверены. Осталось подтвердить последний участок
+`SNS → FCM → Chrome notification`.

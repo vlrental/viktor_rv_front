@@ -840,6 +840,37 @@ fn catalog_day_is_disabled(
         || (availability_pending && !is_selected_edge)
 }
 
+fn calendar_day_status_label(
+    day: NaiveDate,
+    today: NaiveDate,
+    too_short: bool,
+    unavailable: bool,
+    show_availability_counts: bool,
+    available_rv_count: Option<usize>,
+) -> String {
+    if day < today {
+        return "Past date; unavailable for delivery".to_string();
+    }
+    if day == today {
+        return "Same-day delivery is unavailable; choose tomorrow or later".to_string();
+    }
+    if too_short {
+        return "Minimum 3-night stay; choose a later return date".to_string();
+    }
+    if unavailable && !show_availability_counts {
+        return "Unavailable for this RV".to_string();
+    }
+    if !show_availability_counts {
+        return String::new();
+    }
+    match available_rv_count {
+        Some(0) => "No RVs available for this date selection".to_string(),
+        Some(1) => "Only 1 RV available for this date selection".to_string(),
+        Some(count) => format!("{count} RVs available for this date selection"),
+        None => "Availability is being checked".to_string(),
+    }
+}
+
 #[component]
 pub(crate) fn CatalogSearchMonth(
     month: NaiveDate,
@@ -882,16 +913,14 @@ pub(crate) fn CatalogSearchMonth(
                             let limited = show_availability_counts
                                 && available_rv_count.is_some_and(|count| (1..=2).contains(&count));
                             let class = if is_start || is_end { "selected" } else if in_range { "in-range" } else if limited { "limited" } else { "" };
-                            let availability_label = if show_availability_counts {
-                                match available_rv_count {
-                                    Some(0) => "No RVs available for this date selection".to_string(),
-                                    Some(1) => "Only 1 RV available for this date selection".to_string(),
-                                    Some(count) => format!("{count} RVs available for this date selection"),
-                                    None => "Availability is being checked".to_string(),
-                                }
-                            } else {
-                                String::new()
-                            };
+                            let availability_label = calendar_day_status_label(
+                                day,
+                                today,
+                                too_short,
+                                unavailable,
+                                show_availability_counts,
+                                available_rv_count,
+                            );
                             let aria_label = if availability_label.is_empty() {
                                 day.to_string()
                             } else {
@@ -961,6 +990,31 @@ mod catalog_search_tests {
             false,
             true,
         ));
+    }
+
+    #[test]
+    fn calendar_accessibility_explains_policy_before_availability_counts() {
+        let today = day("2030-08-10");
+        assert_eq!(
+            calendar_day_status_label(day("2030-08-09"), today, false, false, true, Some(6)),
+            "Past date; unavailable for delivery"
+        );
+        assert_eq!(
+            calendar_day_status_label(today, today, false, false, true, Some(6)),
+            "Same-day delivery is unavailable; choose tomorrow or later"
+        );
+        assert_eq!(
+            calendar_day_status_label(day("2030-08-11"), today, true, true, true, Some(0)),
+            "Minimum 3-night stay; choose a later return date"
+        );
+        assert_eq!(
+            calendar_day_status_label(day("2030-08-13"), today, false, false, true, Some(1)),
+            "Only 1 RV available for this date selection"
+        );
+        assert_eq!(
+            calendar_day_status_label(day("2030-08-13"), today, false, true, false, None),
+            "Unavailable for this RV"
+        );
     }
 
     #[test]
