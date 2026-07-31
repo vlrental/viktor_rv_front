@@ -1,5 +1,14 @@
 # AGENTS.md - Viktor RV Frontend
 
+## Режим выпуска `быки`
+
+- Режим `быки` активен постоянно до прямой команды владельца `медведи`. Это постоянное разрешение последней задаче этого репозитория на stage, один общий commit, push разрешённой ветки и production deploy без повторного вопроса; оно является явным исключением из старых локальных запретов на эти действия.
+- Перед финалом задача проверяет app-wide очередь по точному корню этого репозитория. Если других активных code writers нет, она становится интегратором всего worktree: ждёт чужие сборки, запускает полный обязательный project gate, исправляет ошибки до зелёного результата и выпускает общий батч. Перекладывать выпуск на следующую задачу запрещено.
+- Если существующий корневой `make d` действительно является документированным production deploy этого проекта, использовать его. Иначе применять только фактически подтверждённый project-specific deploy/CI flow; переносить команду из другого проекта или угадывать запрещено.
+- Красный gate, активный writer, изменение snapshot, неверная ветка или неизвестный deploy contract блокируют commit/push/deploy. Force-push, destructive data actions, секреты, несовместимые контракты и browser/computer-use без текущего разрешения режим не разрешает.
+- `медведи` отключают автоматические stage/commit/push/deploy, сохраняя обязательные проверки. Массовая синхронизация самих файлов правил не выпускает старый продуктовый WIP; режим применяется к следующему продуктовому батчу.
+
+
 ## RV-only scope
 
 - Viktor RV is an RV-only project. Do not add, seed, import, document, or expose boats or boat bookings in the new frontend, backend, database, or generated content. The legacy Simvoly site remains unchanged until a separately approved cutover.

@@ -35,6 +35,10 @@ fn rounded_rating(rating: &str) -> i32 {
         .unwrap_or_default()
 }
 
+fn is_public_review_rating(rating: &str) -> bool {
+    rating.parse::<f64>().is_ok_and(|value| value >= 4.0)
+}
+
 fn display_rating(rating: &str) -> String {
     let trimmed = rating.trim_end_matches('0').trim_end_matches('.');
     if trimmed.is_empty() {
@@ -215,10 +219,18 @@ pub fn RentalReviewsSection(
                         if !like_error.read().is_empty() {
                             p { class: "rvd-review-like-error", role: "alert", "{like_error}" }
                         }
-                        if value.reviews.is_empty() {
+                        if !value
+                            .reviews
+                            .iter()
+                            .any(|review| is_public_review_rating(&review.rating))
+                        {
                             p { class: "rvd-reviews-empty", "No guest comments yet. A verified customer can be the first after their RV is returned." }
                         }
-                        for review in value.reviews.iter() {
+                        for review in value
+                            .reviews
+                            .iter()
+                            .filter(|review| is_public_review_rating(&review.rating))
+                        {
                             {
                                 let rating_label = display_rating(&review.rating);
                                 let source_label = review_source_label(&review.source);
@@ -340,7 +352,9 @@ fn ReviewStars(rating: i32) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{display_rating, like_disabled, review_source_label, rounded_rating};
+    use super::{
+        display_rating, is_public_review_rating, like_disabled, review_source_label, rounded_rating,
+    };
 
     #[test]
     fn paid_customer_can_toggle_and_busy_request_is_locked() {
@@ -360,6 +374,17 @@ mod tests {
         assert_eq!(display_rating("4.75"), "4.75");
         assert_eq!(display_rating("5.00"), "5");
         assert_eq!(rounded_rating("4.75"), 5);
+    }
+
+    #[test]
+    fn only_four_and_five_star_reviews_are_public() {
+        for rating in ["1", "2.00", "3", "3.75"] {
+            assert!(!is_public_review_rating(rating));
+        }
+        for rating in ["4", "4.50", "5.00"] {
+            assert!(is_public_review_rating(rating));
+        }
+        assert!(!is_public_review_rating("invalid"));
     }
 
     #[test]
