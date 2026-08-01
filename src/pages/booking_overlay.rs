@@ -2578,6 +2578,12 @@ fn rounded_review_rating(rating: &str) -> i32 {
         .unwrap_or_default()
 }
 
+fn is_public_booking_review_rating(rating: &str) -> bool {
+    rating
+        .parse::<f64>()
+        .is_ok_and(|value| (4.0..=5.0).contains(&value))
+}
+
 fn displayed_review_rating(rating: &str) -> String {
     let trimmed = rating.trim_end_matches('0').trim_end_matches('.');
     if trimmed.is_empty() {
@@ -2696,8 +2702,18 @@ fn RentalChoice(
                                 } else if api::access_token().is_none() {
                                     p { class: "ub-review-policy", "Sign in to write a review after return. Likes are available to customers with a paid booking." }
                                 }
-                                if value.reviews.is_empty() { p { class: "ub-review-state", "No guest comments yet." } }
-                                for review in value.reviews.iter() {
+                                if !value
+                                    .reviews
+                                    .iter()
+                                    .any(|review| is_public_booking_review_rating(&review.rating))
+                                {
+                                    p { class: "ub-review-state", "No guest comments yet." }
+                                }
+                                for review in value
+                                    .reviews
+                                    .iter()
+                                    .filter(|review| is_public_booking_review_rating(&review.rating))
+                                {
                                     {
                                         let rating_label = displayed_review_rating(&review.rating);
                                         let source_label = booking_review_source_label(&review.source);
@@ -2806,7 +2822,7 @@ fn RatingStars(rating: i32) -> Element {
     rsx! {
         span { class: "ub-rating-stars", aria_label: "{rating} out of 5 stars",
             for value in 1..=5_i32 {
-                span { key: "rating-star-{value}", class: if value <= rating { "filled" } else { "" }, "★" }
+                span { key: "rating-star-{value}", class: if value <= rating { "filled" } else { "" }, aria_hidden: "true", "★" }
             }
         }
     }
@@ -3418,6 +3434,18 @@ mod saved_address_tests {
 
         assert_eq!(response.reviews[0].like_count, 4);
         assert_eq!(response.reviews[1].like_count, 7);
+    }
+
+    #[test]
+    fn booking_review_modal_only_accepts_four_to_five_star_reviews() {
+        for rating in [
+            "1", "2.00", "3", "3.75", "5.01", "6", "inf", "NaN", "invalid",
+        ] {
+            assert!(!is_public_booking_review_rating(rating));
+        }
+        for rating in ["4", "4.00", "4.75", "5", "5.00"] {
+            assert!(is_public_booking_review_rating(rating));
+        }
     }
 
     #[test]

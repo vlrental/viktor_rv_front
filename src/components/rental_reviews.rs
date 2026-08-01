@@ -36,7 +36,9 @@ fn rounded_rating(rating: &str) -> i32 {
 }
 
 fn is_public_review_rating(rating: &str) -> bool {
-    rating.parse::<f64>().is_ok_and(|value| value >= 4.0)
+    rating
+        .parse::<f64>()
+        .is_ok_and(|value| (4.0..=5.0).contains(&value))
 }
 
 fn display_rating(rating: &str) -> String {
@@ -378,13 +380,14 @@ mod tests {
 
     #[test]
     fn only_four_and_five_star_reviews_are_public() {
-        for rating in ["1", "2.00", "3", "3.75"] {
+        for rating in ["1", "2.00", "3", "3.75", "5.01", "6", "inf"] {
             assert!(!is_public_review_rating(rating));
         }
         for rating in ["4", "4.50", "5.00"] {
             assert!(is_public_review_rating(rating));
         }
         assert!(!is_public_review_rating("invalid"));
+        assert!(!is_public_review_rating("NaN"));
     }
 
     #[test]
