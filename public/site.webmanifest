@@ -1,7 +1,7 @@
 {
     "name": "VL Rental — Okanagan RV Rentals",
     "short_name": "VL Rental",
-    "description": "Delivery-only RV rentals in Kelowna and the Okanagan.",
+    "description": "Delivery-only RV rentals with a 3-night minimum in Kelowna and the Okanagan.",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",

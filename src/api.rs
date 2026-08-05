@@ -9,6 +9,7 @@ pub const API_BASE: &str = match option_env!("VL_API_BASE_URL") {
     Some(value) => value,
     None => "https://api.vlrental.ca",
 };
+pub const DELIVERY_INCLUDED_KM: f64 = 40.0;
 
 pub fn frontend_base_url() -> String {
     browser_github_pages_base()
@@ -952,6 +953,7 @@ pub struct TripDraft {
     pub towing_after_delivery: bool,
 }
 
+#[allow(dead_code)]
 pub fn rv_delivery_ready(draft: &TripDraft) -> bool {
     let address_is_valid = draft
         .delivery_address
@@ -1184,10 +1186,10 @@ async fn client_delivery_estimate(address: &str) -> Result<DeliveryEstimate, Str
         .map(|route| route.distance)
         .ok_or_else(|| "No driving route was found for that address.".to_string())?;
     let one_way_km = ((meters / 1000.0) * 10.0).round() / 10.0;
-    let delivery_fee = if one_way_km <= 50.0 {
+    let delivery_fee = if one_way_km <= DELIVERY_INCLUDED_KM {
         150.0
     } else {
-        150.0 + (one_way_km - 50.0) * 4.0
+        150.0 + (one_way_km - DELIVERY_INCLUDED_KM) * 4.0
     };
     Ok(DeliveryEstimate {
         resolved_address: resolved.display_name,
@@ -1320,6 +1322,14 @@ pub struct Booking {
     #[serde(default)]
     pub paid_transaction_total: Option<String>,
     #[serde(default)]
+    pub damage_deposit_status: String,
+    #[serde(default)]
+    pub damage_deposit_due_at: Option<String>,
+    #[serde(default)]
+    pub damage_deposit_collection_method: String,
+    #[serde(default)]
+    pub damage_deposit_transfer_email: Option<String>,
+    #[serde(default)]
     pub balance_due_at: Option<String>,
     #[serde(default)]
     pub payment_expires_at: Option<String>,
@@ -1352,6 +1362,8 @@ pub struct CreatedBooking {
     pub payment_option: String,
     #[serde(default)]
     pub all_in_offer: Option<AllInPaymentOffer>,
+    #[serde(default)]
+    pub damage_deposit: Option<DamageDepositInstruction>,
 }
 
 fn default_payment_option() -> String {
@@ -1364,6 +1376,22 @@ pub struct AllInPaymentOffer {
     pub refundable_deposit: String,
     pub total_due_today: String,
     pub currency: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DamageDepositInstruction {
+    #[serde(default)]
+    pub amount: String,
+    #[serde(default = "default_currency")]
+    pub currency: String,
+    #[serde(default)]
+    pub due_at: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub collection_method: String,
+    #[serde(default)]
+    pub transfer_email: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -1399,6 +1427,8 @@ pub struct BookingPaymentStatus {
     pub payment_option: String,
     #[serde(default)]
     pub all_in_offer: Option<AllInPaymentOffer>,
+    #[serde(default)]
+    pub damage_deposit: Option<DamageDepositInstruction>,
     #[serde(default)]
     pub obligations: Vec<AdminPaymentObligation>,
 }
@@ -1632,6 +1662,8 @@ pub struct AdminPaymentObligation {
     pub customer_name: String,
     #[serde(default, alias = "obligation_type")]
     pub payment_type: String,
+    #[serde(default)]
+    pub collection_method: String,
     #[serde(default)]
     pub status: String,
     #[serde(default = "default_currency")]
@@ -2508,6 +2540,8 @@ pub struct AdminCalendarTestResult {
     pub imported_periods: usize,
     #[serde(default)]
     pub ignored_past_periods: usize,
+    #[serde(default)]
+    pub conservative_fallbacks: usize,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -2530,6 +2564,7 @@ struct AdminCalendarConnectionsResponse {
 
 #[derive(Serialize)]
 struct AdminCalendarUrlPayload<'a> {
+    rental_slug: &'a str,
     provider: &'a str,
     calendar_url: &'a str,
 }
@@ -2648,6 +2683,7 @@ pub async fn admin_calendar_connections() -> Result<Vec<AdminCalendarConnection>
 }
 
 pub async fn test_admin_calendar(
+    rental_slug: &str,
     provider: &str,
     calendar_url: &str,
 ) -> Result<AdminCalendarTestResult, ApiError> {
@@ -2658,6 +2694,7 @@ pub async fn test_admin_calendar(
     .header("Content-Type", "application/json")
     .header("Authorization", &format!("Bearer {token}"))
     .json(&AdminCalendarUrlPayload {
+        rental_slug,
         provider,
         calendar_url,
     })
@@ -3654,6 +3691,7 @@ pub async fn admin_booking_action(
         "cancel" => "cancel",
         "release" => "damage-deposit/refund",
         "capture" => "damage-deposit/settle",
+        "confirm_deposit" => "damage-deposit/e-transfer/confirm",
         _ => return Err(ApiError::client("Unsupported admin action")),
     };
     let response = Request::post(&format!(
@@ -3850,6 +3888,7 @@ pub async fn delete_admin_availability_block(block_id: &str) -> Result<(), ApiEr
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn catalog_search_for_trip(
     saved: Option<CatalogSearchDraft>,
     draft: &TripDraft,
@@ -3867,6 +3906,7 @@ pub fn catalog_search_for_trip(
     search
 }
 
+#[allow(dead_code)]
 pub fn prepare_catalog_after_conflict(draft: &TripDraft) {
     remove_saved("vl_active_quote");
     let search = catalog_search_for_trip(load_json("vl_catalog_search"), draft);

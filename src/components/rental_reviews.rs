@@ -63,12 +63,19 @@ fn refresh_reviews(
     mut reviews: Signal<Option<api::RentalReviewsResponse>>,
     mut busy: Signal<bool>,
     mut error: Signal<String>,
+    mut request_version: Signal<u64>,
     on_summary: EventHandler<api::RentalReviewSummary>,
 ) {
+    let version = request_version.peek().wrapping_add(1);
+    request_version.set(version);
     busy.set(true);
     error.set(String::new());
     spawn(async move {
-        match api::rental_reviews(&slug).await {
+        let result = api::rental_reviews(&slug).await;
+        if *request_version.peek() != version {
+            return;
+        }
+        match result {
             Ok(value) => {
                 on_summary.call(value.summary.clone());
                 reviews.set(Some(value));
@@ -84,7 +91,10 @@ fn refresh_context(
     mut context: Signal<Option<api::RentalReviewContext>>,
     mut busy: Signal<bool>,
     mut error: Signal<String>,
+    mut request_version: Signal<u64>,
 ) {
+    let version = request_version.peek().wrapping_add(1);
+    request_version.set(version);
     if api::access_token().is_none() {
         context.set(None);
         busy.set(false);
@@ -95,7 +105,11 @@ fn refresh_context(
     busy.set(true);
     error.set(String::new());
     spawn(async move {
-        match api::rental_review_context(&slug).await {
+        let result = api::rental_review_context(&slug).await;
+        if *request_version.peek() != version {
+            return;
+        }
+        match result {
             Ok(value) => context.set(Some(value)),
             Err(api_error) => {
                 context.set(None);
@@ -119,25 +133,31 @@ pub fn RentalReviewsSection(
     let mut reviews = use_signal(|| None::<api::RentalReviewsResponse>);
     let reviews_busy = use_signal(|| true);
     let reviews_error = use_signal(String::new);
+    let reviews_request_version = use_signal(|| 0_u64);
     let mut review_context = use_signal(|| None::<api::RentalReviewContext>);
     let context_busy = use_signal(|| api::access_token().is_some());
     let context_error = use_signal(String::new);
+    let context_request_version = use_signal(|| 0_u64);
     let mut like_busy = use_signal(HashSet::<String>::new);
     let mut like_error = use_signal(String::new);
 
-    use_effect({
-        let slug = slug.clone();
-        move || {
-            refresh_reviews(
-                slug.clone(),
-                reviews,
-                reviews_busy,
-                reviews_error,
-                on_summary,
-            );
-            refresh_context(slug.clone(), review_context, context_busy, context_error);
-        }
-    });
+    use_effect(use_reactive((&slug,), move |(slug,)| {
+        refresh_reviews(
+            slug.clone(),
+            reviews,
+            reviews_busy,
+            reviews_error,
+            reviews_request_version,
+            on_summary,
+        );
+        refresh_context(
+            slug,
+            review_context,
+            context_busy,
+            context_error,
+            context_request_version,
+        );
+    }));
 
     let signed_in = api::access_token().is_some();
     let current_summary = reviews.read().as_ref().map(|value| value.summary.clone());
@@ -178,7 +198,7 @@ pub fn RentalReviewsSection(
             } else if !reviews_error.read().is_empty() {
                 div { class: "rvd-reviews-state is-error", role: "alert",
                     p { "{reviews_error}" }
-                    button { r#type: "button", onclick: { let slug = slug.clone(); move |_| refresh_reviews(slug.clone(), reviews, reviews_busy, reviews_error, on_summary) }, "Try again" }
+                    button { r#type: "button", onclick: { let slug = slug.clone(); move |_| refresh_reviews(slug.clone(), reviews, reviews_busy, reviews_error, reviews_request_version, on_summary) }, "Try again" }
                 }
             } else if let Some(value) = reviews.read().as_ref() {
                 div { class: "rvd-reviews-body",
@@ -188,7 +208,7 @@ pub fn RentalReviewsSection(
                         } else if !context_error.read().is_empty() {
                             div { class: "rvd-review-access is-error", role: "alert",
                                 p { "{context_error}" }
-                                button { r#type: "button", onclick: { let slug = slug.clone(); move |_| refresh_context(slug.clone(), review_context, context_busy, context_error) }, "Try again" }
+                                button { r#type: "button", onclick: { let slug = slug.clone(); move |_| refresh_context(slug.clone(), review_context, context_busy, context_error, context_request_version) }, "Try again" }
                             }
                         } else if let Some(context) = review_context.read().as_ref() {
                             if let Some(booking_id) = context.reviewable_booking_id.as_ref() {
@@ -198,8 +218,8 @@ pub fn RentalReviewsSection(
                                     on_published: {
                                         let slug = slug.clone();
                                         move |_| {
-                                            refresh_reviews(slug.clone(), reviews, reviews_busy, reviews_error, on_summary);
-                                            refresh_context(slug.clone(), review_context, context_busy, context_error);
+                                            refresh_reviews(slug.clone(), reviews, reviews_busy, reviews_error, reviews_request_version, on_summary);
+                                            refresh_context(slug.clone(), review_context, context_busy, context_error, context_request_version);
                                         }
                                     }
                                 }

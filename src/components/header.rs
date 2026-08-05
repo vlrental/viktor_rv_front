@@ -48,6 +48,7 @@ pub fn Header() -> Element {
     let mut push_state = use_signal(|| "loading".to_string());
     let mut push_busy = use_signal(|| false);
     let mut push_error = use_signal(String::new);
+    let mut push_status_version = use_signal(|| 0_u32);
     let current_user = auth_session.read().clone();
     let signed_in = current_user.is_some();
     let rentals_href = api::frontend_path("/#home-rentals");
@@ -71,15 +72,20 @@ pub fn Header() -> Element {
     } else {
         "bell"
     };
-    use_effect(move || {
+    use_effect(use_reactive((&signed_in,), move |(signed_in,)| {
+        let version = push_status_version.peek().wrapping_add(1);
+        push_status_version.set(version);
         if !signed_in {
             push_state.set("available".into());
             return;
         }
         spawn(async move {
-            push_state.set(push_notifications::status().await);
+            let status = push_notifications::status().await;
+            if *push_status_version.peek() == version && auth_session.peek().is_some() {
+                push_state.set(status);
+            }
         });
-    });
+    }));
     use_effect(move || {
         if *mobile_open.read() {
             document::eval(
@@ -158,7 +164,7 @@ pub fn Header() -> Element {
         header {
             class: "{class}",
             onkeydown: move |event| if event.key() == Key::Escape {
-                if *account_open.peek() {
+                if *account_open.peek() && !*busy.peek() {
                     account_open.set(false);
                 } else if *mobile_open.peek() {
                     mobile_open.set(false);
@@ -206,6 +212,7 @@ pub fn Header() -> Element {
                         r#type: "button",
                         aria_label: "Book now",
                         aria_haspopup: "dialog",
+                        disabled: *busy.read(),
                         onclick: move |_| {
                             mobile_open.set(false);
                             account_open.set(false);
@@ -246,6 +253,7 @@ pub fn Header() -> Element {
                         r#type: "button",
                         aria_label: "Account",
                         aria_expanded: *account_open.read(),
+                        disabled: *busy.read(),
                         onclick: move |_| {
                             let next = !*account_open.peek();
                             account_open.set(next);
@@ -255,7 +263,7 @@ pub fn Header() -> Element {
                         Icon { name: "circle-user-round", size: 20, color: "currentColor" }
                     }
                     if *account_open.read() {
-                        button { class: "nav-account-dismiss", r#type: "button", aria_label: "Close account panel", onclick: move |_| account_open.set(false) }
+                        button { class: "nav-account-dismiss", r#type: "button", disabled: *busy.read(), aria_label: "Close account panel", onclick: move |_| if !*busy.peek() { account_open.set(false); } }
                         aside { class: "nav-account-panel", onclick: move |event| event.stop_propagation(),
                             if let Some(user) = current_user.clone() {
                                 div { class: "nav-account-panel-head",
@@ -279,7 +287,7 @@ pub fn Header() -> Element {
                                 button {
                                     class: "nav-account-admin",
                                     r#type: "button",
-                                    disabled: *push_busy.read() || matches!(push_state.read().as_str(), "loading" | "denied" | "unsupported"),
+                                    disabled: *busy.read() || *push_busy.read() || matches!(push_state.read().as_str(), "loading" | "denied" | "unsupported"),
                                     onclick: move |_| async move {
                                         push_busy.set(true);
                                         push_error.set(String::new());
@@ -317,11 +325,13 @@ pub fn Header() -> Element {
                                 if !push_error.read().is_empty() {
                                     p { class: "nav-account-error", role: "alert", "{push_error}" }
                                 }
-                                button { class: "nav-account-signout", r#type: "button", onclick: move |_| async move {
+                                button { class: "nav-account-signout", r#type: "button", disabled: *busy.read() || *push_busy.read(), onclick: move |_| async move {
+                                    busy.set(true);
                                     api::logout().await;
                                     auth_session.set(None);
+                                    busy.set(false);
                                     account_open.set(false);
-                                }, "Sign out" }
+                                }, if *busy.read() { "Signing out…" } else { "Sign out" } }
                             } else {
                                 div { class: "nav-account-panel-head",
                                     div { class: "nav-account-avatar", Icon { name: "key-round", size: 22, color: "var(--vl-white)" } }
@@ -331,26 +341,26 @@ pub fn Header() -> Element {
                                     }
                                 }
                                 p { class: "nav-account-copy", "Keep your dates and continue booking right where you are." }
-                                a { class: "nav-account-google", href: api::google_login_url(), onclick: move |_| api::remember_auth_return(&auth_return_route.to_string()),
+                                a { class: "nav-account-google", href: api::google_login_url(), aria_disabled: *busy.read(), onclick: move |event| { if *busy.peek() { event.prevent_default(); } else { api::remember_auth_return(&auth_return_route.to_string()); } },
                                     span { class: "auth-google-mark", "G" }
                                     "Continue with Google"
                                 }
                                 if api::FACEBOOK_AUTH_ENABLED {
-                                    a { class: "nav-account-facebook", href: api::facebook_login_url(), onclick: move |_| api::remember_auth_return(&facebook_auth_return_route.to_string()),
+                                    a { class: "nav-account-facebook", href: api::facebook_login_url(), aria_disabled: *busy.read(), onclick: move |event| { if *busy.peek() { event.prevent_default(); } else { api::remember_auth_return(&facebook_auth_return_route.to_string()); } },
                                         span { class: "auth-facebook-mark", "f" }
                                         "Continue with Facebook"
                                     }
                                 }
                                 div { class: "nav-account-or", span { "or" } }
                                 label { r#for: "header-auth-email", "Email" }
-                                input { id: "header-auth-email", r#type: "email", autocomplete: "email", value: "{email}", oninput: move |event| email.set(event.value()), placeholder: "you@example.com" }
+                                input { id: "header-auth-email", r#type: "email", autocomplete: "email", value: "{email}", disabled: *busy.read(), oninput: move |event| email.set(event.value()), placeholder: "you@example.com" }
                                 label { r#for: "header-auth-password", "Password" }
-                                input { id: "header-auth-password", r#type: "password", autocomplete: if *register.read() { "new-password" } else { "current-password" }, value: "{password}", oninput: move |event| password.set(event.value()), placeholder: "At least 10 characters" }
+                                input { id: "header-auth-password", r#type: "password", autocomplete: if *register.read() { "new-password" } else { "current-password" }, value: "{password}", disabled: *busy.read(), oninput: move |event| password.set(event.value()), placeholder: "At least 10 characters" }
                                 if !error.read().is_empty() { p { class: "nav-account-error", role: "alert", "{error}" } }
                                 button { class: "nav-account-primary", r#type: "button", disabled: *busy.read(), onclick: submit,
                                     if *busy.read() { "Please wait…" } else if *register.read() { "Create account" } else { "Sign in" }
                                 }
-                                button { class: "nav-account-switch", r#type: "button", onclick: move |_| {
+                                button { class: "nav-account-switch", r#type: "button", disabled: *busy.read(), onclick: move |_| {
                                     let next = !*register.peek();
                                     register.set(next);
                                     error.set(String::new());
@@ -371,6 +381,7 @@ pub fn Header() -> Element {
                     class: "nav-cta",
                     r#type: "button",
                     aria_haspopup: "dialog",
+                    disabled: *busy.read(),
                     onclick: move |_| {
                         mobile_open.set(false);
                         account_open.set(false);

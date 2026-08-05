@@ -14,8 +14,26 @@ const SAVED_DELIVERY_ADDRESSES: &str = "vl_delivery_addresses";
 const MAX_SAVED_DELIVERY_ADDRESSES: usize = 5;
 const SAVED_PENDING_PAYMENT: &str = "vl_pending_booking_payment";
 const SAVED_POST_PAYMENT_BOOKING: &str = "vl_post_payment_booking";
+const SAVED_DEPOSIT_INSTRUCTIONS: &str = "vl_damage_deposit_instructions";
+const DAMAGE_DEPOSIT_ETRANSFER_EMAIL: &str = "protrailercare@gmail.com";
 const MOBILE_CALENDAR_BREAKPOINT: f64 = 860.0;
 const CALENDAR_SWIPE_THRESHOLD: f64 = 48.0;
+const IMG_DESTINATION_FINTRY: Asset = asset!(
+    "/assets/img/booking-destination-fintry.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_DESTINATION_BEAR_CREEK: Asset = asset!(
+    "/assets/img/booking-destination-bear-creek.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_DESTINATION_SHUSWAP_LAKE: Asset = asset!(
+    "/assets/img/booking-destination-shuswap-lake.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_DESTINATION_KEKULI_BAY: Asset = asset!(
+    "/assets/img/booking-destination-kekuli-bay.webp",
+    AssetOptions::image().with_jpg()
+);
 const UNMOUNT_EMBEDDED_CHECKOUT: &str = r#"
 if (window.__vlEmbeddedCheckout) {
   try { window.__vlEmbeddedCheckout.destroy(); }
@@ -40,6 +58,56 @@ delete window.__vlBookingMoneyValues;
 
 type UnavailableRange = (DateTime<Utc>, DateTime<Utc>);
 
+#[derive(Clone, PartialEq)]
+struct DestinationRecommendation {
+    id: &'static str,
+    name: &'static str,
+    region: &'static str,
+    description: &'static str,
+    address: &'static str,
+    image: Asset,
+}
+
+fn destination_recommendations() -> Vec<DestinationRecommendation> {
+    vec![
+        DestinationRecommendation {
+            id: "fintry",
+            name: "Fintry Provincial Park",
+            region: "Okanagan Lake · Fintry",
+            description: "Waterfront camping, a natural sand beach and the historic Fintry Estate.",
+            address: "7655 Fintry Delta Rd, Kelowna, BC V1Z 3B2",
+            image: IMG_DESTINATION_FINTRY,
+        },
+        DestinationRecommendation {
+            id: "bear-creek",
+            name: "Bear Creek Provincial Park",
+            region: "West Kelowna · Okanagan Lake",
+            description:
+                "Lakeside camping with a sandy beach, creek and canyon trails close to Kelowna.",
+            address: "107 Westside Rd, Kelowna, BC V1Z 3S4",
+            image: IMG_DESTINATION_BEAR_CREEK,
+        },
+        DestinationRecommendation {
+            id: "shuswap-lake",
+            name: "Shuswap Lake Provincial Park",
+            region: "Scotch Creek · Shuswap Lake",
+            description:
+                "A popular family campground with a long beach, play areas and a boat launch.",
+            address: "4120 Squilax-Anglemont Rd, Scotch Creek, BC V0E 1M5",
+            image: IMG_DESTINATION_SHUSWAP_LAKE,
+        },
+        DestinationRecommendation {
+            id: "kekuli-bay",
+            name: "Kekuli Bay Provincial Park",
+            region: "Vernon · Kalamalka Lake",
+            description:
+                "Lake-view campsites beside the Okanagan Rail Trail, swimming and boating.",
+            address: "421 High Ridge Rd, Vernon, BC V1H 1G1",
+            image: IMG_DESTINATION_KEKULI_BAY,
+        },
+    ]
+}
+
 pub(crate) fn has_saved_pending_payment() -> bool {
     api::load_sensitive_json::<api::CreatedBooking>(SAVED_PENDING_PAYMENT)
         .is_some_and(|created| created.client_secret.is_some() && !created.access_token.is_empty())
@@ -50,6 +118,24 @@ pub(crate) fn should_open_booking_overlay(
     has_pending_payment: bool,
 ) -> bool {
     resume_after_auth || has_pending_payment
+}
+
+fn booking_overlay_close_blocked(
+    closing: bool,
+    booking_busy: bool,
+    auth_busy: bool,
+    all_in_busy: bool,
+    edit_booking_busy: bool,
+) -> bool {
+    closing || booking_busy || auth_busy || all_in_busy || edit_booking_busy
+}
+
+fn payment_overlay_close_blocked(
+    all_in_busy: bool,
+    edit_booking_busy: bool,
+    payment_phase: &str,
+) -> bool {
+    all_in_busy || edit_booking_busy || matches!(payment_phase, "switching" | "confirming")
 }
 
 #[derive(Clone)]
@@ -223,8 +309,8 @@ fn booking_date_is_selectable(
                 unavailable,
             );
         }
-        return (day - start).num_days() >= minimum_nights
-            && booking_stay_is_available(start, day, unavailable);
+        let blocked_until = day.max(start + chrono::Duration::days(minimum_nights));
+        return booking_stay_is_available(start, blocked_until, unavailable);
     }
     booking_stay_is_available(
         day,
@@ -656,6 +742,23 @@ fn display_booking_date(timestamp: &str) -> String {
         .unwrap_or_else(|_| timestamp.get(0..10).unwrap_or(timestamp).to_string())
 }
 
+fn display_deposit_due(timestamp: &str) -> String {
+    DateTime::parse_from_rfc3339(timestamp)
+        .map(|value| {
+            value
+                .with_timezone(&Vancouver)
+                .format("%B %-d, %Y at %-I:%M %p %Z")
+                .to_string()
+        })
+        .unwrap_or_else(|_| timestamp.to_string())
+}
+
+fn display_delivery_deposit_due(delivery_timestamp: &str) -> String {
+    DateTime::parse_from_rfc3339(delivery_timestamp)
+        .map(|value| display_deposit_due(&(value - chrono::Duration::hours(48)).to_rfc3339()))
+        .unwrap_or_else(|_| delivery_timestamp.to_string())
+}
+
 fn price_number(value: &str) -> f64 {
     value
         .chars()
@@ -667,13 +770,13 @@ fn price_number(value: &str) -> f64 {
 
 fn delivery_distance_detail(delivery: &api::DeliveryEstimate) -> String {
     let one_way_km = price_number(&delivery.one_way_km);
-    if one_way_km <= 50.0 {
+    if one_way_km <= api::DELIVERY_INCLUDED_KM {
         format!("{} km one way · covered by CA$150", delivery.one_way_km)
     } else {
         format!(
             "{} km one way · {:.1} km extra × CA$2 · two way",
             delivery.one_way_km,
-            one_way_km - 50.0
+            one_way_km - api::DELIVERY_INCLUDED_KM
         )
     }
 }
@@ -702,12 +805,28 @@ fn optimistic_price(
 ) -> Option<OptimisticPrice> {
     let rental = rental?;
     let delivery = delivery.filter(|value| value.within_range)?;
-    let nights = nights.max(0);
-    let rental_amount = price_number(&rental.base_rate) * nights as f64;
+    let requested_nights = nights.max(0);
+    let billable_nights = if requested_nights > 0 {
+        requested_nights.max(3)
+    } else {
+        0
+    };
+    let rental_amount = price_number(&rental.base_rate) * billable_nights as f64;
     let mut lines = vec![OptimisticPriceLine {
         key: format!("rental-{}", rental.slug),
-        label: format!("{} x {} night", rental.name, nights),
-        detail: None,
+        label: if requested_nights < billable_nights {
+            format!("{} x {} nights (minimum)", rental.name, billable_nights)
+        } else {
+            format!("{} x {} nights", rental.name, billable_nights)
+        },
+        detail: (requested_nights < billable_nights).then(|| {
+            let label = if requested_nights == 1 {
+                "night"
+            } else {
+                "nights"
+            };
+            format!("Your selected stay: {requested_nights} {label}")
+        }),
         amount: rental_amount,
     }];
     let mut taxable_subtotal = rental_amount;
@@ -719,7 +838,7 @@ fn optimistic_price(
             .filter(|addon| selected_addons.contains(&addon.addon_key))
         {
             let quantity = if addon.charge_type == "per_unit" {
-                nights as f64
+                billable_nights as f64
             } else {
                 1.0
             };
@@ -728,7 +847,8 @@ fn optimistic_price(
             lines.push(OptimisticPriceLine {
                 key: format!("addon-{}", addon.addon_key),
                 label: addon.label.clone(),
-                detail: (quantity > 1.0).then(|| format!("{} nights × CA${}", nights, addon.price)),
+                detail: (quantity > 1.0)
+                    .then(|| format!("{} nights × CA${}", billable_nights, addon.price)),
                 amount,
             });
         }
@@ -779,15 +899,11 @@ fn optimistic_price(
         amount: delivery_amount,
     });
 
-    let protection = pricing::STATIONARY_PLUS_NIGHTLY_RATE * nights as f64;
+    let protection = pricing::stationary_plus_amount(billable_nights);
     lines.push(OptimisticPriceLine {
         key: "stationary-plus".into(),
         label: "Stationary Plus Protection".into(),
-        detail: Some(format!(
-            "{} nights × {}",
-            nights,
-            pricing::money(pricing::STATIONARY_PLUS_NIGHTLY_RATE)
-        )),
+        detail: Some(pricing::stationary_plus_detail(billable_nights)),
         amount: protection,
     });
 
@@ -1013,6 +1129,40 @@ fn AnimatedMoney(id: &'static str, amount: f64) -> Element {
 }
 
 #[component]
+fn DestinationRecommendationCard(
+    recommendation: DestinationRecommendation,
+    on_select: EventHandler<String>,
+) -> Element {
+    let address = recommendation.address.to_string();
+    rsx! {
+        article { class: "ub-destination-card",
+            img {
+                class: "ub-destination-image",
+                src: "{recommendation.image}",
+                alt: "Scenic lake view for {recommendation.name}",
+                loading: "lazy",
+            }
+            div { class: "ub-destination-card-body",
+                span { class: "ub-destination-region", "{recommendation.region}" }
+                h3 { "{recommendation.name}" }
+                p { "{recommendation.description}" }
+                div { class: "ub-destination-address",
+                    Icon { name: "map-pin", size: 14, color: "var(--vl-muted)" }
+                    span { "{recommendation.address}" }
+                }
+                button {
+                    class: "ub-destination-select",
+                    r#type: "button",
+                    onclick: move |_| on_select.call(address.clone()),
+                    span { "Use this address" }
+                    Icon { name: "arrow-right", size: 14, color: "var(--vl-white)" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 pub(crate) fn UnifiedBookingOverlay(
     mut location: Signal<String>,
     mut radius: Signal<i32>,
@@ -1113,6 +1263,8 @@ pub(crate) fn UnifiedBookingOverlay(
                 .is_some_and(|created| quote_matches_booking(quote, &created.booking))
         });
     let has_pending_payment = initial_pending_payment.is_some();
+    let initial_deposit_instructions =
+        api::load_sensitive_json::<api::CreatedBooking>(SAVED_DEPOSIT_INSTRUCTIONS);
     use_effect(move || {
         if !has_pending_payment && !resumed_booking {
             api::remove_saved("vl_active_quote");
@@ -1147,7 +1299,9 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut delivery_result = use_signal(move || resumed_delivery_estimate);
     let mut address_error = use_signal(String::new);
     let mut address_busy = use_signal(|| false);
+    let mut address_request_version = use_signal(|| 0_u32);
     let mut suggestions_open = use_signal(|| false);
+    let mut destination_picker_open = use_signal(|| false);
     let mut saved_addresses =
         use_signal(|| api::load_json::<Vec<String>>(SAVED_DELIVERY_ADDRESSES).unwrap_or_default());
     let mut addon_keys = use_signal(move || resumed_addons);
@@ -1182,6 +1336,8 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut payment_overlay_open = use_signal(move || has_pending_payment);
     let mut payment_phase = use_signal(|| "idle".to_string());
     let mut payment_attempt_nonce = use_signal(|| 0_u32);
+    let mut deposit_overlay_booking = use_signal(move || initial_deposit_instructions);
+    let mut deposit_copy_state = use_signal(String::new);
     let mut all_in_busy = use_signal(|| false);
     let mut all_in_error = use_signal(String::new);
     let mut edit_booking_confirm_open = use_signal(|| false);
@@ -1226,9 +1382,17 @@ pub(crate) fn UnifiedBookingOverlay(
         let Some((slug, address)) = resumed_delivery_check.clone() else {
             return;
         };
+        let request_version = address_request_version.peek().wrapping_add(1);
+        address_request_version.set(request_version);
         address_busy.set(true);
         spawn(async move {
-            match api::delivery_estimate(&slug, &address).await {
+            let result = api::delivery_estimate(&slug, &address).await;
+            if *address_request_version.peek() != request_version
+                || selected_slug.peek().as_str() != slug.as_str()
+            {
+                return;
+            }
+            match result {
                 Ok(result) if result.within_range => {
                     let next = remember_delivery_address(
                         &saved_addresses.peek(),
@@ -1311,21 +1475,18 @@ pub(crate) fn UnifiedBookingOverlay(
                     let mut confirmed = created.clone();
                     confirmed.booking.status = status.status;
                     confirmed.booking.payment_status = status.payment_status;
+                    confirmed.damage_deposit = status.damage_deposit;
                     if confirmed.booking.rental_slug.is_empty() {
                         confirmed.booking.rental_slug = selected_slug.peek().clone();
                     }
                     let _ = api::save_sensitive_json("vl_last_booking", &confirmed);
                     let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &confirmed);
+                    let _ = api::save_sensitive_json(SAVED_DEPOSIT_INSTRUCTIONS, &confirmed);
                     api::remove_sensitive_saved(SAVED_PENDING_PAYMENT);
                     pending_payment.set(None);
                     payment_overlay_open.set(false);
                     payment_phase.set("confirmed".into());
-                    let return_slug = if confirmed.booking.rental_slug.is_empty() {
-                        selected_slug.peek().clone()
-                    } else {
-                        confirmed.booking.rental_slug.clone()
-                    };
-                    navigator.push(Route::RvDetail { slug: return_slug });
+                    deposit_overlay_booking.set(Some(confirmed));
                     return;
                 }
                 Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => {
@@ -1436,22 +1597,20 @@ pub(crate) fn UnifiedBookingOverlay(
                             let mut confirmed = created.clone();
                             confirmed.booking.status = status.status;
                             confirmed.booking.payment_status = status.payment_status;
+                            confirmed.damage_deposit = status.damage_deposit;
                             if confirmed.booking.rental_slug.is_empty() {
                                 confirmed.booking.rental_slug = selected_slug.peek().clone();
                             }
                             let _ = api::save_sensitive_json("vl_last_booking", &confirmed);
                             let _ =
                                 api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &confirmed);
+                            let _ =
+                                api::save_sensitive_json(SAVED_DEPOSIT_INSTRUCTIONS, &confirmed);
                             api::remove_sensitive_saved(SAVED_PENDING_PAYMENT);
                             pending_payment.set(None);
                             payment_overlay_open.set(false);
                             payment_phase.set("confirmed".into());
-                            let return_slug = if confirmed.booking.rental_slug.is_empty() {
-                                selected_slug.peek().clone()
-                            } else {
-                                confirmed.booking.rental_slug.clone()
-                            };
-                            navigator.push(Route::RvDetail { slug: return_slug });
+                            deposit_overlay_booking.set(Some(confirmed));
                             return;
                         }
                         Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => {
@@ -1472,6 +1631,9 @@ pub(crate) fn UnifiedBookingOverlay(
                 }
                 let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 1500));")
                     .await;
+            }
+            if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                return;
             }
             if !submitted {
                 payment_phase.set("delayed".into());
@@ -1497,21 +1659,18 @@ pub(crate) fn UnifiedBookingOverlay(
                         let mut confirmed = created.clone();
                         confirmed.booking.status = status.status;
                         confirmed.booking.payment_status = status.payment_status;
+                        confirmed.damage_deposit = status.damage_deposit;
                         if confirmed.booking.rental_slug.is_empty() {
                             confirmed.booking.rental_slug = selected_slug.peek().clone();
                         }
                         let _ = api::save_sensitive_json("vl_last_booking", &confirmed);
                         let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &confirmed);
+                        let _ = api::save_sensitive_json(SAVED_DEPOSIT_INSTRUCTIONS, &confirmed);
                         api::remove_sensitive_saved(SAVED_PENDING_PAYMENT);
                         pending_payment.set(None);
                         payment_overlay_open.set(false);
                         payment_phase.set("confirmed".into());
-                        let return_slug = if confirmed.booking.rental_slug.is_empty() {
-                            selected_slug.peek().clone()
-                        } else {
-                            confirmed.booking.rental_slug.clone()
-                        };
-                        navigator.push(Route::RvDetail { slug: return_slug });
+                        deposit_overlay_booking.set(Some(confirmed));
                         return;
                     }
                     Ok(status) if matches!(status.status.as_str(), "expired" | "cancelled") => {
@@ -1529,6 +1688,9 @@ pub(crate) fn UnifiedBookingOverlay(
                 let _ = document::eval("await new Promise(resolve => setTimeout(resolve, 1500));")
                     .await;
             }
+            if *payment_attempt_nonce.peek() != attempt || !*payment_overlay_open.peek() {
+                return;
+            }
             payment_phase.set("delayed".into());
             booking_error.set(
                 "Stripe is still confirming the test payment. Keep this booking number and refresh its status shortly."
@@ -1542,7 +1704,7 @@ pub(crate) fn UnifiedBookingOverlay(
         .zip(*ends_on.read())
         .map(|(start, end)| (end - start).num_days())
         .unwrap_or(0);
-    let trip_ready = nights >= 3;
+    let trip_ready = nights >= 1;
     let payment_locked = pending_payment.read().is_some();
     let payment_availability = api::payment_availability(
         payment_config.read().as_ref(),
@@ -1925,7 +2087,7 @@ pub(crate) fn UnifiedBookingOverlay(
         let ready = starts_on
             .read()
             .zip(*ends_on.read())
-            .is_some_and(|(start, end)| (end - start).num_days() >= 3);
+            .is_some_and(|(start, end)| (end - start).num_days() >= 1);
         let was_ready = *trip_was_ready.peek();
         trip_was_ready.set(ready);
         if ready && !was_ready && *open_step.peek() == 1 {
@@ -1950,6 +2112,9 @@ pub(crate) fn UnifiedBookingOverlay(
                     .any(|rental| rental.slug == *selected_slug.peek())
             });
         if does_not_fit_guests {
+            let invalidated_request = address_request_version.peek().wrapping_add(1);
+            address_request_version.set(invalidated_request);
+            address_busy.set(false);
             selected_slug.set(String::new());
             addon_keys.set(Vec::new());
             delivery_km.set(None);
@@ -1966,7 +2131,7 @@ pub(crate) fn UnifiedBookingOverlay(
         let current_guests = *guests.read();
         let ready = current_start
             .zip(current_end)
-            .is_some_and(|(start, end)| (end - start).num_days() >= 3);
+            .is_some_and(|(start, end)| (end - start).num_days() >= 1);
         if !ready || selected_slug.peek().is_empty() {
             return;
         }
@@ -1990,6 +2155,9 @@ pub(crate) fn UnifiedBookingOverlay(
                 open_step.set(3);
             }
         } else {
+            let invalidated_request = address_request_version.peek().wrapping_add(1);
+            address_request_version.set(invalidated_request);
+            address_busy.set(false);
             starts_on.set(None);
             ends_on.set(None);
             trip_was_ready.set(false);
@@ -2005,6 +2173,8 @@ pub(crate) fn UnifiedBookingOverlay(
     use_effect(move || {
         let _refresh = *quote_refresh_nonce.read();
         if pending_payment.read().is_some() {
+            let invalidated_version = quote_version.peek().wrapping_add(1);
+            quote_version.set(invalidated_version);
             quote_busy.set(false);
             return;
         }
@@ -2021,6 +2191,8 @@ pub(crate) fn UnifiedBookingOverlay(
             || distance.is_none()
             || address.trim().is_empty()
         {
+            let invalidated_version = quote_version.peek().wrapping_add(1);
+            quote_version.set(invalidated_version);
             quote.set(None);
             quote_busy.set(false);
             return;
@@ -2060,7 +2232,13 @@ pub(crate) fn UnifiedBookingOverlay(
     });
 
     let close_overlay = move || async move {
-        if *closing.peek() {
+        if booking_overlay_close_blocked(
+            *closing.peek(),
+            *booking_busy.peek(),
+            *auth_busy.peek(),
+            *all_in_busy.peek(),
+            *edit_booking_busy.peek(),
+        ) {
             return;
         }
         closing.set(true);
@@ -2071,29 +2249,57 @@ pub(crate) fn UnifiedBookingOverlay(
         on_close.call(());
     };
     let mut close_payment_overlay = move || {
+        if payment_overlay_close_blocked(
+            *all_in_busy.peek(),
+            *edit_booking_busy.peek(),
+            payment_phase.peek().as_str(),
+        ) {
+            return;
+        }
         let next_attempt = payment_attempt_nonce().wrapping_add(1);
         payment_attempt_nonce.set(next_attempt);
         document::eval(UNMOUNT_EMBEDDED_CHECKOUT);
         payment_overlay_open.set(false);
         payment_phase.set("idle".into());
     };
+    let mut finish_deposit_overlay = move || {
+        let return_slug = deposit_overlay_booking
+            .peek()
+            .as_ref()
+            .map(|created| created.booking.rental_slug.clone())
+            .filter(|slug| !slug.is_empty())
+            .unwrap_or_else(|| selected_slug.peek().clone());
+        api::remove_sensitive_saved(SAVED_DEPOSIT_INSTRUCTIONS);
+        deposit_overlay_booking.set(None);
+        navigator.push(Route::RvDetail { slug: return_slug });
+    };
 
     let selected_name_for_booking = selected_name.clone();
+    let deposit_overlay = deposit_overlay_booking.read().clone();
     rsx! {
         div { class: if *closing.read() { "ub-backdrop is-closing" } else { "ub-backdrop" }, onclick: move |_| close_overlay(),
             div { class: "ub-shell", role: "dialog", aria_modal: "true", aria_label: "Complete your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| { if event.key() == Key::Escape { event.stop_propagation(); spawn(async move { close_overlay().await; }); } },
                 header { class: "ub-head",
                     div { div { class: "ub-kicker", "ONE-PAGE RV BOOKING" } h2 { "Build your Okanagan stay" } p { "Choose everything here. Completed sections fold into a clear summary." } }
-                    button { class: "ub-close", r#type: "button", aria_label: "Close booking", onclick: move |_| close_overlay(), Icon { name: "x", size: 22, color: "var(--vl-ink)" } }
+                    button { class: "ub-close", r#type: "button", disabled: booking_overlay_close_blocked(*closing.read(), *booking_busy.read(), *auth_busy.read(), *all_in_busy.read(), *edit_booking_busy.read()), aria_label: "Close booking", onclick: move |_| close_overlay(), Icon { name: "x", size: 22, color: "var(--vl-ink)" } }
                 }
                 div { class: "ub-body",
                     main { class: "ub-steps",
-                        BookingStep { number: 1, title: "Dates & guests", summary: if trip_ready { format!("{} → {} · {} nights · {} guests", date_text(*starts_on.read()), date_text(*ends_on.read()), nights, guests) } else { "Choose at least 3 nights".into() }, complete: trip_ready, open: *open_step.read() == 1, disabled: payment_locked, on_toggle: move |_| if !payment_locked { open_step.set(if *open_step.peek() == 1 { 0 } else { 1 }) },
+                        BookingStep { number: 1, title: "Dates & guests", summary: if trip_ready { format!("{} → {} · {} · {} guests", date_text(*starts_on.read()), date_text(*ends_on.read()), pricing::night_count_label(nights), guests) } else { "Choose delivery and return dates".into() }, complete: trip_ready, open: *open_step.read() == 1, disabled: payment_locked, on_toggle: move |_| if !payment_locked { open_step.set(if *open_step.peek() == 1 { 0 } else { 1 }) },
                             div { class: "ub-step-content",
                                 div { class: "ub-date-summary",
                                     span { "Delivery/setup · 2:00 PM" } strong { "{date_text(*starts_on.read())}" }
                                     Icon { name: "arrow-right", size: 17, color: "var(--vl-muted)" }
                                     span { "Return · 11:00 AM" } strong { "{date_text(*ends_on.read())}" }
+                                }
+                                if trip_ready && nights < 3 {
+                                    div { class: "ub-short-stay-note", role: "status",
+                                        Icon { name: "badge-check", size: 17, color: "var(--vl-forest)" }
+                                        span {
+                                            strong { "Your {nights}-night stay is available." }
+                                            small { "The rental and per-night items are priced at the 3-night minimum. Your return date stays unchanged." }
+                                        }
+                                    }
                                 }
                                 div { class: if calendar_error.is_some() { "ub-calendar-context is-warning" } else { "ub-calendar-context" }, role: if calendar_error.is_some() { "alert" } else { "status" }, aria_live: "polite",
                                     Icon { name: "calendar", size: 16, color: "var(--vl-forest)" }
@@ -2220,6 +2426,8 @@ pub(crate) fn UnifiedBookingOverlay(
                                                     ends_on.set(None);
                                                     trip_was_ready.set(false);
                                                     }
+                                                    address_request_version.set(address_request_version().wrapping_add(1));
+                                                    address_busy.set(false);
                                                     selected_slug.set(slug);
                                                     addon_keys.set(Vec::new());
                                                     delivery_km.set(None);
@@ -2238,17 +2446,35 @@ pub(crate) fn UnifiedBookingOverlay(
                             div { class: "ub-step-content",
                                 div { class: "ub-address-row",
                                     div { class: "ub-address-combo",
-                                        input { value: "{delivery_address}", placeholder: "Start typing a Canadian address", autocomplete: "off", role: "combobox", aria_label: "Delivery address", aria_controls: "ub-address-suggestions", aria_expanded: *suggestions_open.read() && address_query_ready, onfocus: move |_| if address_query_ready { suggestions_open.set(true); }, oninput: move |event| { let value = event.value(); delivery_address.set(value.clone()); delivery_km.set(None); delivery_result.set(None); quote.set(None); quote_error.set(String::new()); address_error.set(String::new()); suggestions_open.set(value.trim().chars().count() >= 3); } }
+                                        input { value: "{delivery_address}", placeholder: "Start typing a Canadian address", autocomplete: "off", role: "combobox", aria_label: "Delivery address", aria_controls: "ub-address-suggestions", aria_expanded: *suggestions_open.read() && address_query_ready, onfocus: move |_| if address_query_ready { suggestions_open.set(true); }, oninput: move |event| { let value = event.value(); address_request_version.set(address_request_version().wrapping_add(1)); address_busy.set(false); delivery_address.set(value.clone()); delivery_km.set(None); delivery_result.set(None); quote.set(None); quote_error.set(String::new()); address_error.set(String::new()); suggestions_open.set(value.trim().chars().count() >= 3); } }
                                         if suggestions_busy { span { class: "rvd-address-spinner", aria_label: "Searching addresses" } }
                                         if *suggestions_open.read() && address_query_ready { div { id: "ub-address-suggestions", class: "ub-suggestions", role: "listbox",
                                             if suggestions_busy { div { class: "ub-suggestion-status", "Searching nearby Canadian addresses…" } }
-                                            else if !suggestion_items.is_empty() { for suggestion in suggestion_items { button { r#type: "button", role: "option", onclick: move |_| { delivery_address.set(suggestion.display_name.clone()); suggestions_open.set(false); }, strong { "{suggestion.primary_text}" } small { "{suggestion.secondary_text}" } } } }
+                                            else if !suggestion_items.is_empty() { for suggestion in suggestion_items { button { r#type: "button", role: "option", onclick: move |_| { address_request_version.set(address_request_version().wrapping_add(1)); address_busy.set(false); delivery_address.set(suggestion.display_name.clone()); delivery_km.set(None); delivery_result.set(None); quote.set(None); quote_error.set(String::new()); address_error.set(String::new()); suggestions_open.set(false); }, strong { "{suggestion.primary_text}" } small { "{suggestion.secondary_text}" } } } }
                                             else if let Some(message) = suggestion_error.as_ref() { div { class: "ub-suggestion-status is-error", "{message}" } }
                                             else { div { class: "ub-suggestion-status", "Keep typing the street name, city, or campground." } }
                                             div { class: "ub-suggestions-foot", "Canadian addresses · prioritized near Kelowna" }
                                         } }
                                     }
-                                    button { class: "ub-primary", r#type: "button", disabled: *address_busy.read() || !address_query_ready, onclick: move |_| { let slug = selected_slug.read().clone(); let address = delivery_address.read().clone(); async move { address_busy.set(true); address_error.set(String::new()); match api::delivery_estimate(&slug, &address).await { Ok(result) if result.within_range => { let next = remember_delivery_address(&saved_addresses.read(), &result.resolved_address); let _ = api::save_json(SAVED_DELIVERY_ADDRESSES, &next); saved_addresses.set(next); delivery_address.set(result.resolved_address.clone()); delivery_km.set(Some(result.one_way_km.clone())); delivery_result.set(Some(result)); suggestions_open.set(false); open_step.set(4); }, Ok(result) => { delivery_result.set(Some(result.clone())); address_error.set(format!("This address is beyond the {} km delivery limit.", result.maximum_km)); }, Err(message) => address_error.set(message) } address_busy.set(false); } }, if *address_busy.read() { "Calculating…" } else { "Calculate delivery" } }
+                                    button { class: "ub-primary", r#type: "button", disabled: *address_busy.read() || !address_query_ready, onclick: move |_| { let slug = selected_slug.read().clone(); let address = delivery_address.read().clone(); let request_version = address_request_version().wrapping_add(1); address_request_version.set(request_version); async move { address_busy.set(true); address_error.set(String::new()); let result = api::delivery_estimate(&slug, &address).await; if *address_request_version.peek() != request_version || selected_slug.peek().as_str() != slug.as_str() || delivery_address.peek().as_str() != address.as_str() { return; } match result { Ok(result) if result.within_range => { let next = remember_delivery_address(&saved_addresses.read(), &result.resolved_address); let _ = api::save_json(SAVED_DELIVERY_ADDRESSES, &next); saved_addresses.set(next); delivery_address.set(result.resolved_address.clone()); delivery_km.set(Some(result.one_way_km.clone())); delivery_result.set(Some(result)); suggestions_open.set(false); open_step.set(4); }, Ok(result) => { delivery_result.set(Some(result.clone())); address_error.set(format!("This address is beyond the {} km delivery limit.", result.maximum_km)); }, Err(message) => address_error.set(message) } address_busy.set(false); } }, if *address_busy.read() { "Calculating…" } else { "Calculate delivery" } }
+                                }
+                                button {
+                                    class: "ub-destination-trigger",
+                                    r#type: "button",
+                                    disabled: *address_busy.read(),
+                                    aria_label: "Choose a popular provincial park delivery address",
+                                    onclick: move |_| {
+                                        suggestions_open.set(false);
+                                        destination_picker_open.set(true);
+                                    },
+                                    span { class: "ub-destination-trigger-icon",
+                                        Icon { name: "map-pinned", size: 18, color: "var(--vl-forest)" }
+                                    }
+                                    span { class: "ub-destination-trigger-copy",
+                                        strong { "Choose a popular campground" }
+                                        small { "Fintry, Bear Creek, Shuswap Lake or Kekuli Bay" }
+                                    }
+                                    Icon { name: "arrow-right", size: 17, color: "var(--vl-forest)" }
                                 }
                                 div { class: "ub-delivery-map", aria_label: "Interactive delivery map centred on Kelowna",
                                     div { id: "vl-booking-delivery-map", class: "ub-leaflet-map" }
@@ -2266,7 +2492,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                         div { class: "ub-address-history-list",
                                             for saved_address in saved_addresses.read().clone() {
                                                 div { key: "saved-{saved_address}", class: "ub-address-history-item",
-                                                    button { class: "ub-address-history-select", r#type: "button", disabled: *address_busy.read(), onclick: { let address = saved_address.clone(); move |_| { let slug = selected_slug.read().clone(); let address = address.clone(); async move { delivery_address.set(address.clone()); delivery_km.set(None); delivery_result.set(None); quote.set(None); quote_error.set(String::new()); address_error.set(String::new()); suggestions_open.set(false); address_busy.set(true); match api::delivery_estimate(&slug, &address).await { Ok(result) if result.within_range => { let next = remember_delivery_address(&saved_addresses.read(), &result.resolved_address); let _ = api::save_json(SAVED_DELIVERY_ADDRESSES, &next); saved_addresses.set(next); delivery_address.set(result.resolved_address.clone()); delivery_km.set(Some(result.one_way_km.clone())); delivery_result.set(Some(result)); open_step.set(4); }, Ok(result) => { delivery_result.set(Some(result.clone())); address_error.set(format!("This address is beyond the {} km delivery limit.", result.maximum_km)); }, Err(message) => address_error.set(message) } address_busy.set(false); } } },
+                                                    button { class: "ub-address-history-select", r#type: "button", disabled: *address_busy.read(), onclick: { let address = saved_address.clone(); move |_| { let slug = selected_slug.read().clone(); let address = address.clone(); let request_version = address_request_version().wrapping_add(1); address_request_version.set(request_version); async move { delivery_address.set(address.clone()); delivery_km.set(None); delivery_result.set(None); quote.set(None); quote_error.set(String::new()); address_error.set(String::new()); suggestions_open.set(false); address_busy.set(true); let result = api::delivery_estimate(&slug, &address).await; if *address_request_version.peek() != request_version || selected_slug.peek().as_str() != slug.as_str() || delivery_address.peek().as_str() != address.as_str() { return; } match result { Ok(result) if result.within_range => { let next = remember_delivery_address(&saved_addresses.read(), &result.resolved_address); let _ = api::save_json(SAVED_DELIVERY_ADDRESSES, &next); saved_addresses.set(next); delivery_address.set(result.resolved_address.clone()); delivery_km.set(Some(result.one_way_km.clone())); delivery_result.set(Some(result)); open_step.set(4); }, Ok(result) => { delivery_result.set(Some(result.clone())); address_error.set(format!("This address is beyond the {} km delivery limit.", result.maximum_km)); }, Err(message) => address_error.set(message) } address_busy.set(false); } } },
                                                         Icon { name: "map-pin", size: 15, color: "var(--vl-forest)" }
                                                         span { "{saved_address}" }
                                                     }
@@ -2317,7 +2543,11 @@ pub(crate) fn UnifiedBookingOverlay(
                             div { class: "ub-step-content",
                                 if user.read().is_none() { div { class: "ub-auth",
                                     h3 { if *auth_register.read() { "Create your account" } else { "Sign in to confirm" } }
-                                    a { class: "ub-google", href: google_href, onclick: move |event| {
+                                    a { class: "ub-google", href: google_href, aria_disabled: *auth_busy.read(), onclick: move |event| {
+                                        if *auth_busy.peek() {
+                                            event.prevent_default();
+                                            return;
+                                        }
                                         let draft = make_draft(
                                             &selected_slug.read(),
                                             *starts_on.read(),
@@ -2364,7 +2594,11 @@ pub(crate) fn UnifiedBookingOverlay(
                                         "Continue with Google"
                                     }
                                     if let Some(facebook_href) = facebook_href.clone() {
-                                        a { class: "ub-facebook", href: facebook_href, onclick: move |event| {
+                                        a { class: "ub-facebook", href: facebook_href, aria_disabled: *auth_busy.read(), onclick: move |event| {
+                                            if *auth_busy.peek() {
+                                                event.prevent_default();
+                                                return;
+                                            }
                                             let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false);
                                             let continuation = api::BookingAuthContinuation { draft: draft.clone(), location: location.read().clone(), radius_km: *radius.read(), delivery_estimate: delivery_result.read().clone(), first_name: first_name.read().clone(), last_name: last_name.read().clone(), booking_email: booking_email.read().clone(), phone: phone.read().clone(), notes: notes.read().clone(), accepted_terms: *accepted.read() };
                                             match api::save_booking_auth_continuation(&continuation) {
@@ -2377,9 +2611,9 @@ pub(crate) fn UnifiedBookingOverlay(
                                         }
                                     }
                                     div { class: "ub-auth-divider", span { "or use email" } }
-                                    div { class: "ub-field-grid", input { r#type: "email", autocomplete: "email", value: "{auth_email}", placeholder: "Email", oninput: move |event| auth_email.set(event.value()) } input { r#type: "password", autocomplete: if *auth_register.read() { "new-password" } else { "current-password" }, value: "{auth_password}", placeholder: "Password", oninput: move |event| auth_password.set(event.value()) } }
+                                    div { class: "ub-field-grid", input { r#type: "email", autocomplete: "email", value: "{auth_email}", placeholder: "Email", disabled: *auth_busy.read(), oninput: move |event| auth_email.set(event.value()) } input { r#type: "password", autocomplete: if *auth_register.read() { "new-password" } else { "current-password" }, value: "{auth_password}", placeholder: "Password", disabled: *auth_busy.read(), oninput: move |event| auth_password.set(event.value()) } }
                                     if !auth_error.read().is_empty() { p { class: "ub-error", "{auth_error}" } }
-                                    div { class: "ub-auth-actions", button { class: "ub-primary", r#type: "button", disabled: *auth_busy.read(), onclick: move |_| { let email = auth_email.read().clone(); let password = auth_password.read().clone(); let register = *auth_register.read(); async move { auth_busy.set(true); auth_error.set(String::new()); match api::login(&email, &password, register).await { Ok(tokens) => match api::save_session(&tokens) { Ok(()) => { booking_email.set(tokens.user.email.clone()); user.set(Some(tokens.user)); }, Err(message) => auth_error.set(message) }, Err(_) => auth_error.set("Check your email and password, then try again.".into()) } auth_busy.set(false); } }, if *auth_busy.read() { "Please wait…" } else if *auth_register.read() { "Create account" } else { "Sign in" } } button { r#type: "button", onclick: move |_| { let current = *auth_register.read(); auth_register.set(!current); }, if *auth_register.read() { "I already have an account" } else { "Create an account" } } }
+                                    div { class: "ub-auth-actions", button { class: "ub-primary", r#type: "button", disabled: *auth_busy.read(), onclick: move |_| { let email = auth_email.read().clone(); let password = auth_password.read().clone(); let register = *auth_register.read(); async move { auth_busy.set(true); auth_error.set(String::new()); match api::login(&email, &password, register).await { Ok(tokens) => match api::save_session(&tokens) { Ok(()) => { booking_email.set(tokens.user.email.clone()); user.set(Some(tokens.user)); }, Err(message) => auth_error.set(message) }, Err(_) => auth_error.set("Check your email and password, then try again.".into()) } auth_busy.set(false); } }, if *auth_busy.read() { "Please wait…" } else if *auth_register.read() { "Create account" } else { "Sign in" } } button { r#type: "button", disabled: *auth_busy.read(), onclick: move |_| { let current = *auth_register.read(); auth_register.set(!current); }, if *auth_register.read() { "I already have an account" } else { "Create an account" } } }
                                 } } else if let Some(created) = pending_payment.read().as_ref() { div { class: "ub-payment-reserved",
                                     div { class: "ub-stripe-payment-head",
                                         div { Icon { name: "shield-check", size: 20, color: "var(--vl-forest)" } div { h3 { "Reservation ready for payment" } p { "Booking {created.booking.booking_number} is held. Secure Checkout opens above this booking." } } }
@@ -2405,11 +2639,18 @@ pub(crate) fn UnifiedBookingOverlay(
                                         }
                                     }
                                     textarea { value: "{notes}", placeholder: "Notes (optional)", oninput: move |event| notes.set(event.value()) }
-                                    label { class: "ub-terms", input { r#type: "checkbox", checked: *accepted.read(), disabled: !booking_can_submit, onchange: move |event| accepted.set(event.checked()) } span { if payment_availability == api::PaymentAvailability::TestReady { "I accept the rental terms and authorize this Stripe test-mode payment." } else { "I accept the rental terms and understand this is a test booking with no card charge." } } }
+                                    label { class: "ub-terms",
+                                        input { r#type: "checkbox", checked: *accepted.read(), disabled: !booking_can_submit, onchange: move |event| accepted.set(event.checked()) }
+                                        span {
+                                            "I accept the "
+                                            a { href: api::frontend_path("/terms"), target: "_blank", rel: "noopener noreferrer", onclick: move |event| event.stop_propagation(), "RV Rental Terms & Conditions" }
+                                            if payment_availability == api::PaymentAvailability::TestReady { " and authorize this Stripe test-mode payment." } else { " and understand this is a test booking with no card charge." }
+                                        }
+                                    }
                                     if payment_availability == api::PaymentAvailability::Loading { p { class: "ub-muted", role: "status", "Checking whether this environment uses Stripe test payments…" } }
                                     if payment_availability == api::PaymentAvailability::Blocked { p { class: "ub-error", role: "alert", if payment_config_error.read().is_empty() { "Checkout is blocked because the returned Stripe mode, key, or account is not the approved test configuration." } else { "Payment configuration could not be verified. Retry before creating a reservation." } } button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); }, "Retry payment configuration" } }
                                     if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
-                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); let rental_slug = selected_slug.read().clone(); let rental_name = selected_name_for_booking.clone(); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(mut created) => { fill_booking_rental(&mut created.booking, rental_slug, rental_name); let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); payment_overlay_open.set(true); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_sensitive_json("vl_last_booking", &created); let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &created); let return_slug = if created.booking.rental_slug.is_empty() { selected_slug.peek().clone() } else { created.booking.rental_slug.clone() }; navigator.push(Route::RvDetail { slug: return_slug }); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
+                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); let rental_slug = selected_slug.read().clone(); let rental_name = selected_name_for_booking.clone(); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(mut created) => { fill_booking_rental(&mut created.booking, rental_slug, rental_name); let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); payment_overlay_open.set(true); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_sensitive_json("vl_last_booking", &created); let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &created); let _ = api::save_sensitive_json(SAVED_DEPOSIT_INSTRUCTIONS, &created); deposit_overlay_booking.set(Some(created)); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
                                 } }
                             }
                         }
@@ -2419,13 +2660,13 @@ pub(crate) fn UnifiedBookingOverlay(
                         p { if pending_payment.read().is_some() { "This immutable trip price is locked to the active Stripe reservation. The refundable damage deposit is separate." } else if *quote_busy.read() { "Updating the exact trip price…" } else if quote.read().is_some() { "Trip price with preparation, protection, delivery, selected extras and taxes. The refundable damage deposit is separate." } else if preview_total.is_some() { "Known trip costs are shown. Exact taxes are updating; the refundable damage deposit is separate." } else { "Your trip price appears after the delivery address is calculated." } }
                         button { class: "ub-summary-dates", r#type: "button", disabled: !trip_ready || payment_locked, onclick: move |_| if !payment_locked { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); },
                             span { "Dates" }
-                            b { if let Some(created) = pending_payment.read().as_ref() { "{display_booking_date(&created.booking.starts_at)} → {display_booking_date(&created.booking.ends_at)}" } else if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())} · {nights} nights" } else { "Choose dates" } }
+                            b { if let Some(created) = pending_payment.read().as_ref() { "{display_booking_date(&created.booking.starts_at)} → {display_booking_date(&created.booking.ends_at)}" } else if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())} · {pricing::night_count_label(nights)}" } else { "Choose dates" } }
                             small { if payment_locked { "Locked" } else { "Edit dates" } }
                         }
                         if let Some(created) = pending_payment.read().as_ref() { div { class: "ub-price-lines ub-locked-price",
                             div { span { "Booked RV" } b { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } } }
                             if let Some(value) = quote.read().as_ref().filter(|value| quote_matches_booking(value, &created.booking)) {
-                                for item in value.items.iter().filter(|item| item.item_type != "deposit") { div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } }
+                                for item in value.items.iter().filter(|item| item.item_type != "deposit") { div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == "stationary_plus" { small { "{pricing::stationary_plus_detail(i64::from(value.quote.units))}" } } } b { class: "ub-line-price", "CA${item.amount}" } } }
                             }
                             div { class: "total", span { "Full trip price" } b { "{created.booking.currency} ${created.booking.total}" } }
                             div { class: "due-now", span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } b { "{created.booking.currency} ${created.booking.amount_due_now}" } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total}" } }
@@ -2433,10 +2674,10 @@ pub(crate) fn UnifiedBookingOverlay(
                             small { "The Stripe Checkout amount is locked to this booking. Closing and reopening the window cannot create a second reservation." }
                         } } else if *quote_busy.read() {
                             if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
-                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == "stationary_plus" { small { "{item.quantity} nights × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
+                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == "stationary_plus" { small { "{pricing::stationary_plus_detail(i64::from(value.quote.units))}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
                         div { class: "ub-deposit-card",
                             div { span { "REFUNDABLE DAMAGE DEPOSIT" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
-                            p { "Charged separately {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery and refunded to the original payment method after return and inspection, less any documented damage." }
+                            p { "Send separately by Interac e-Transfer to {DAMAGE_DEPOSIT_ETRANSFER_EMAIL} no later than {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. It is refundable after return and inspection, less documented damage." }
                         }
                         div { class: "ub-payment-note",
                             b { "Payment timing" }
@@ -2446,6 +2687,108 @@ pub(crate) fn UnifiedBookingOverlay(
                         if !addon_notice.read().is_empty() { p { class: "ub-notice", "{addon_notice}" } }
                         div { class: "ub-summary-trip", span { "Dates" } b { if let Some(created) = pending_payment.read().as_ref() { "{display_booking_date(&created.booking.starts_at)} → {display_booking_date(&created.booking.ends_at)}" } else if trip_ready { "{date_text(*starts_on.read())} → {date_text(*ends_on.read())}" } else { "Not selected" } } span { "RV" } b { if let Some(created) = pending_payment.read().as_ref() { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } } else { "{selected_name}" } } span { "Price" } b { if payment_locked { "Locked to booking" } else if address_ready { "Calculated" } else { "Required" } } }
                         div { class: "ub-test-note", Icon { name: "shield-check", size: 17, color: "var(--vl-forest)" } span { match payment_availability { api::PaymentAvailability::TestReady => "Stripe test mode: test cards only. Live payments remain disabled.", api::PaymentAvailability::Disabled => "Test mode: no card is collected and no charge is made.", api::PaymentAvailability::Loading => "Checking the test payment configuration…", api::PaymentAvailability::Blocked => "Payment configuration is blocked until the approved Stripe test account is verified.", } } }
+                    }
+                }
+            }
+            if *destination_picker_open.read() {
+                div {
+                    class: "ub-destination-layer",
+                    onclick: move |event| {
+                        event.stop_propagation();
+                        destination_picker_open.set(false);
+                    },
+                    section {
+                        class: "ub-destination-dialog",
+                        role: "dialog",
+                        aria_modal: "true",
+                        aria_labelledby: "ub-destination-title",
+                        tabindex: "-1",
+                        autofocus: true,
+                        onclick: move |event| event.stop_propagation(),
+                        onkeydown: move |event| {
+                            if event.key() == Key::Escape {
+                                event.stop_propagation();
+                                destination_picker_open.set(false);
+                            }
+                        },
+                        header { class: "ub-destination-head",
+                            div {
+                                span { class: "ub-destination-kicker", "POPULAR RV DESTINATIONS" }
+                                h2 { id: "ub-destination-title", "Choose a delivery destination" }
+                                p { "Pick a popular campground to fill the address instantly. Delivery eligibility and price are calculated next." }
+                            }
+                            button {
+                                class: "ub-close",
+                                r#type: "button",
+                                aria_label: "Close destination recommendations",
+                                onclick: move |_| destination_picker_open.set(false),
+                                Icon { name: "x", size: 21, color: "var(--vl-ink)" }
+                            }
+                        }
+                        div { class: "ub-destination-scroll",
+                            div { class: "ub-destination-grid",
+                                for recommendation in destination_recommendations() {
+                                    DestinationRecommendationCard {
+                                        key: "destination-{recommendation.id}",
+                                        recommendation,
+                                        on_select: move |address: String| {
+                                            destination_picker_open.set(false);
+                                            let slug = selected_slug.read().clone();
+                                            let request_version = address_request_version().wrapping_add(1);
+                                            address_request_version.set(request_version);
+                                            async move {
+                                                delivery_address.set(address.clone());
+                                                delivery_km.set(None);
+                                                delivery_result.set(None);
+                                                quote.set(None);
+                                                quote_error.set(String::new());
+                                                address_error.set(String::new());
+                                                suggestions_open.set(false);
+                                                address_busy.set(true);
+                                                let result = api::delivery_estimate(&slug, &address).await;
+                                                if *address_request_version.peek() != request_version
+                                                    || selected_slug.peek().as_str() != slug.as_str()
+                                                    || delivery_address.peek().as_str() != address.as_str()
+                                                {
+                                                    return;
+                                                }
+                                                match result {
+                                                    Ok(result) if result.within_range => {
+                                                        let next = remember_delivery_address(
+                                                            &saved_addresses.read(),
+                                                            &result.resolved_address,
+                                                        );
+                                                        let _ = api::save_json(SAVED_DELIVERY_ADDRESSES, &next);
+                                                        saved_addresses.set(next);
+                                                        delivery_address.set(result.resolved_address.clone());
+                                                        delivery_km.set(Some(result.one_way_km.clone()));
+                                                        delivery_result.set(Some(result));
+                                                        open_step.set(4);
+                                                    }
+                                                    Ok(result) => {
+                                                        delivery_result.set(Some(result.clone()));
+                                                        address_error.set(format!(
+                                                            "This address is beyond the {} km delivery limit.",
+                                                            result.maximum_km
+                                                        ));
+                                                        open_step.set(3);
+                                                    }
+                                                    Err(message) => {
+                                                        address_error.set(message);
+                                                        open_step.set(3);
+                                                    }
+                                                }
+                                                address_busy.set(false);
+                                            }
+                                        },
+                                    }
+                                }
+                            }
+                            div { class: "ub-destination-note",
+                                Icon { name: "info", size: 16, color: "var(--vl-forest)" }
+                                span { "Selecting a park fills the delivery field and runs the existing distance, 150 km limit and fee calculation." }
+                            }
+                        }
                     }
                 }
             }
@@ -2460,7 +2803,7 @@ pub(crate) fn UnifiedBookingOverlay(
                             }
                             div { class: "ub-payment-dialog-actions",
                                 span { "TEST MODE" }
-                                button { r#type: "button", aria_label: "Close secure payment", onclick: move |_| close_payment_overlay(), Icon { name: "x", size: 21, color: "var(--vl-ink)" } }
+                                button { r#type: "button", disabled: payment_overlay_close_blocked(*all_in_busy.read(), *edit_booking_busy.read(), payment_phase.read().as_str()), aria_label: "Close secure payment", onclick: move |_| close_payment_overlay(), Icon { name: "x", size: 21, color: "var(--vl-ink)" } }
                             }
                         }
                         div { class: "ub-payment-dialog-content",
@@ -2503,7 +2846,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                 } else {
                                     div { class: "ub-payment-price-now", div { span { "Due now · {booking_payment_percent(&created.booking).unwrap_or(0)}%" } strong { "{created.booking.currency} ${created.booking.amount_due_now}" } } small { "{booking_payment_percent(&created.booking).unwrap_or(0)}% × {created.booking.currency} ${created.booking.total} — charged today" } }
                                     if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "ub-payment-price-row", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } strong { "{created.booking.currency} ${remaining}" } } }
-                                    div { class: "ub-payment-price-row is-deposit", span { "Refundable damage deposit" small { "Separate payment {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. Not included in the trip price." } } strong { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
+                                    div { class: "ub-payment-price-row is-deposit", span { "Refundable damage deposit" small { "Interac e-Transfer to {DAMAGE_DEPOSIT_ETRANSFER_EMAIL}, due {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. Not charged through Stripe." } } strong { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
                                     if let Some(offer) = created.all_in_offer.as_ref() {
                                         div { class: "ub-all-in",
                                             div { class: "ub-all-in-head", span { "PAY EVERYTHING NOW" } b { "ONE PAYMENT" } }
@@ -2518,6 +2861,45 @@ pub(crate) fn UnifiedBookingOverlay(
                                 }
                                 if !all_in_error.read().is_empty() { p { class: "ub-error", role: "alert", "{all_in_error}" } }
                                 button { class: "ub-change-booking ub-change-booking-payment", r#type: "button", onclick: move |_| { edit_booking_error.set(String::new()); edit_booking_confirm_open.set(true); }, Icon { name: "pencil", size: 15, color: "var(--vl-forest)" } span { "Change booking details" } small { "Cancels this unpaid payment session, releases the dates, and recalculates your updated trip." } }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(created) = deposit_overlay.as_ref() {
+                div { class: "ub-deposit-layer", onclick: move |event| { event.stop_propagation(); finish_deposit_overlay(); },
+                    section { class: "ub-deposit-dialog", role: "dialog", aria_modal: "true", aria_labelledby: "ub-deposit-title", aria_describedby: "ub-deposit-description", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); finish_deposit_overlay(); },
+                        header { class: "ub-deposit-head",
+                            div { class: "ub-deposit-success", Icon { name: "check", size: 23, color: "white" } }
+                            div {
+                                span { class: "ub-kicker", "STRIPE PAYMENT CONFIRMED" }
+                                h2 { id: "ub-deposit-title", "One last payment before your trip" }
+                                p { id: "ub-deposit-description", "Your RV is reserved. The refundable damage deposit is paid separately by Interac e-Transfer." }
+                            }
+                            button { class: "ub-close", r#type: "button", aria_label: "Close damage deposit instructions", onclick: move |_| finish_deposit_overlay(), Icon { name: "x", size: 21, color: "var(--vl-ink)" } }
+                        }
+                        div { class: "ub-deposit-content",
+                            div { class: "ub-deposit-amount",
+                                span { "REFUNDABLE DAMAGE DEPOSIT" }
+                                strong { "CA$1,000" }
+                                small { "Not charged through Stripe" }
+                            }
+                            div { class: "ub-deposit-due",
+                                span { "DUE 48 HOURS BEFORE DELIVERY" }
+                                strong { "{created.damage_deposit.as_ref().map(|deposit| display_deposit_due(&deposit.due_at)).unwrap_or_else(|| display_delivery_deposit_due(&created.booking.starts_at))}" }
+                            }
+                            div { class: "ub-deposit-transfer",
+                                span { "SEND INTERAC E-TRANSFER TO" }
+                                div {
+                                    strong { "{created.damage_deposit.as_ref().and_then(|deposit| deposit.transfer_email.as_deref()).unwrap_or(DAMAGE_DEPOSIT_ETRANSFER_EMAIL)}" }
+                                    button { r#type: "button", onclick: move |_| async move { let script = format!("return navigator.clipboard.writeText({});", serde_json::to_string(DAMAGE_DEPOSIT_ETRANSFER_EMAIL).unwrap_or_else(|_| "\"\"".into())); match document::eval(&script).await { Ok(_) => deposit_copy_state.set("Email copied".into()), Err(_) => deposit_copy_state.set("Copy failed — select the email above".into()) } }, Icon { name: "copy", size: 16, color: "var(--vl-forest)" } span { if deposit_copy_state.read().is_empty() { "Copy" } else { "{deposit_copy_state}" } } }
+                                }
+                                small { "Include booking #{created.booking.booking_number} in the e-Transfer message." }
+                            }
+                            div { class: "ub-deposit-notice", Icon { name: "shield-check", size: 20, color: "var(--vl-forest)" } p { strong { "Delivery waits for verification" } "Your account changes to Paid only after VL Rental confirms receipt. We then email you and vlrental.ca@gmail.com." } }
+                            div { class: "ub-deposit-actions",
+                                a { href: "mailto:{DAMAGE_DEPOSIT_ETRANSFER_EMAIL}?subject=Damage%20deposit%20for%20booking%20{created.booking.booking_number}", "Email transfer details" }
+                                button { class: "ub-primary", r#type: "button", onclick: move |_| finish_deposit_overlay(), "View my booking" }
                             }
                         }
                     }
@@ -2631,6 +3013,7 @@ fn RentalChoice(
     let mut review_context = use_signal(|| None::<api::RentalReviewContext>);
     let mut like_busy = use_signal(std::collections::HashSet::<String>::new);
     let mut like_error = use_signal(String::new);
+    let mut review_publish_busy = use_signal(|| false);
     let live_summary = reviews.read().as_ref().map(|value| value.summary.clone());
     let rating = live_summary
         .as_ref()
@@ -2684,9 +3067,9 @@ fn RentalChoice(
                 }
             }
             if *reviews_open.read() {
-                div { class: "ub-review-backdrop", onclick: move |_| reviews_open.set(false),
-                    section { class: "ub-review-modal", role: "dialog", aria_modal: "true", aria_label: "Reviews for {rental.name}", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| { if event.key() == Key::Escape { event.stop_propagation(); reviews_open.set(false); } },
-                        header { div { RatingStars { rating: rounded_rating } h3 { "Guest reviews" } p { "{rental.name}" } } button { r#type: "button", aria_label: "Close reviews", onclick: move |_| reviews_open.set(false), Icon { name: "x", size: 20, color: "var(--vl-ink)" } } }
+                div { class: "ub-review-backdrop", onclick: move |_| if !review_publish_busy() { reviews_open.set(false); },
+                    section { class: "ub-review-modal", role: "dialog", aria_modal: "true", aria_label: "Reviews for {rental.name}", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| { if event.key() == Key::Escape { event.stop_propagation(); if !review_publish_busy() { reviews_open.set(false); } } },
+                        header { div { RatingStars { rating: rounded_rating } h3 { "Guest reviews" } p { "{rental.name}" } } button { r#type: "button", disabled: review_publish_busy(), aria_label: "Close reviews", onclick: move |_| if !review_publish_busy() { reviews_open.set(false); }, Icon { name: "x", size: 20, color: "var(--vl-ink)" } } }
                         div { class: "ub-review-scroll",
                             if *reviews_busy.read() { p { class: "ub-review-state", "Loading reviews…" } }
                             else if !reviews_error.read().is_empty() { p { class: "ub-error", role: "alert", "{reviews_error}" } }
@@ -2695,7 +3078,7 @@ fn RentalChoice(
                                 if !like_error.read().is_empty() { p { class: "ub-review-action-error", role: "alert", "{like_error}" } }
                                 if let Some(context) = review_context.read().as_ref() {
                                     if let Some(booking_id) = context.reviewable_booking_id.as_ref() {
-                                        ReviewForm { booking_id: booking_id.clone(), rental_name: rental.name.clone(), on_published: { let slug = slug.clone(); move |_| { let slug = slug.clone(); spawn(async move { if let Ok(value) = api::rental_reviews(&slug).await { reviews.set(Some(value)); }; if let Ok(context) = api::rental_review_context(&slug).await { review_context.set(Some(context)); } }); } } }
+                                        ReviewForm { booking_id: booking_id.clone(), rental_name: rental.name.clone(), on_busy_change: move |value| review_publish_busy.set(value), on_published: { let slug = slug.clone(); move |_| { let slug = slug.clone(); spawn(async move { if let Ok(value) = api::rental_reviews(&slug).await { reviews.set(Some(value)); }; if let Ok(context) = api::rental_review_context(&slug).await { review_context.set(Some(context)); } }); } } }
                                     } else {
                                         p { class: "ub-review-policy", match context.review_state.as_str() { "used" => "Your review opportunity for this trip has already been used.", "waiting_for_return" => "You can write a review after the RV has been returned.", _ => "Reviews are available after a completed, paid RV trip." } }
                                     }
@@ -2857,11 +3240,57 @@ mod saved_address_tests {
     use super::*;
 
     #[test]
-    fn delivery_price_line_explains_the_each_way_charge_after_fifty_km() {
+    fn booking_close_is_blocked_during_irreversible_work() {
+        assert!(booking_overlay_close_blocked(
+            false, true, false, false, false
+        ));
+        assert!(booking_overlay_close_blocked(
+            false, false, true, false, false
+        ));
+        assert!(booking_overlay_close_blocked(
+            false, false, false, true, false
+        ));
+        assert!(booking_overlay_close_blocked(
+            false, false, false, false, true
+        ));
+        assert!(!booking_overlay_close_blocked(
+            false, false, false, false, false
+        ));
+    }
+
+    #[test]
+    fn payment_close_is_blocked_while_checkout_is_being_changed_or_confirmed() {
+        assert!(payment_overlay_close_blocked(false, false, "switching"));
+        assert!(payment_overlay_close_blocked(false, false, "confirming"));
+        assert!(payment_overlay_close_blocked(true, false, "idle"));
+        assert!(payment_overlay_close_blocked(false, true, "idle"));
+        assert!(!payment_overlay_close_blocked(false, false, "idle"));
+    }
+
+    #[test]
+    fn popular_destination_addresses_are_complete_and_unique() {
+        let destinations = destination_recommendations();
+        let unique_addresses = destinations
+            .iter()
+            .map(|destination| destination.address)
+            .collect::<std::collections::HashSet<_>>();
+
+        assert_eq!(destinations.len(), 4);
+        assert_eq!(unique_addresses.len(), destinations.len());
+        assert!(destinations
+            .iter()
+            .all(|destination| destination.address.contains(", BC ")));
+        assert!(destinations
+            .iter()
+            .any(|destination| destination.name == "Kekuli Bay Provincial Park"));
+    }
+
+    #[test]
+    fn delivery_price_line_explains_the_each_way_charge_after_forty_km() {
         let delivery = api::DeliveryEstimate {
             resolved_address: "Bear Creek Provincial Park".into(),
-            one_way_km: "58.4".into(),
-            round_trip_km: "116.8".into(),
+            one_way_km: "48.4".into(),
+            round_trip_km: "96.8".into(),
             delivery_fee: "183.60".into(),
             maximum_km: "150.0".into(),
             within_range: true,
@@ -2869,12 +3298,12 @@ mod saved_address_tests {
 
         assert_eq!(
             delivery_distance_detail(&delivery),
-            "58.4 km one way · 8.4 km extra × CA$2 · two way"
+            "48.4 km one way · 8.4 km extra × CA$2 · two way"
         );
     }
 
     #[test]
-    fn delivery_price_line_marks_distances_through_fifty_km_as_covered() {
+    fn delivery_price_line_marks_distances_through_forty_km_as_covered() {
         let delivery = api::DeliveryEstimate {
             resolved_address: "Kelowna, BC".into(),
             one_way_km: "30.0".into(),
@@ -2999,10 +3428,10 @@ mod saved_address_tests {
                 guests: 2,
                 units: 4,
                 currency: "CAD".into(),
-                subtotal: "847.00".into(),
-                tax_total: "87.64".into(),
+                subtotal: "827.00".into(),
+                tax_total: "86.64".into(),
                 refundable_deposit: "1000.00".into(),
-                total: "934.64".into(),
+                total: "913.64".into(),
                 expires_at: String::new(),
             },
             items: vec![
@@ -3034,17 +3463,17 @@ mod saved_address_tests {
                     item_type: "protection".into(),
                     item_key: "stationary_plus".into(),
                     label: "Stationary Plus Protection".into(),
-                    quantity: "4".into(),
-                    unit_price: "50.00".into(),
-                    amount: "200.00".into(),
+                    quantity: "1".into(),
+                    unit_price: "180.00".into(),
+                    amount: "180.00".into(),
                 },
                 api::QuoteItem {
                     item_type: "tax".into(),
                     item_key: "tax_primary".into(),
                     label: "GST (5%)".into(),
                     quantity: "1".into(),
-                    unit_price: "42.35".into(),
-                    amount: "42.35".into(),
+                    unit_price: "41.35".into(),
+                    amount: "41.35".into(),
                 },
                 api::QuoteItem {
                     item_type: "tax".into(),
@@ -3075,16 +3504,38 @@ mod saved_address_tests {
             Some(&previous_quote),
         )
         .unwrap();
+        let short_stay =
+            optimistic_price(Some(&rental), Some(&details), &[], 1, Some(&delivery), None).unwrap();
 
         assert!(with_addon
             .lines
             .iter()
             .any(|line| line.label == "Portable BBQ"));
-        assert_eq!(without_addon.total, 934.64);
+        assert_eq!(without_addon.total, 913.64);
         assert!(without_addon
             .lines
             .iter()
             .any(|line| line.label == "GST (5%)"));
+        let short_rental = short_stay
+            .lines
+            .iter()
+            .find(|line| line.key.starts_with("rental-"))
+            .unwrap();
+        assert_eq!(short_rental.amount, 300.0);
+        assert!(short_rental.label.contains("3 nights (minimum)"));
+        assert_eq!(
+            short_rental.detail.as_deref(),
+            Some("Your selected stay: 1 night")
+        );
+        assert_eq!(
+            short_stay
+                .lines
+                .iter()
+                .find(|line| line.key == "stationary-plus")
+                .unwrap()
+                .amount,
+            150.0
+        );
         assert!(without_addon
             .lines
             .iter()
@@ -3157,6 +3608,10 @@ mod saved_address_tests {
             payment_option: "scheduled".into(),
             refundable_deposit_paid: false,
             paid_transaction_total: None,
+            damage_deposit_status: String::new(),
+            damage_deposit_due_at: None,
+            damage_deposit_collection_method: "e_transfer".into(),
+            damage_deposit_transfer_email: None,
             balance_due_at: None,
             payment_expires_at: None,
             review_id: None,
@@ -3187,6 +3642,7 @@ mod saved_address_tests {
                 total_due_today: "2406.24".into(),
                 currency: "CAD".into(),
             }),
+            damage_deposit: None,
         };
         assert!(created_payment_amount_is_valid(&created));
         created.all_in_offer.as_mut().unwrap().total_due_today = "2406.25".into();
@@ -3211,6 +3667,10 @@ mod saved_address_tests {
             payment_option: "scheduled".into(),
             refundable_deposit_paid: false,
             paid_transaction_total: None,
+            damage_deposit_status: String::new(),
+            damage_deposit_due_at: None,
+            damage_deposit_collection_method: "e_transfer".into(),
+            damage_deposit_transfer_email: None,
             balance_due_at: Some("2030-07-31T21:00:00Z".into()),
             payment_expires_at: None,
             review_id: None,
@@ -3334,7 +3794,7 @@ mod saved_address_tests {
     }
 
     #[test]
-    fn fleet_calendar_keeps_three_night_rule_across_month_boundary() {
+    fn fleet_calendar_allows_a_short_return_and_protects_three_nights() {
         let starts_on = NaiveDate::from_ymd_opt(2030, 8, 30).unwrap();
         let valid_return = NaiveDate::from_ymd_opt(2030, 9, 2).unwrap();
         let too_early = NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
@@ -3346,6 +3806,21 @@ mod saved_address_tests {
         );
         assert_eq!(
             fleet_available_rental_count(too_early, Some(starts_on), None, 3, &schedules,),
+            1
+        );
+
+        let blocked_during_minimum = vec![vec![(
+            booking_moment(NaiveDate::from_ymd_opt(2030, 9, 1).unwrap(), 14).unwrap(),
+            booking_moment(NaiveDate::from_ymd_opt(2030, 9, 2).unwrap(), 11).unwrap(),
+        )]];
+        assert_eq!(
+            fleet_available_rental_count(
+                too_early,
+                Some(starts_on),
+                None,
+                3,
+                &blocked_during_minimum,
+            ),
             0
         );
     }
@@ -3470,5 +3945,13 @@ mod saved_address_tests {
         assert!(!review_like_action_disabled(false, true, false));
         assert!(review_like_action_disabled(false, false, false));
         assert!(review_like_action_disabled(true, true, true));
+    }
+
+    #[test]
+    fn damage_deposit_fallback_is_exactly_48_hours_before_delivery() {
+        assert_eq!(
+            display_delivery_deposit_due("2026-09-04T21:00:00Z"),
+            "September 2, 2026 at 2:00 PM PDT"
+        );
     }
 }

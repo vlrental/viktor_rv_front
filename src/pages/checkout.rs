@@ -1,237 +1,81 @@
 use dioxus::prelude::*;
 
-use crate::{api, components::Icon, pricing, AuthSession, Route};
+use super::booking_overlay::has_saved_pending_payment;
+use crate::{api, BookingLaunchRequest, Route};
 
-#[component]
-pub fn Checkout() -> Element {
-    let rentals_href = api::frontend_path("/#home-rentals");
-    let browse_rentals_href = rentals_href.clone();
-    let quote = api::load_json::<api::QuoteResponse>("vl_active_quote");
-    let saved_draft = api::load_json::<api::TripDraft>("vl_trip_draft");
-    let recovery_slug = saved_draft
-        .as_ref()
-        .and_then(|draft| (!api::rv_delivery_ready(draft)).then(|| draft.rental_slug.clone()));
-    let draft = saved_draft.filter(api::rv_delivery_ready);
-    let auth_session = use_context::<AuthSession>().0;
-    let user = auth_session.read().clone();
-    let first_name = use_signal(String::new);
-    let last_name = use_signal(String::new);
-    let email = use_signal(|| {
-        user.as_ref()
-            .map(|value| value.email.clone())
-            .unwrap_or_default()
-    });
-    let phone = use_signal(String::new);
-    let mut notes = use_signal(String::new);
-    let mut accepted = use_signal(|| false);
-    let mut busy = use_signal(|| false);
-    let mut error = use_signal(String::new);
-    let nav = use_navigator();
-    let quote_for_confirm = quote.clone();
-    let draft_for_confirm = draft.clone();
-    let confirm = move |_| {
-        let active_quote = quote_for_confirm.clone();
-        let selected_draft = draft_for_confirm.clone();
-        let values = (
-            first_name.read().clone(),
-            last_name.read().clone(),
-            email.read().clone(),
-            phone.read().clone(),
-            notes.read().clone(),
-            *accepted.read(),
-        );
-        async move {
-            let Some(active_quote) = active_quote else {
-                error.set("Your quote is missing. Please calculate it again.".to_string());
-                return;
-            };
-            if !values.5 {
-                error.set("Please accept the rental terms.".to_string());
-                return;
-            }
-            if values.0.trim().len() < 2
-                || values.1.trim().len() < 2
-                || !values.2.contains('@')
-                || values.3.trim().len() < 7
-            {
-                error.set("Enter your full name, email, and phone number.".to_string());
-                return;
-            }
-            busy.set(true);
-            error.set(String::new());
-            let booking_notes = if let Some(draft) = selected_draft.as_ref() {
-                let mut parts = Vec::new();
-                if !values.4.trim().is_empty() {
-                    parts.push(values.4.trim().to_string());
-                }
-                if let Some(address) = draft
-                    .delivery_address
-                    .as_ref()
-                    .filter(|value| !value.is_empty())
-                {
-                    parts.push(format!("Delivery address: {address}"));
-                }
-                if let Some(distance) = draft.delivery_km.as_ref() {
-                    parts.push(format!("Delivery distance: {distance} km one way"));
-                }
-                parts.push(format!(
-                    "Festival/event: {}",
-                    if draft.attending_event { "yes" } else { "no" }
-                ));
-                parts.push(format!(
-                    "Towing after delivery: {}",
-                    if draft.towing_after_delivery {
-                        "yes"
-                    } else {
-                        "no"
-                    }
-                ));
-                parts.join("\n")
-            } else {
-                values.4.clone()
-            };
-            match api::create_booking(
-                &active_quote.quote.quote_id,
-                &values.0,
-                &values.1,
-                &values.2,
-                &values.3,
-                &booking_notes,
-            )
-            .await
-            {
-                Ok(created) => {
-                    let _ = api::save_sensitive_json("vl_last_booking", &created);
-                    nav.push(Route::Confirmed {});
-                }
-                Err(api_error) => {
-                    if api_error.is_conflict() {
-                        if let Some(draft) = selected_draft.as_ref() {
-                            api::prepare_catalog_after_conflict(draft);
-                        } else {
-                            api::remove_saved("vl_active_quote");
-                        }
-                        nav.push(Route::Catalog {});
-                    } else {
-                        error.set(api_error.message);
-                    }
-                }
-            }
-            busy.set(false);
-        }
-    };
-
-    rsx! {
-        div { class: "co-body",
-            div { class: "co-breadcrumb",
-                a { class: "co-breadcrumb-a", href: rentals_href, "RV Rentals" }
-                Icon { name: "chevron-right", size: 15, color: "var(--vl-muted)" }
-                span { class: "co-breadcrumb-b", "Confirm booking" }
-            }
-            h1 { class: "co-title", "Confirm your test booking" }
-            if let (Some(quote), Some(draft)) = (quote, draft) {
-                div { class: "co-row",
-                    div { class: "co-left",
-                        div { class: "co-card",
-                            div { class: "co-card-h", "Your trip" }
-                            TripRow { label: "Rental", value: quote.quote.rental_slug.clone() }
-                            TripRow { label: "Delivery/setup", value: format!("{} at 2:00 PM", draft.starts_on) }
-                            TripRow { label: "Return", value: format!("{} at 11:00 AM · {} nights", draft.ends_on, quote.quote.units) }
-                            TripRow { label: "Guests", value: format!("{} guests", draft.guests) }
-                            TripRow { label: "Delivery", value: format!("Delivery and setup · {} km one way", draft.delivery_km.as_deref().unwrap_or_default()) }
-                            if let Some(address) = draft.delivery_address.as_ref().filter(|value| !value.is_empty()) {
-                                TripRow { label: "Address", value: address.clone() }
-                            }
-                            TripRow { label: "Festival or event", value: if draft.attending_event { "Yes".to_string() } else { "No".to_string() } }
-                            if draft.delivery_km.is_some() {
-                                TripRow { label: "Moving after setup", value: if draft.towing_after_delivery { "Yes".to_string() } else { "No, stationary stay".to_string() } }
-                            }
-                        }
-                        div { class: "co-card",
-                            div { class: "co-card-h", "Guest details" }
-                            div { class: "co-field-row stack",
-                                Field { label: "First name", value: first_name, kind: "text" }
-                                Field { label: "Last name", value: last_name, kind: "text" }
-                            }
-                            div { class: "co-field-row stack",
-                                Field { label: "Email", value: email, kind: "email" }
-                                Field { label: "Phone", value: phone, kind: "tel" }
-                            }
-                            label { class: "co-field",
-                                span { class: "co-field-label", "Notes (optional)" }
-                                textarea { class: "co-input", value: "{notes}", oninput: move |e| notes.set(e.value()) }
-                            }
-                        }
-                        div { class: "co-card",
-                            div { class: "co-card-h", "Test payment" }
-                            p { "Stripe is intentionally disabled. No card details are collected and no charge is made." }
-                            label { class: "co-secure",
-                                input { r#type: "checkbox", checked: *accepted.read(), onchange: move |e| accepted.set(e.checked()) }
-                                span { "I accept the rental terms and understand this is a test booking." }
-                            }
-                        }
-                    }
-                    div { class: "co-summary",
-                        h2 { class: "co-card-h", "Price details" }
-                        for item in quote.items.iter().filter(|item| item.item_type != "deposit") {
-                            PriceLine { label: item.label.clone(), value: format!("CA${}", item.amount) }
-                        }
-                        div { class: "co-divider" }
-                        div { class: "co-line",
-                            span { class: "co-total-label", "Trip price (CAD)" }
-                            span { class: "co-total-value", "{pricing::money(pricing::quote_trip_price(&quote))}" }
-                        }
-                        div { class: "co-deposit-card",
-                            div { strong { "Refundable damage deposit" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
-                            p { "Paid separately 48 hours before delivery. It is not part of the trip price or the 30% booking payment." }
-                        }
-                        div { class: "co-payment-plan",
-                            strong { "Payment timing" }
-                            p { "30% to confirm when booked more than 30 days ahead; the balance is due 30 days before delivery. Within 30 days, the trip price is due in full." }
-                        }
-                        if user.is_none() {
-                            div { class: "co-auth-choice",
-                                h2 { "Sign in to confirm" }
-                                p { "Your quote is saved while you sign in." }
-                                Link { class: "co-email-login", to: Route::Login {}, onclick: move |_| api::remember_auth_return("/checkout"), "Sign in or create an account" }
-                            }
-                        } else {
-                            if !error.read().is_empty() { p { class: "auth-error", role: "alert", "{error}" } }
-                            button { class: "co-pay", disabled: *busy.read(), onclick: confirm,
-                                if *busy.read() { "Creating booking…" } else { "Confirm test booking" }
-                            }
-                        }
-                    }
-                }
-            } else {
-                div { class: "co-card",
-                    h2 { "Your quote is missing or expired" }
-                    p { if recovery_slug.is_some() { "A delivery address and distance are required. Return to the RV and calculate delivery again." } else { "Choose a rental, delivery address and dates to calculate a new quote." } }
-                    if let Some(slug) = recovery_slug {
-                        Link { class: "co-pay", to: Route::RvDetail { slug }, "Enter delivery address" }
-                    } else {
-                        a { class: "co-pay", href: browse_rentals_href, "Browse available RVs" }
-                    }
-                }
-            }
-        }
+fn restored_checkout_search(draft: &api::TripDraft) -> api::CatalogSearchDraft {
+    api::CatalogSearchDraft {
+        location: "Kelowna, BC".into(),
+        radius_km: 150,
+        starts_on: (!draft.starts_on.trim().is_empty()).then(|| draft.starts_on.clone()),
+        ends_on: (!draft.ends_on.trim().is_empty()).then(|| draft.ends_on.clone()),
+        guests: draft.guests.clamp(1, 10),
     }
 }
 
+/// Compatibility route for older saved links.
+///
+/// Booking confirmation now belongs exclusively to the unified Home overlay.
+/// Rendering the retired checkout form here could create a pending Stripe
+/// reservation and then incorrectly present it as confirmed, so this route
+/// only restores safe search context and immediately redirects into the
+/// canonical flow.
 #[component]
-fn Field(label: &'static str, value: Signal<String>, kind: &'static str) -> Element {
-    rsx! { label { class: "co-field grow",
-        span { class: "co-field-label", "{label}" }
-        input { class: "co-input", r#type: kind, value: "{value}", oninput: move |e| value.set(e.value()) }
-    } }
+pub fn Checkout() -> Element {
+    let navigator = use_navigator();
+    let mut booking_launch_request = use_context::<BookingLaunchRequest>();
+
+    use_effect(move || {
+        let has_pending_payment = has_saved_pending_payment();
+        if !has_pending_payment {
+            if let Some(draft) = api::load_json::<api::TripDraft>("vl_trip_draft") {
+                let search = restored_checkout_search(&draft);
+                let _ = api::save_json("vl_catalog_search", &search);
+            }
+            booking_launch_request.0.set(true);
+        }
+        navigator.replace(Route::Home {});
+    });
+
+    rsx! {
+        div { hidden: true, aria_live: "polite", "Opening the secure booking window" }
+    }
 }
 
-#[component]
-fn TripRow(label: &'static str, value: String) -> Element {
-    rsx! { div { class: "co-trip-row", div { class: "co-trip-col", div { class: "co-trip-label", "{label}" } div { class: "co-trip-value", "{value}" } } } }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[component]
-fn PriceLine(label: String, value: String) -> Element {
-    rsx! { div { class: "co-line", span { class: "co-line-label", "{label}" } span { class: "co-line-value", "{value}" } } }
+    fn draft() -> api::TripDraft {
+        api::TripDraft {
+            rental_slug: "example-rv".into(),
+            starts_on: "2026-09-10".into(),
+            ends_on: "2026-09-13".into(),
+            guests: 99,
+            addon_keys: Vec::new(),
+            delivery_km: Some("25".into()),
+            delivery_address: Some("Kelowna, BC".into()),
+            attending_event: false,
+            towing_after_delivery: false,
+        }
+    }
+
+    #[test]
+    fn legacy_checkout_restores_only_safe_search_context() {
+        let search = restored_checkout_search(&draft());
+
+        assert_eq!(search.starts_on.as_deref(), Some("2026-09-10"));
+        assert_eq!(search.ends_on.as_deref(), Some("2026-09-13"));
+        assert_eq!(search.guests, 10);
+        assert_eq!(search.radius_km, 150);
+    }
+
+    #[test]
+    fn compatibility_route_cannot_submit_or_confirm_a_booking() {
+        let source = include_str!("checkout.rs");
+
+        assert!(!source.contains(concat!("api::", "create_booking(")));
+        assert!(!source.contains(concat!("vl_last_", "booking")));
+        assert!(source.contains("navigator.replace(Route::Home {})"));
+    }
 }

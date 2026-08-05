@@ -10,7 +10,7 @@ use super::catalog::{
     CatalogFilteredEmpty, CatalogFilters, CatalogLoadingState, Filters,
 };
 use crate::api;
-use crate::components::{Icon, SortDropdown};
+use crate::components::{CookieConsent, CookieConsentContext, Icon, SortDropdown};
 use crate::data::IMG_HERO_RV;
 use crate::{BookingLaunchRequest, Route};
 
@@ -36,6 +36,7 @@ const heroIframe = document.getElementById('hero-youtube-player');
 if (heroIframe) {
     heroIframe.classList.remove('is-playing');
     heroIframe.removeAttribute('src');
+    delete heroIframe.dataset.initialized;
 }
 "#;
 
@@ -184,7 +185,12 @@ fn Hero(
     mut search_open: Signal<bool>,
     mut search_initial_step: Signal<u8>,
 ) -> Element {
-    use_effect(|| {
+    let cookie_consent = use_context::<CookieConsentContext>();
+    use_effect(move || {
+        if *cookie_consent.0.read() != CookieConsent::All {
+            document::eval(CLEANUP_HERO_VIDEO);
+            return;
+        }
         document::eval(
             r#"
                 const iframe = document.getElementById('hero-youtube-player');
@@ -287,7 +293,7 @@ fn Hero(
                 }
                 h1 { class: "hero-title", "Explore nature on the open road" }
                 p { class: "hero-sub",
-                    "Book fully-equipped RVs in minutes. Choose your wheels, chase your adventure — we handle the logistics."
+                    "Short stays welcome with 3-night minimum pricing. Delivery only — choose your RV in minutes, and we deliver, level and set it up."
                 }
             }
             div { class: "searchbar",
@@ -484,7 +490,7 @@ fn HowItWorks(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>
     let steps = [
         ("search", "01", "Search & compare", "Browse fully-equipped RVs with transparent, upfront pricing — no hidden fees."),
         ("calendar-check", "02", "Book online", "Reserve in minutes with fair policies and helpful guidance from our local Okanagan team."),
-        ("tent-tree", "03", "Hit the road", "We deliver, level and set up your rig. You focus on the fun, we handle the logistics."),
+        ("truck", "03", "Delivery only", "Choose 1 or more nights; 1–2 night stays use 3-night minimum pricing. We deliver, level and set up your RV."),
     ];
     let card_content =
         |icon: &'static str, num: &'static str, title: &'static str, desc: &'static str| {
@@ -551,7 +557,7 @@ fn MoreServices() -> Element {
         ),
         (
             "mountain",
-            "Attractions",
+            "Explore",
             "Local picks for the best of Kelowna",
             Route::Attractions {},
         ),

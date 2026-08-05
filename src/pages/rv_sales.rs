@@ -122,9 +122,9 @@ pub fn RvSales() -> Element {
                     "Tell us your budget and how you like to travel — we'll help you find the perfect rig."
                 }
                 div { class: "ct-row",
-                    input { class: "ct-input", placeholder: "Your name", value: "{full_name}", oninput: move |e| full_name.set(e.value()) }
-                    input { class: "ct-input", r#type: "email", placeholder: "you@email.com", value: "{email}", oninput: move |e| email.set(e.value()) }
-                    input { class: "ct-input", placeholder: "RV or budget", value: "{requested}", oninput: move |e| requested.set(e.value()) }
+                    input { class: "ct-input", placeholder: "Your name", value: "{full_name}", disabled: *busy.read(), oninput: move |e| full_name.set(e.value()) }
+                    input { class: "ct-input", r#type: "email", placeholder: "you@email.com", value: "{email}", disabled: *busy.read(), oninput: move |e| email.set(e.value()) }
+                    input { class: "ct-input", placeholder: "RV or budget", value: "{requested}", disabled: *busy.read(), oninput: move |e| requested.set(e.value()) }
                 }
                 if !status.read().is_empty() { p { role: "status", "{status}" } }
             }

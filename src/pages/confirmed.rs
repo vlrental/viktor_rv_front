@@ -100,7 +100,7 @@ fn SummaryCard(created: Option<api::CreatedBooking>, draft: Option<api::TripDraf
                 GridCell { label: payment_label, value: format!("{} ${}", all_in_offer.map(|offer| offer.currency.as_str()).unwrap_or("CA"), all_in_offer.map(|offer| offer.total_due_today.as_str()).unwrap_or_else(|| booking.map(|value| value.amount_due_now.as_str()).unwrap_or("0.00"))) }
                 GridCell { label: "Refundable damage deposit", value: all_in_offer.map(|offer| format!("{} ${} · paid", offer.currency, offer.refundable_deposit)).unwrap_or_else(|| pricing::money(pricing::DAMAGE_DEPOSIT)) }
             }
-            div { class: "cf-payment-note", if all_in_offer.is_some() { "The trip price and refundable damage deposit were paid together. No balance or deposit payment is due later. After return and inspection, the deposit is refunded to the original payment method less any documented damage." } else { "The separate refundable CA$1,000 damage deposit is charged 48 hours before delivery. After return and inspection, it is refunded to the original payment method less any documented damage. The secure payment link is sent by email." } }
+            div { class: "cf-payment-note", if all_in_offer.is_some() { "This legacy booking already includes a paid refundable deposit. After return and inspection, it is refunded less documented damage." } else { "Send the separate refundable CA$1,000 damage deposit by Interac e-Transfer to protrailercare@gmail.com no later than 48 hours before delivery. It is not charged through Stripe. Delivery waits until VL Rental verifies receipt." } }
             div { class: "cf-divider" }
             div { class: "cf-host",
                 div { class: "cf-host-l",

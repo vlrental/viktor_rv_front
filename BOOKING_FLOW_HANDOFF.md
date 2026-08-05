@@ -1,6 +1,6 @@
 # Viktor RV frontend — AI handoff
 
-Last updated: 2026-07-15
+Last updated: 2026-08-04
 
 This document records the current frontend booking architecture, the problems fixed during the one-page booking work, the verified behavior, and the safe continuation plan for future AI agents.
 
@@ -14,6 +14,16 @@ This document records the current frontend booking architecture, the problems fi
 - Dates-first and RV-first are both supported without separate hidden modes. Before dates are selected, step 2 lists every active RV that fits the guest count and selecting one opens its live calendar. After a valid date range is selected, step 2 lists only RVs the server marks available for that range; if none are available, the empty state keeps the customer inside the overlay and returns them to the date calendar.
 - Completed sections collapse into summaries and can be reopened for editing.
 - The home page is the primary catalog. `/catalog` is retained only as a compatibility route and redirects to the RV section on the home page.
+
+## Interac e-Transfer damage deposit (2026-08-04)
+
+- This section supersedes the historical Stripe damage-deposit and `Pay everything now / all-in Checkout` sections below for all new and unpaid bookings. Those older sections remain only as compatibility history for already-paid Stripe deposits.
+- Stripe collects only the trip price: 30% at booking when delivery is more than 30 days away, otherwise 100%, plus the scheduled 70% balance when applicable. The refundable CA$1,000 damage deposit must never be added to a new Stripe Checkout or Invoice.
+- Every booking creates a separate `damage_hold` obligation with `collection_method='e_transfer'`, due exactly 48 hours before delivery. The customer sends it to `protrailercare@gmail.com` and includes the booking number.
+- After the trip-price webhook confirms the booking, the embedded Stripe layer closes into a second nested deposit-instruction overlay. It shows CA$1,000, the exact due moment, the recipient, copy action, delivery gate, and account link. Desktop/mobile Pencil source-of-truth nodes are `bsONy` and `H3hktc`.
+- The account booking card shows `Awaiting e-Transfer`, due time, recipient, and copy action until the authenticated admin action confirms receipt; it then shows `Paid`. Desktop/mobile Pencil nodes are `LMlZP` and `vbbDb`.
+- Admin confirms receipt through `POST /api/v1/admin/bookings/{booking_id}/damage-deposit/e-transfer/confirm`. The backend atomically creates the manual payment record, marks the obligation `succeeded`, writes booking/audit events, and queues idempotent paid-deposit emails to the customer and `vlrental.ca@gmail.com`.
+- `Delivered` stays blocked until all trip obligations and the e-Transfer deposit are paid. After return, the existing evidence and seven-day decision rules still apply; an admin records a full e-Transfer return or documented retained damage plus the returned remainder. Already-paid legacy Stripe deposits continue through their existing provider reconciliation path.
 
 ## Repositories and runtime safety
 
@@ -52,7 +62,7 @@ This document records the current frontend booking architecture, the problems fi
 - Dates are interpreted in `America/Vancouver`.
 - Delivery/setup is 2:00 PM and return is 11:00 AM; the backend remains the source of truth for timestamps and availability.
 - Start date must be strictly later than today. Today and past dates are disabled and stale saved values are cleared.
-- A stay must be at least three nights.
+- Customers may select one or more nights. For a 1–2 night stay, the UI keeps and displays the selected delivery/return dates, while the backend prices billable and per-unit items at the 3-night minimum and protects availability through the full three-night window.
 - Guests are clamped to the supported range.
 - Every newly opened unified booking overlay resets the guest count to one. A guest count saved by an earlier catalog search must not silently filter the RV choices before the customer selects guests in the current overlay.
 - Changing dates or guests causes the available RV resource to run again. Do not precompute the search outside the reactive resource closure; doing so previously left the RV list permanently stale.
@@ -82,7 +92,7 @@ This document records the current frontend booking architecture, the problems fi
 - Suggestions first use `/api/v1/address-suggestions`; the API layer has a Canadian-address fallback.
 - The customer may select a suggestion or enter an exact address and press `Calculate delivery`.
 - Delivery calculation uses `/api/v1/rentals/{slug}/delivery-estimate`; the API layer has a client fallback if the route is unavailable.
-- Policy: maximum 150 km one way from Kelowna; CA$150 through 50 km, then CA$2/km in each direction (CA$4 total for the two-way journey per additional one-way kilometre).
+- Policy: maximum 150 km one way from Kelowna; CA$150 through 40 km, then CA$2/km in each direction (CA$4 total for the two-way journey per additional one-way kilometre).
 - A successful address is stored in `vl_delivery_addresses` in browser local storage. The newest unique address appears first, history is limited to five entries, clicking an entry selects it, and its adjacent remove button deletes it.
 - The next steps remain unavailable until delivery is calculated and confirmed within range.
 
@@ -98,20 +108,23 @@ This document records the current frontend booking architecture, the problems fi
 - Before Google sign-in leaves the page, the current dates, guests, selected RV, calculated delivery, extras, and any guest-form values are saved in transient browser session storage. The OAuth callback is completed before route components mount, then the same home or RV-detail booking overlay reopens on step 5 with the authenticated session. Delivery and quote data are refreshed after restoration; passwords are never stored.
 - After authentication, the form collects name, email, phone, optional notes, and acceptance of rental terms.
 - Confirmation uses the current server quote and calls `/api/v1/bookings` with the saved access token.
+- Stripe Checkout receives the signed-in booking email as `payment_intent_data[receipt_email]` for trip-price payments. Legacy already-linked Stripe deposit objects retain their historical receipt/refund behavior, but new damage deposits never create a Stripe object.
 - After an unpaid Stripe reservation is created, `Change booking details` is available both in step 5 and inside the payment overlay. The confirmation action calls the private `DELETE /api/v1/bookings/{booking_id}/pending-payment` route with the one-time booking token. The backend permits this only for `pending_payment` + `unpaid`, expires the active Stripe Checkout Session first, then expires the old booking/payment records and releases availability. Only after that succeeds does the frontend clear `vl_pending_booking_payment`, unlock all five sections, return to dates, and request a fresh server quote. A failure leaves the current reservation locked and visible; paid or advanced bookings can never enter this edit path.
 - Until Stripe is explicitly enabled, the UI must continue to say this is a test booking and that no card is collected or charged.
-- On success, the booking response is saved and the app navigates to `/confirmed`.
+- On webhook-confirmed trip-payment success, the booking response is saved, Stripe closes into the nested e-Transfer instruction overlay, and dismissing that overlay returns to the RV confirmation state with an account link.
 
 ## Live price behavior
 
 - A local preview can be shown from nightly rate, nights, selected extras, delivery fee, and the separate refundable damage deposit.
 - Every quote automatically includes the mandatory `RV Preparation Fee` of CA$97 once per booking.
-- Every quote automatically includes mandatory `Stationary Plus Protection` at CA$50 multiplied by the number of booked calendar nights.
+- Every quote automatically includes mandatory `Stationary Plus Protection` at a fixed CA$150 for the first three booked calendar nights, plus CA$30 for each additional night (3 nights = CA$150, 4 = CA$180, 5 = CA$210).
 - Both mandatory charges are separate server quote line items and cannot be removed as extras.
 - The customer-facing trip price excludes the separate refundable CA$1,000 damage deposit. The deposit remains a compatibility quote field and a separate line item for transparency, but it must never be included in the 30% booking-payment calculation.
-- The refundable CA$1,000 damage deposit is charged separately through Stripe 48 hours before RV delivery. After return and inspection it is refunded to the original payment method, less documented damage.
+- The refundable CA$1,000 damage deposit is due by Interac e-Transfer to `protrailercare@gmail.com` exactly 48 hours before RV delivery. After return and inspection, an administrator records the full manual return or documented retained damage plus the returned remainder.
 - For trips booked more than 30 days ahead, 30% of the trip price is due at booking and the balance is due 30 days before delivery. Trips booked within 30 days require the full trip price at booking.
+- A verified `invoice.paid` event for the remaining balance queues separate idempotent customer and administrator emails. The customer email confirms that the trip price is fully paid and links to the paid Stripe Hosted Invoice Page where the invoice receipt is available.
 - The authoritative total is the response from `POST /api/v1/quotes`.
+- Quote `ends_at` is always the customer-visible return time. The backend-only `blocked_until_at` may extend through the 3-night minimum for a short stay and is used for overlap checks, public availability, and calendar exports.
 - The exact server quote is requested only when dates, RV, and an in-range calculated delivery address are ready.
 - The quote must refresh when the selected RV, dates, guests, delivery address/result, event choices, towing choice, or extras change.
 - The summary sidebar shows trip-price line items, the exact CAD trip price, the separate refundable damage deposit, and payment timing when available. It must not imply that a preview is final or that the deposit is part of the trip price.
@@ -183,13 +196,14 @@ Do not create a test booking, send email, or mutate production merely to run an 
 
 ## Compatibility surfaces that still exist
 
-- `/checkout` and its component remain for saved legacy drafts and direct compatibility. The normal home and RV-detail flows must not navigate there.
+- `/checkout` remains only as an invisible compatibility redirect for saved legacy links. It restores safe date/guest search context and immediately opens the canonical Home booking overlay; it must never render or submit a second checkout form.
 - The old full catalog implementation remains as reusable/dead code inside `catalog.rs`, while the public `/catalog` component redirects home. Do not restore it as a second customer-facing catalog without an explicit product decision.
 - Do not delete these compatibility paths casually. First search for saved links, authentication return paths, and conflict-recovery references.
 
 ## Admin availability controls
 
 - `/admin` is a server-authorized admin calendar page. The header shows `Close dates` beside `Book now` only when the saved session reports the `admin` role, but the backend always revalidates the live session role before reading or changing blocks.
+- The existing Payments panel can resend the current Stripe payment email for an unpaid balance or refundable damage-deposit obligation. The backend permits only a `link_created` obligation on a confirmed/active booking, reuses the existing Stripe object, records an immutable audit event, and rejects paid, cancelled, expired, scheduled, failed, due-without-a-current-link, or initial-payment links. The admin action only inserts an idempotent durable outbox delivery; the notification worker claims it, sends it once per attempt, and applies bounded exponential retries so the API request cannot race the worker and send a duplicate email.
 - An admin selects an RV, a closing date, a reopening date, and an optional internal reason. The backend stores a `source = 'admin'` availability block from delivery/setup at 2:00 PM through return at 11:00 AM in `America/Vancouver`.
 - Admin blocks immediately participate in the same catalog, quote, booking, and concurrency checks as imported owner blocks. An attempted block that overlaps an active customer booking returns a conflict and is not created.
 - The page lists future blocks created through the admin control and can reopen them. It cannot delete legacy Google blocks, external calendar blocks, or customer bookings.
@@ -210,6 +224,7 @@ Do not create a test booking, send email, or mutate production merely to run an 
 - The database foundation adds payment obligations, provider event reconciliation, durable financial operations, immutable admin audit events, notification delivery attempts, damage claims/evidence, worker claim fields, and private evidence storage. These tables have RLS enabled and all `anon`/`authenticated` privileges revoked; browsers never query them directly.
 - Evidence supports an ignored local/test adapter and a backend-only Supabase private-storage adapter. The preferred production credential is `SUPABASE_SECRET_KEY=sb_secret_...`; the legacy service-role JWT remains a compatibility fallback. Modern secret keys are sent only in the `apikey` header. Uploads validate file signatures and size and set `Cache-Control: 0`, so a browser/CDN cache cannot outlive the short signed-access window. Access is short-lived and admin-authorized. Live Stripe startup is blocked unless durable Supabase evidence storage is configured.
 - Stripe remains test-only. No live key, live webhook, production backend deployment, production payment routing, or `vlrental.ca` change is authorized by this handoff. The deposit model no longer depends on Extended Authorization.
+- Backend Stripe requests are pinned to API version `2026-06-24.dahlia`; all Checkout Session creations include the stable integration identifier `viktor_rv_qpmxkzrt`. Configure and test the Dashboard webhook endpoint against the same API contract before any separately approved deployment or live activation. Prefer a least-privilege restricted test key (`rk_test_...`); standard test secret keys remain supported for compatibility.
 - Stripe CLI test credentials and webhook forwarding were configured locally on 2026-07-14 for `acct_1SpY7K2MR4C4rvKM`; they remain ignored and server-only. Real test-mode Checkout creation/expiry, Invoice creation/payment, signed webhook handling, decline, 3DS, standard manual authorization, release, partial capture, and refund were exercised successfully.
 - After the refundable-deposit decision, a new real test-mode smoke created and expired the dynamic CA$1,000 deposit Checkout, completed a full CA$1,000 charge/refund, and completed a CA$750 partial refund while retaining CA$250 from a separate CA$1,000 test charge. No live object was created.
 - A complete customer embedded Checkout was exercised inside the unified overlay with an insufficient-funds test-card decline followed by a successful `4242` test payment. The verified webhook moved the local booking to `confirmed / partially_paid`; initial, balance, and CA$1,000 refundable-deposit obligations remained separate. Browser refresh/reopen reused the saved pending Session and did not create another booking.
@@ -237,9 +252,9 @@ Do not create a test booking, send email, or mutate production merely to run an 
 - Admin audit CSV text cells are neutralized against spreadsheet formulas. Managed local media rejects symlinked path components, and the local public media endpoint serves only photos attached to active RVs.
 - The final 2026-07-15 pass removed query strings and headers from HTTP spans, sanitized internal logs to stable categories, added `no-store` and browser security headers to private API responses, rate-limited and bounded the Google callback, moved the complete auth token set to session storage, and revoked Supabase `public` schema/function access from Data API roles. The final clean verification passed 71 frontend tests, 113 normal backend/importer tests, 12 disposable-DB/concurrency tests, five PostgreSQL 17 SQL suites, strict clippy and the frontend WASM check. No production mutation or deployment was performed.
 
-## Pay everything now / all-in Checkout (2026-07-16)
+## Historical compatibility: Pay everything now / all-in Checkout (2026-07-16)
 
-- A customer with an unpaid scheduled Checkout may choose `Pay everything now` inside the existing nested payment dialog. The replacement Checkout contains exactly two Stripe line items in one transaction: the immutable full trip price and the refundable CA$1,000 damage deposit. The original 30%/70%/deposit schedule remains the default and is unchanged unless the customer explicitly switches.
+- Historical behavior only: an older customer with a legacy Stripe damage-deposit obligation could choose `Pay everything now` inside the nested payment dialog. New and migrated uncollected bookings use e-Transfer and cannot enter this path. The remaining bullets document legacy reconciliation compatibility, not the current booking offer.
 - The private switch endpoint is `POST /api/v1/bookings/{booking_id}/payment-option/all-in`. It first reserves a durable `all_in` payment bundle and its planned trip/deposit allocations, creates or reuses one idempotent replacement Checkout, binds its identifiers, and only then expires the previous unpaid Session. A Stripe creation or replacement failure keeps the original schedule and Checkout recoverable.
 - The all-in choice is reversible while its Checkout remains unpaid. `POST /api/v1/bookings/{booking_id}/payment-option/scheduled` creates an idempotent embedded Checkout for the immutable original `booking.amount_due_now`, expires the unpaid all-in Session, restores the initial obligation to 30%, restores the 70% balance and separate damage-deposit obligations, and cancels the unused all-in bundle. Provider payment/complete state blocks either replacement so switching cannot race a successful charge. Repeated scheduled → all-in → scheduled switches use the concrete replaced Session ID in each idempotency key instead of reusing an expired Checkout.
 - `payment_bundles` and `payment_bundle_allocations` store the planned all-in transaction. `payments.bundle_id` links the provider payment, while `payment_allocations` records webhook-confirmed trip/deposit allocation and per-allocation refunds. These backend-only tables use RLS and have no browser/Data API privileges.

@@ -111,6 +111,7 @@ fn calendar_connection_status(status: &str) -> &'static str {
         "connected" => "Connected",
         "error" => "Error",
         "conflict" => "Conflict",
+        "disabled" => "Disabled",
         _ => "Needs setup",
     }
 }
@@ -244,6 +245,13 @@ fn payment_booking_context(
     (number, customer)
 }
 
+fn can_resend_payment_link(payment: &api::AdminPaymentObligation) -> bool {
+    !payment.financial_operation
+        && payment.hosted_url.is_some()
+        && matches!(payment.payment_type.as_str(), "balance" | "damage_hold")
+        && payment.status == "link_created"
+}
+
 fn is_future_booking(booking: &api::AdminBooking, now: DateTime<Utc>) -> bool {
     matches!(
         booking.status.as_str(),
@@ -335,7 +343,7 @@ fn action_confirmation_ready(
                 && evidence_count > 0
                 && uploads_pending == 0
         }
-        "delivered" | "returned" | "release" => true,
+        "delivered" | "returned" | "release" | "confirm_deposit" => true,
         _ => false,
     }
 }
@@ -343,6 +351,21 @@ fn action_confirmation_ready(
 fn active_damage_hold(detail: &api::AdminBookingDetail) -> Option<&api::AdminPaymentObligation> {
     detail.obligations.iter().find(|obligation| {
         obligation.payment_type == "damage_hold" && obligation.status == "succeeded"
+    })
+}
+
+fn etransfer_damage_hold(detail: &api::AdminBookingDetail) -> Option<&api::AdminPaymentObligation> {
+    detail.obligations.iter().find(|obligation| {
+        obligation.payment_type == "damage_hold" && obligation.collection_method == "e_transfer"
+    })
+}
+
+fn awaiting_etransfer_damage_hold(detail: &api::AdminBookingDetail) -> bool {
+    etransfer_damage_hold(detail).is_some_and(|obligation| {
+        !matches!(
+            obligation.status.as_str(),
+            "succeeded" | "released" | "captured"
+        )
     })
 }
 
@@ -424,10 +447,10 @@ fn manual_booking_error(
     };
     if rental_slug.is_empty()
         || start <= today
-        || (end - start).num_days() < 3
+        || (end - start).num_days() < 1
         || !(1..=10).contains(&guests)
     {
-        return Some("Choose an available RV and a future trip of at least three nights.");
+        return Some("Choose an available RV and a future trip of at least one night.");
     }
     if first_name.trim().len() < 2
         || last_name.trim().len() < 2
@@ -457,49 +480,125 @@ pub fn Admin() -> Element {
     let mut payment_config_retry = use_signal(|| 0_u32);
     let mut email_action_busy = use_signal(|| false);
     let mut loading = use_signal(|| true);
+    let mut admin_data_initialized = use_signal(|| false);
+    let mut admin_data_failed = use_signal(|| false);
     let mut notice = use_signal(String::new);
     let mut manual_result = use_signal(|| None::<api::CreatedBooking>);
     let mut selected_booking = use_signal(|| None::<api::AdminBookingDetail>);
     let mut drawer_loading = use_signal(|| false);
+    let mut admin_load_version = use_signal(|| 0_u64);
+    let mut booking_detail_version = use_signal(|| 0_u64);
+    let mut rental_detail_version = use_signal(|| 0_u64);
     let mut manual_open = use_signal(|| false);
     let mut rv_editor_open = use_signal(|| false);
     let mut rv_editor_new = use_signal(|| false);
+    let mut rv_editor_dirty = use_signal(|| false);
+    let mut rv_editor_aux_dirty = use_signal(|| false);
+    let mut rv_editor_busy = use_signal(|| false);
+    let mut calendar_editor_dirty = use_signal(|| false);
+    let calendar_editor_busy = use_signal(|| false);
     let mut selected_rental = use_signal(|| None::<api::AdminRentalDetail>);
 
     let load_admin_data = move || async move {
+        let request_version = admin_load_version().wrapping_add(1);
+        admin_load_version.set(request_version);
         loading.set(true);
         notice.set(String::new());
-        match api::admin_bookings().await {
+        let bookings_result = api::admin_bookings().await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
+        if matches!(
+            &bookings_result,
+            Err(error) if matches!(error.status, 401 | 403)
+        ) {
+            authorized.set(Some(false));
+            bookings.set(Vec::new());
+            dashboard.set(api::AdminDashboard::default());
+            payments.set(Vec::new());
+            audit.set(Vec::new());
+            blocks.set(Vec::new());
+            admin_rentals.set(Vec::new());
+            admin_data_initialized.set(true);
+            admin_data_failed.set(false);
+            loading.set(false);
+            return;
+        }
+        let dashboard_result = api::admin_dashboard().await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
+        let payments_result = api::admin_payments().await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
+        let audit_result = api::admin_audit_events().await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
+        let blocks_result = api::admin_availability_blocks().await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
+        let rentals_result = api::admin_rentals().await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
+
+        let mut failed_sections = Vec::new();
+        if dashboard_result.is_err() {
+            failed_sections.push("overview");
+        }
+        if payments_result.is_err() {
+            failed_sections.push("payments");
+        }
+        if audit_result.is_err() {
+            failed_sections.push("audit");
+        }
+        if blocks_result.is_err() {
+            failed_sections.push("calendar");
+        }
+        if rentals_result.is_err() {
+            failed_sections.push("RVs");
+        }
+        let bookings_loaded = bookings_result.is_ok();
+        match bookings_result {
             Ok(values) => bookings.set(values),
-            Err(error) if matches!(error.status, 401 | 403) => {
-                authorized.set(Some(false));
+            Err(error) => {
                 bookings.set(Vec::new());
-                dashboard.set(api::AdminDashboard::default());
-                payments.set(Vec::new());
-                audit.set(Vec::new());
-                blocks.set(Vec::new());
-                admin_rentals.set(Vec::new());
-                loading.set(false);
-                return;
+                notice.set(error.message);
             }
-            Err(error) => notice.set(error.message),
         }
-        if let Ok(value) = api::admin_dashboard().await {
-            dashboard.set(value);
+        match dashboard_result {
+            Ok(value) => dashboard.set(value),
+            Err(_) => dashboard.set(api::AdminDashboard::default()),
         }
-        if let Ok(values) = api::admin_payments().await {
-            payments.set(values);
+        match payments_result {
+            Ok(values) => payments.set(values),
+            Err(_) => payments.set(Vec::new()),
         }
-        if let Ok(values) = api::admin_audit_events().await {
-            audit.set(values);
+        match audit_result {
+            Ok(values) => audit.set(values),
+            Err(_) => audit.set(Vec::new()),
         }
-        if let Ok(values) = api::admin_availability_blocks().await {
-            blocks.set(values);
+        match blocks_result {
+            Ok(values) => blocks.set(values),
+            Err(_) => blocks.set(Vec::new()),
         }
-        if let Ok(values) = api::admin_rentals().await {
-            admin_rentals.set(values);
+        match rentals_result {
+            Ok(values) => admin_rentals.set(values),
+            Err(_) => admin_rentals.set(Vec::new()),
         }
-        loading.set(false);
+        if bookings_loaded && !failed_sections.is_empty() {
+            notice.set(format!(
+                "Some admin sections could not refresh: {}. Those sections were locked to an empty state; retry before taking action.",
+                failed_sections.join(", ")
+            ));
+        }
+        let data_failed = !bookings_loaded || !failed_sections.is_empty();
+        admin_data_initialized.set(true);
+        admin_data_failed.set(data_failed);
+        loading.set(data_failed);
     };
 
     use_effect(move || {
@@ -529,6 +628,8 @@ pub fn Admin() -> Element {
                 }
                 Ok(_) | Err(_) => {
                     loading.set(false);
+                    admin_data_initialized.set(true);
+                    admin_data_failed.set(false);
                     authorized.set(Some(false));
                 }
             }
@@ -536,6 +637,9 @@ pub fn Admin() -> Element {
     });
 
     let mut open_booking = move |booking_id: String| {
+        let request_version = booking_detail_version().wrapping_add(1);
+        booking_detail_version.set(request_version);
+        drawer_loading.set(true);
         let fallback = bookings
             .peek()
             .iter()
@@ -548,21 +652,36 @@ pub fn Admin() -> Element {
             }));
         }
         spawn(async move {
-            drawer_loading.set(true);
-            match api::admin_booking(&booking_id).await {
+            let result = api::admin_booking(&booking_id).await;
+            if *booking_detail_version.peek() != request_version {
+                return;
+            }
+            match result {
                 Ok(value) => selected_booking.set(Some(value)),
-                Err(error) => notice.set(error.message),
+                Err(error) => {
+                    notice.set(error.message);
+                    selected_booking.set(None);
+                }
             }
             drawer_loading.set(false);
         });
     };
 
     let open_rental = move |rental_id: String| {
+        let request_version = rental_detail_version().wrapping_add(1);
+        rental_detail_version.set(request_version);
         rv_editor_open.set(true);
         rv_editor_new.set(false);
+        rv_editor_dirty.set(false);
+        rv_editor_aux_dirty.set(false);
+        rv_editor_busy.set(false);
         selected_rental.set(None);
         spawn(async move {
-            match api::admin_rental(&rental_id).await {
+            let result = api::admin_rental(&rental_id).await;
+            if *rental_detail_version.peek() != request_version {
+                return;
+            }
+            match result {
                 Ok(value) => selected_rental.set(Some(value)),
                 Err(error) => {
                     notice.set(error.message);
@@ -601,15 +720,72 @@ pub fn Admin() -> Element {
         !payment_config_error.read().is_empty(),
     );
     let payments_ready = payment_availability == api::PaymentAvailability::TestReady;
+    let rv_editor_key = if rv_editor_new() {
+        "new".to_string()
+    } else {
+        selected_rental
+            .read()
+            .as_ref()
+            .map(|value| value.rental.rental_id.clone())
+            .unwrap_or_else(|| "loading".into())
+    };
+    let mut change_admin_tab = move |next: String| {
+        if next == active_tab() {
+            return;
+        }
+        if active_tab() == "rvs" && rv_editor_open() {
+            if rv_editor_busy() {
+                notice.set("Wait for the RV operation to finish before changing sections.".into());
+                return;
+            }
+            if (rv_editor_dirty() || rv_editor_aux_dirty())
+                && !web_sys::window()
+                    .and_then(|window| {
+                        window
+                            .confirm_with_message("Discard unsaved RV changes?")
+                            .ok()
+                    })
+                    .unwrap_or(false)
+            {
+                return;
+            }
+            rv_editor_open.set(false);
+            rv_editor_new.set(false);
+            rv_editor_dirty.set(false);
+            rv_editor_aux_dirty.set(false);
+            selected_rental.set(None);
+            rental_detail_version.set(rental_detail_version().wrapping_add(1));
+        }
+        if active_tab() == "calendar" {
+            if calendar_editor_busy() {
+                notice.set(
+                    "Wait for the calendar operation to finish before changing sections.".into(),
+                );
+                return;
+            }
+            if calendar_editor_dirty()
+                && !web_sys::window()
+                    .and_then(|window| {
+                        window
+                            .confirm_with_message("Discard unsaved calendar changes?")
+                            .ok()
+                    })
+                    .unwrap_or(false)
+            {
+                return;
+            }
+            calendar_editor_dirty.set(false);
+        }
+        active_tab.set(next);
+    };
 
     rsx! {
         section {
             class: "admin-page admin-center",
             tabindex: "-1",
-            onkeydown: move |event| if event.key() == Key::Escape {
-                if manual_open() { manual_open.set(false); }
-                else if rv_editor_open() { }
-                else if selected_booking.read().is_some() { selected_booking.set(None); }
+            onkeydown: move |event| if event.key() == Key::Escape
+                && (manual_open() || rv_editor_open() || selected_booking.read().is_some()) {
+                event.stop_propagation();
             },
             if authorized.read().is_none() {
                 div { class: "admin-state", h1 { "Checking admin access…" } }
@@ -672,12 +848,12 @@ pub fn Admin() -> Element {
                             ("reviews", "Reviews", "message-square-heart"),
                             ("audit", "Audit", "scroll-text"),
                         ] {
-                            button { key: "{tab}", class: match (active_tab() == tab, matches!(tab, "payments" | "calendar" | "reviews" | "audit")) { (true, true) => "active admin-tab-secondary", (false, true) => "admin-tab-secondary", (true, false) => "active", (false, false) => "" }, r#type: "button", role: "tab", aria_selected: active_tab() == tab, onclick: move |_| active_tab.set(tab.into()),
+                            button { key: "{tab}", class: match (active_tab() == tab, matches!(tab, "payments" | "calendar" | "reviews" | "audit")) { (true, true) => "active admin-tab-secondary", (false, true) => "admin-tab-secondary", (true, false) => "active", (false, false) => "" }, r#type: "button", role: "tab", aria_selected: active_tab() == tab, onclick: move |_| change_admin_tab(tab.into()),
                                 Icon { name: icon, size: 16, color: "currentColor" }
                                 "{label}"
                             }
                         }
-                        select { class: "admin-mobile-more", aria_label: "More admin sections", value: if matches!(active_tab().as_str(), "payments" | "calendar" | "reviews" | "audit") { active_tab() } else { "more".into() }, onchange: move |event| { let value = event.value(); if matches!(value.as_str(), "payments" | "calendar" | "reviews" | "audit") { active_tab.set(value); } },
+                        select { class: "admin-mobile-more", aria_label: "More admin sections", value: if matches!(active_tab().as_str(), "payments" | "calendar" | "reviews" | "audit") { active_tab() } else { "more".into() }, onchange: move |event| { let value = event.value(); if matches!(value.as_str(), "payments" | "calendar" | "reviews" | "audit") { change_admin_tab(value); } },
                             option { value: "more", disabled: true, "More" }
                             option { value: "payments", "Payments" }
                             option { value: "calendar", "Calendar" }
@@ -687,7 +863,12 @@ pub fn Admin() -> Element {
                     }
 
                     if !notice.read().is_empty() {
-                        p { class: "admin-error admin-page-notice", role: "alert", "{notice}" }
+                        div { class: "admin-error admin-page-notice", role: "alert",
+                            span { "{notice}" }
+                            if loading() {
+                                button { r#type: "button", onclick: move |_| { spawn(async move { load_admin_data().await; }); }, "Retry admin data" }
+                            }
+                        }
                     }
                     if payment_availability == api::PaymentAvailability::Blocked {
                         div { class: "admin-error admin-page-notice", role: "alert",
@@ -713,9 +894,20 @@ pub fn Admin() -> Element {
                             "bookings" => rsx! { BookingsTab { bookings: bookings.read().clone(), rentals: rentals.read().clone(), loading: loading(), on_open_booking: open_booking } },
                             "rvs" => if rv_editor_open() {
                                 rsx! { RvEditorPanel {
+                                    key: "{rv_editor_key}",
                                     detail: selected_rental.read().clone(),
                                     is_new: rv_editor_new(),
-                                    on_close: move |_| { rv_editor_open.set(false); selected_rental.set(None); },
+                                    dirty: rv_editor_dirty,
+                                    aux_dirty: rv_editor_aux_dirty,
+                                    busy: rv_editor_busy,
+                                    on_close: move |_| {
+                                        rental_detail_version.set(rental_detail_version().wrapping_add(1));
+                                        rv_editor_open.set(false);
+                                        rv_editor_new.set(false);
+                                        rv_editor_dirty.set(false);
+                                        rv_editor_aux_dirty.set(false);
+                                        selected_rental.set(None);
+                                    },
                                     on_changed: move |value: api::AdminRentalDetail| {
                                         rv_editor_new.set(false);
                                         selected_rental.set(Some(value));
@@ -723,10 +915,22 @@ pub fn Admin() -> Element {
                                     }
                                 } }
                             } else {
-                                rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: loading(), on_open_rental: open_rental, on_add_rental: move |_| { selected_rental.set(None); rv_editor_new.set(true); rv_editor_open.set(true); } } }
+                                rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: loading(), on_open_rental: open_rental, on_add_rental: move |_| {
+                                    rental_detail_version.set(rental_detail_version().wrapping_add(1));
+                                    selected_rental.set(None);
+                                    rv_editor_new.set(true);
+                                    rv_editor_dirty.set(false);
+                                    rv_editor_aux_dirty.set(false);
+                                    rv_editor_busy.set(false);
+                                    rv_editor_open.set(true);
+                                } } }
                             },
                             "payments" => rsx! { PaymentsTab { payments: payments.read().clone(), bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
-                            "calendar" => rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } },
+                            "calendar" => if !admin_data_initialized() || admin_data_failed() {
+                                rsx! { section { class: "admin-panel admin-full-panel", AdminLoading {} } }
+                            } else {
+                                rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), editor_dirty: calendar_editor_dirty, busy: calendar_editor_busy, on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } }
+                            },
                             "reviews" => rsx! { ReviewsTab { rentals: admin_rentals.read().clone() } },
                             "audit" => rsx! { AuditTab { events: audit.read().clone(), loading: loading() } },
                             _ => rsx! {},
@@ -736,10 +940,14 @@ pub fn Admin() -> Element {
 
                 if let Some(detail) = selected_booking.read().clone() {
                     BookingDrawer {
-                        key: "{detail.booking.booking_id}",
+                        key: "{detail.booking.booking_id}-{drawer_loading()}",
                         detail,
                         loading: drawer_loading(),
-                        on_close: move |_| selected_booking.set(None),
+                        on_close: move |_| {
+                            booking_detail_version.set(booking_detail_version().wrapping_add(1));
+                            drawer_loading.set(false);
+                            selected_booking.set(None);
+                        },
                         on_changed: move |value| {
                             selected_booking.set(Some(value));
                             spawn(async move { load_admin_data().await; });
@@ -973,16 +1181,48 @@ fn RvsTab(
     }
 }
 
+async fn refresh_rental_editor_after_change(
+    rental_id: &str,
+    mut message: Signal<String>,
+    on_changed: EventHandler<api::AdminRentalDetail>,
+) {
+    match api::admin_rental(rental_id).await {
+        Ok(next) => on_changed.call(next),
+        Err(error) => message.set(format!(
+            "The change was saved, but RV details could not refresh: {}",
+            error.message
+        )),
+    }
+}
+
 #[component]
 fn RvEditorPanel(
     detail: Option<api::AdminRentalDetail>,
     is_new: bool,
+    mut dirty: Signal<bool>,
+    mut aux_dirty: Signal<bool>,
+    mut busy: Signal<bool>,
     on_close: EventHandler<()>,
     on_changed: EventHandler<api::AdminRentalDetail>,
 ) -> Element {
     if !is_new && detail.is_none() {
         return rsx! {
-            section { class: "admin-panel admin-rv-editor-panel", aria_label: "Loading RV editor",
+            section {
+                class: "admin-panel admin-rv-editor-panel",
+                aria_label: "Loading RV editor",
+                tabindex: "-1",
+                autofocus: true,
+                onkeydown: move |event| if event.key() == Key::Escape {
+                    event.stop_propagation();
+                    on_close.call(());
+                },
+                header { class: "admin-drawer-head",
+                    div { p { "RV DETAILS" } h2 { "Loading RV…" } }
+                    button { r#type: "button", aria_label: "Back to RV list", onclick: move |_| on_close.call(()),
+                        Icon { name: "arrow-left", size: 18, color: "currentColor" }
+                        span { "Back to RV list" }
+                    }
+                }
                 AdminLoading {}
             }
         };
@@ -1068,8 +1308,6 @@ fn RvEditorPanel(
             .map(|v| v.rental.sort_order.to_string())
             .unwrap_or_else(|| "0".into())
     });
-    let mut dirty = use_signal(|| false);
-    let mut busy = use_signal(|| false);
     let mut message = use_signal(String::new);
     let mut photo_file = use_signal(|| None::<web_sys::File>);
     let mut photo_alt = use_signal(String::new);
@@ -1094,6 +1332,9 @@ fn RvEditorPanel(
     let mut addon_charge = use_signal(|| "per_booking".to_string());
     let mut addon_recommended = use_signal(|| false);
     let mut addon_active = use_signal(|| true);
+    let mut photo_draft_dirty = use_signal(|| false);
+    let mut feature_draft_dirty = use_signal(|| false);
+    let mut addon_draft_dirty = use_signal(|| false);
     let mut addon_sort_order = use_signal(|| {
         initial
             .as_ref()
@@ -1126,7 +1367,7 @@ fn RvEditorPanel(
         if busy() {
             return;
         }
-        let may_close = !dirty()
+        let may_close = (!dirty() && !aux_dirty())
             || web_sys::window()
                 .and_then(|w| w.confirm_with_message("Discard unsaved RV changes?").ok())
                 .unwrap_or(false);
@@ -1184,41 +1425,41 @@ fn RvEditorPanel(
                     if !message.read().is_empty() { p { class: if message().contains("saved") { "admin-success" } else { "admin-error" }, "{message}" } }
                     section { class:"admin-drawer-section", h3 { "RV details" }
                         div { class:"admin-rv-form-grid",
-                            label { "Customer-facing name" input { value:"{name}", oninput:move|e|{name.set(e.value());dirty.set(true)} } }
+                            label { "Customer-facing name" input { value:"{name}", disabled:busy(), oninput:move|e|{name.set(e.value());dirty.set(true)} } }
                             label { "Slug" input { value:"{slug}", disabled:true } }
-                            label { "Year" input { r#type:"number", min:"1950", max:"2100", value:"{year}", oninput:move|e|{year.set(e.value());dirty.set(true)} } }
-                            label { "Manufacturer" input { value:"{manufacturer}", oninput:move|e|{manufacturer.set(e.value());dirty.set(true)} } }
-                            label { "Model" input { value:"{model}", oninput:move|e|{model.set(e.value());dirty.set(true)} } }
-                            label { "RV type" select { value:"{rv_type}", onchange:move|e|{rv_type.set(e.value());dirty.set(true)}, option{value:"travel_trailer","Travel trailer"} option{value:"fifth_wheel","Fifth wheel"} option{value:"toy_hauler","Toy hauler"} } }
-                            label { class:"admin-field-wide", "Short summary" textarea { value:"{summary}", oninput:move|e|{summary.set(e.value());dirty.set(true)} } }
-                            label { class:"admin-field-wide", "Full description" textarea { rows:"5", value:"{description}", oninput:move|e|{description.set(e.value());dirty.set(true)} } }
-                            label { "Sleeps" input { r#type:"number", min:"1", max:"10", value:"{capacity}", oninput:move|e|{capacity.set(e.value());dirty.set(true)} } }
-                            label { "Length (ft)" input { r#type:"number", min:"1", step:"0.1", value:"{length}", oninput:move|e|{length.set(e.value());dirty.set(true)} } }
-                            label { "Slide-outs" input { r#type:"number", min:"0", max:"10", value:"{slide_outs}", oninput:move|e|{slide_outs.set(e.value());dirty.set(true)} } }
-                            label { "Nightly rate (CAD)" input { r#type:"number", min:"0", step:"0.01", value:"{nightly}", oninput:move|e|{nightly.set(e.value());dirty.set(true)} } }
-                            label { "Cleaning fee (CAD)" input { r#type:"number", min:"0", step:"0.01", value:"{cleaning}", oninput:move|e|{cleaning.set(e.value());dirty.set(true)} } }
-                            label { "Catalog order" input { r#type:"number", value:"{sort_order}", oninput:move|e|{sort_order.set(e.value());dirty.set(true)} } }
-                            label { class:"admin-check-field", input { r#type:"checkbox", checked:pet_friendly(), onchange:move|e|{pet_friendly.set(e.checked());dirty.set(true)} } "Pet friendly" }
+                            label { "Year" input { r#type:"number", min:"1950", max:"2100", value:"{year}", disabled:busy(), oninput:move|e|{year.set(e.value());dirty.set(true)} } }
+                            label { "Manufacturer" input { value:"{manufacturer}", disabled:busy(), oninput:move|e|{manufacturer.set(e.value());dirty.set(true)} } }
+                            label { "Model" input { value:"{model}", disabled:busy(), oninput:move|e|{model.set(e.value());dirty.set(true)} } }
+                            label { "RV type" select { value:"{rv_type}", disabled:busy(), onchange:move|e|{rv_type.set(e.value());dirty.set(true)}, option{value:"travel_trailer","Travel trailer"} option{value:"fifth_wheel","Fifth wheel"} option{value:"toy_hauler","Toy hauler"} } }
+                            label { class:"admin-field-wide", "Short summary" textarea { value:"{summary}", disabled:busy(), oninput:move|e|{summary.set(e.value());dirty.set(true)} } }
+                            label { class:"admin-field-wide", "Full description" textarea { rows:"5", value:"{description}", disabled:busy(), oninput:move|e|{description.set(e.value());dirty.set(true)} } }
+                            label { "Sleeps" input { r#type:"number", min:"1", max:"10", value:"{capacity}", disabled:busy(), oninput:move|e|{capacity.set(e.value());dirty.set(true)} } }
+                            label { "Length (ft)" input { r#type:"number", min:"1", step:"0.1", value:"{length}", disabled:busy(), oninput:move|e|{length.set(e.value());dirty.set(true)} } }
+                            label { "Slide-outs" input { r#type:"number", min:"0", max:"10", value:"{slide_outs}", disabled:busy(), oninput:move|e|{slide_outs.set(e.value());dirty.set(true)} } }
+                            label { "Nightly rate (CAD)" input { r#type:"number", min:"0", step:"0.01", value:"{nightly}", disabled:busy(), oninput:move|e|{nightly.set(e.value());dirty.set(true)} } }
+                            label { "Cleaning fee (CAD)" input { r#type:"number", min:"0", step:"0.01", value:"{cleaning}", disabled:busy(), oninput:move|e|{cleaning.set(e.value());dirty.set(true)} } }
+                            label { "Catalog order" input { r#type:"number", value:"{sort_order}", disabled:busy(), oninput:move|e|{sort_order.set(e.value());dirty.set(true)} } }
+                            label { class:"admin-check-field", input { r#type:"checkbox", checked:pet_friendly(), disabled:busy(), onchange:move|e|{pet_friendly.set(e.checked());dirty.set(true)} } "Pet friendly" }
                         }
-                        p { class:"admin-system-rules", "Fixed: RV · CAD · per night · 3-night minimum · CA$97 prep · CA$50/night protection · CA$1,000 refundable deposit · delivery from Kelowna up to 150 km." }
+                        p { class:"admin-system-rules", "Fixed: RV · CAD · 1+ night stay with 3-night minimum pricing · CA$97 prep · protection CA$150 for 3 nights, then CA$30/extra night · CA$1,000 refundable deposit · delivery from Kelowna up to 150 km." }
                     }
                     if let Some(value)=detail {
                         section { class:"admin-drawer-section", h3 { "Photos ({value.media.len()}/40)" }
-                            div { class:"admin-rv-photo-upload", label { "Image file" input { r#type:"file", disabled:value.media.len()>=40, accept:"image/jpeg,image/png,image/webp", oninput:move|event|{for file in event.files(){if file.size()>10*1024*1024{message.set(format!("{} is larger than 10 MB.",file.name()));continue}photo_file.set(file.inner().downcast_ref::<web_sys::File>().cloned());break}} } } label { "Alt text" input { value:"{photo_alt}", oninput:move|e|photo_alt.set(e.value()) } } label { class:"admin-check-field", input { r#type:"checkbox", checked:photo_cover(), onchange:move|e|photo_cover.set(e.checked()) } "Cover photo" } button { r#type:"button", disabled:busy()||value.media.len()>=40||photo_file.read().is_none()||photo_alt().trim().is_empty(), onclick:{let id=rental_id.clone();move |_|{let Some(file)=photo_file.read().clone()else{return};let alt=photo_alt();let cover=photo_cover();let id=id.clone();busy.set(true);let _=spawn(async move{match api::upload_admin_rental_media(&id,&file,&alt,cover,next_media_order).await{Ok(_)=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next);photo_file.set(None);photo_alt.set(String::new())},Err(error)=>message.set(error.message)}busy.set(false)});}}, "Upload photo" } }
-                            div { class:"admin-rv-media-grid", for media in value.media.iter(){ article { key:"{media.media_id}", class:"admin-rv-media-card", draggable:"true", title:"Drag to change photo order", ondragstart:{let media_id=media.media_id.clone();move |_|dragged_media_id.set(media_id.clone())}, ondragover:move|event|event.prevent_default(), ondrop:{let id=rental_id.clone();let target_id=media.media_id.clone();let media_rows=media_rows_for_reorder.clone();move|event|{event.prevent_default();let source_id=dragged_media_id();if source_id.is_empty()||source_id==target_id{return}let mut media_ids=media_rows.iter().map(|item|item.media_id.clone()).collect::<Vec<_>>();let Some(source_index)=media_ids.iter().position(|item|item==&source_id)else{return};let Some(target_index)=media_ids.iter().position(|item|item==&target_id)else{return};let moved=media_ids.remove(source_index);media_ids.insert(target_index,moved);let id=id.clone();dragged_media_id.set(String::new());let _=spawn(async move{match api::reorder_admin_rental_media(&id,&media_ids).await{Ok(_)=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)},Err(error)=>message.set(error.message)}});}}, span { class:"admin-rv-drag-handle", "⋮⋮ Drag" } img { src:"{media.source_url}", alt:"{media.alt_text}" } label { "Alt text" input { value:"{media.alt_text}", onchange:{let id=rental_id.clone();let media_id=media.media_id.clone();let order=media.sort_order;let cover=media.is_cover;move|e|{let alt=e.value();let id=id.clone();let media_id=media_id.clone();let _=spawn(async move{match api::update_admin_rental_media(&id,&media_id,&alt,order,cover).await{Ok(_)=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)},Err(error)=>message.set(error.message)}});}} } } div { if media.is_cover { span { "Cover" } } else { button { r#type:"button", onclick:{let id=rental_id.clone();let media_id=media.media_id.clone();let alt=media.alt_text.clone();let order=media.sort_order;move |_|{let id=id.clone();let media_id=media_id.clone();let alt=alt.clone();let _=spawn(async move{match api::update_admin_rental_media(&id,&media_id,&alt,order,true).await{Ok(_)=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)},Err(error)=>message.set(error.message)}});}}, "Make cover" } } input { aria_label:"Photo order", r#type:"number", value:"{media.sort_order}", onchange:{let id=rental_id.clone();let media_id=media.media_id.clone();let alt=media.alt_text.clone();let cover=media.is_cover;move|e|{let order=e.value().parse().unwrap_or(0);let id=id.clone();let media_id=media_id.clone();let alt=alt.clone();let _=spawn(async move{match api::update_admin_rental_media(&id,&media_id,&alt,order,cover).await{Ok(_)=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)},Err(error)=>message.set(error.message)}});}} } button { class:"danger", r#type:"button", onclick:{let id=rental_id.clone();let media_id=media.media_id.clone();move |_|{if web_sys::window().and_then(|w|w.confirm_with_message("Remove this RV photo?").ok()).unwrap_or(false){let id=id.clone();let media_id=media_id.clone();let _=spawn(async move{match api::delete_admin_rental_media(&id,&media_id).await{Ok(())=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)},Err(error)=>message.set(error.message)}});}}}, "Remove" } } } } }
+                            div { class:"admin-rv-photo-upload", label { "Image file" input { r#type:"file", disabled:busy()||value.media.len()>=40, accept:"image/jpeg,image/png,image/webp", oninput:move|event|{for file in event.files(){if file.size()>10*1024*1024{message.set(format!("{} is larger than 10 MB.",file.name()));continue}photo_file.set(file.inner().downcast_ref::<web_sys::File>().cloned());photo_draft_dirty.set(true);aux_dirty.set(true);break}} } } label { "Alt text" input { value:"{photo_alt}", disabled:busy(), oninput:move|e|{photo_alt.set(e.value());photo_draft_dirty.set(true);aux_dirty.set(true)} } } label { class:"admin-check-field", input { r#type:"checkbox", checked:photo_cover(), disabled:busy(), onchange:move|e|{photo_cover.set(e.checked());photo_draft_dirty.set(true);aux_dirty.set(true)} } "Cover photo" } button { r#type:"button", disabled:busy()||value.media.len()>=40||photo_file.read().is_none()||photo_alt().trim().is_empty(), onclick:{let id=rental_id.clone();move |_|{let Some(file)=photo_file.read().clone()else{return};let alt=photo_alt();let cover=photo_cover();let id=id.clone();busy.set(true);let _=spawn(async move{match api::upload_admin_rental_media(&id,&file,&alt,cover,next_media_order).await{Ok(_)=>{photo_file.set(None);photo_alt.set(String::new());photo_draft_dirty.set(false);aux_dirty.set(feature_draft_dirty()||addon_draft_dirty());refresh_rental_editor_after_change(&id,message,on_changed).await},Err(error)=>message.set(error.message)}busy.set(false)});}}, "Upload photo" } }
+                            div { class:"admin-rv-media-grid", for media in value.media.iter(){ article { key:"{media.media_id}", class:"admin-rv-media-card", draggable:!busy(), title:"Drag to change photo order", ondragstart:{let media_id=media.media_id.clone();move |_|if !busy(){dragged_media_id.set(media_id.clone())}}, ondragover:move|event|event.prevent_default(), ondrop:{let id=rental_id.clone();let target_id=media.media_id.clone();let media_rows=media_rows_for_reorder.clone();move|event|{event.prevent_default();if busy(){return}let source_id=dragged_media_id();if source_id.is_empty()||source_id==target_id{return}let mut media_ids=media_rows.iter().map(|item|item.media_id.clone()).collect::<Vec<_>>();let Some(source_index)=media_ids.iter().position(|item|item==&source_id)else{return};let Some(target_index)=media_ids.iter().position(|item|item==&target_id)else{return};let moved=media_ids.remove(source_index);media_ids.insert(target_index,moved);let id=id.clone();dragged_media_id.set(String::new());busy.set(true);let _=spawn(async move{match api::reorder_admin_rental_media(&id,&media_ids).await{Ok(_)=>refresh_rental_editor_after_change(&id,message,on_changed).await,Err(error)=>message.set(error.message)}busy.set(false)});}}, span { class:"admin-rv-drag-handle", "⋮⋮ Drag" } img { src:"{media.source_url}", alt:"{media.alt_text}" } label { "Alt text" input { value:"{media.alt_text}", disabled:busy(), onchange:{let id=rental_id.clone();let media_id=media.media_id.clone();let order=media.sort_order;let cover=media.is_cover;move|e|{let alt=e.value();let id=id.clone();let media_id=media_id.clone();busy.set(true);let _=spawn(async move{match api::update_admin_rental_media(&id,&media_id,&alt,order,cover).await{Ok(_)=>refresh_rental_editor_after_change(&id,message,on_changed).await,Err(error)=>message.set(error.message)}busy.set(false)});}} } } div { if media.is_cover { span { "Cover" } } else { button { r#type:"button", disabled:busy(), onclick:{let id=rental_id.clone();let media_id=media.media_id.clone();let alt=media.alt_text.clone();let order=media.sort_order;move |_|{let id=id.clone();let media_id=media_id.clone();let alt=alt.clone();busy.set(true);let _=spawn(async move{match api::update_admin_rental_media(&id,&media_id,&alt,order,true).await{Ok(_)=>refresh_rental_editor_after_change(&id,message,on_changed).await,Err(error)=>message.set(error.message)}busy.set(false)});}}, "Make cover" } } input { aria_label:"Photo order", r#type:"number", value:"{media.sort_order}", disabled:busy(), onchange:{let id=rental_id.clone();let media_id=media.media_id.clone();let alt=media.alt_text.clone();let cover=media.is_cover;move|e|{let order=e.value().parse().unwrap_or(0);let id=id.clone();let media_id=media_id.clone();let alt=alt.clone();busy.set(true);let _=spawn(async move{match api::update_admin_rental_media(&id,&media_id,&alt,order,cover).await{Ok(_)=>refresh_rental_editor_after_change(&id,message,on_changed).await,Err(error)=>message.set(error.message)}busy.set(false)});}} } button { class:"danger", r#type:"button", disabled:busy(), onclick:{let id=rental_id.clone();let media_id=media.media_id.clone();move |_|{if web_sys::window().and_then(|w|w.confirm_with_message("Remove this RV photo?").ok()).unwrap_or(false){let id=id.clone();let media_id=media_id.clone();busy.set(true);let _=spawn(async move{match api::delete_admin_rental_media(&id,&media_id).await{Ok(())=>refresh_rental_editor_after_change(&id,message,on_changed).await,Err(error)=>message.set(error.message)}busy.set(false)});}}}, "Remove" } } } } }
                         }
                         section { class:"admin-drawer-section", h3 { "Features & amenities" }
-                            div { class:"admin-subentity-list", for feature in value.features.clone(){ article { key:"{feature.feature_id}", Icon{name:"circle-check",size:16,color:"currentColor"} div { strong { "{feature.label}" } small { "{feature.group_name} · {feature.description}" } } button { r#type:"button", disabled:busy(), onclick:{let feature=feature.clone();move |_|{feature_id.set(feature.feature_id.clone());feature_group.set(feature.group_name.clone());feature_icon.set(feature.icon_name.clone());feature_label.set(feature.label.clone());feature_description.set(feature.description.clone());feature_sort_order.set(feature.sort_order)}}, "Edit" } button { class:"danger", r#type:"button", disabled:busy(), onclick:{let id=rental_id.clone();let feature_id=feature.feature_id.clone();move |_|{if !web_sys::window().and_then(|w|w.confirm_with_message("Remove this feature? This cannot be undone.").ok()).unwrap_or(false){return}let id=id.clone();let feature_id=feature_id.clone();busy.set(true);let _=spawn(async move{match api::delete_admin_rental_feature(&id,&feature_id).await{Ok(())=>if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)},Err(error)=>message.set(error.message)}busy.set(false)});}}, "Remove" } } } }
-                            div { class:"admin-subentity-form", label { "Group" select { value:"{feature_group}", onchange:move|e|feature_group.set(e.value()), option{value:"highlight","Highlight"} option{value:"amenity","Amenity"} } } label { "Icon" input { value:"{feature_icon}", oninput:move|e|feature_icon.set(e.value()) } } label { "Label" input { value:"{feature_label}", oninput:move|e|feature_label.set(e.value()) } } label { "Description" input { value:"{feature_description}", oninput:move|e|feature_description.set(e.value()) } } button { r#type:"button", disabled:busy()||feature_label().trim().is_empty(), onclick:{let id=rental_id.clone();move |_|{let edit=feature_id();let order=if edit.is_empty(){next_feature_order}else{feature_sort_order()};let payload=api::AdminFeaturePayload{group_name:feature_group(),icon_name:feature_icon(),label:feature_label(),description:feature_description(),sort_order:order};let id=id.clone();busy.set(true);let _=spawn(async move{let result=if edit.is_empty(){api::create_admin_rental_feature(&id,&payload).await}else{api::update_admin_rental_feature(&id,&edit,&payload).await};match result{Ok(_)=>{feature_id.set(String::new());feature_label.set(String::new());feature_description.set(String::new());feature_sort_order.set(next_feature_order+1);if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)}},Err(error)=>message.set(error.message)}busy.set(false)});}}, if feature_id().is_empty(){"Add feature"}else{"Save feature"} } }
+                            div { class:"admin-subentity-list", for feature in value.features.clone(){ article { key:"{feature.feature_id}", Icon{name:"circle-check",size:16,color:"currentColor"} div { strong { "{feature.label}" } small { "{feature.group_name} · {feature.description}" } } button { r#type:"button", disabled:busy(), onclick:{let feature=feature.clone();move |_|{if feature_draft_dirty()&&!web_sys::window().and_then(|w|w.confirm_with_message("Discard unsaved feature changes?").ok()).unwrap_or(false){return}feature_id.set(feature.feature_id.clone());feature_group.set(feature.group_name.clone());feature_icon.set(feature.icon_name.clone());feature_label.set(feature.label.clone());feature_description.set(feature.description.clone());feature_sort_order.set(feature.sort_order);feature_draft_dirty.set(false);aux_dirty.set(photo_draft_dirty()||addon_draft_dirty())}}, "Edit" } button { class:"danger", r#type:"button", disabled:busy(), onclick:{let id=rental_id.clone();let target_feature_id=feature.feature_id.clone();move |_|{if !web_sys::window().and_then(|w|w.confirm_with_message("Remove this feature? This cannot be undone.").ok()).unwrap_or(false){return}let id=id.clone();let target_feature_id=target_feature_id.clone();busy.set(true);let _=spawn(async move{match api::delete_admin_rental_feature(&id,&target_feature_id).await{Ok(())=>{if feature_id()==target_feature_id{feature_id.set(String::new());feature_label.set(String::new());feature_description.set(String::new());feature_draft_dirty.set(false);aux_dirty.set(photo_draft_dirty()||addon_draft_dirty())}refresh_rental_editor_after_change(&id,message,on_changed).await},Err(error)=>message.set(error.message)}busy.set(false)});}}, "Remove" } } } }
+                            div { class:"admin-subentity-form", label { "Group" select { value:"{feature_group}", disabled:busy(), onchange:move|e|{feature_group.set(e.value());feature_draft_dirty.set(true);aux_dirty.set(true)}, option{value:"highlight","Highlight"} option{value:"amenity","Amenity"} } } label { "Icon" input { value:"{feature_icon}", disabled:busy(), oninput:move|e|{feature_icon.set(e.value());feature_draft_dirty.set(true);aux_dirty.set(true)} } } label { "Label" input { value:"{feature_label}", disabled:busy(), oninput:move|e|{feature_label.set(e.value());feature_draft_dirty.set(true);aux_dirty.set(true)} } } label { "Description" input { value:"{feature_description}", disabled:busy(), oninput:move|e|{feature_description.set(e.value());feature_draft_dirty.set(true);aux_dirty.set(true)} } } button { r#type:"button", disabled:busy()||feature_label().trim().is_empty(), onclick:{let id=rental_id.clone();move |_|{let edit=feature_id();let order=if edit.is_empty(){next_feature_order}else{feature_sort_order()};let payload=api::AdminFeaturePayload{group_name:feature_group(),icon_name:feature_icon(),label:feature_label(),description:feature_description(),sort_order:order};let id=id.clone();busy.set(true);let _=spawn(async move{let result=if edit.is_empty(){api::create_admin_rental_feature(&id,&payload).await}else{api::update_admin_rental_feature(&id,&edit,&payload).await};match result{Ok(_)=>{feature_id.set(String::new());feature_label.set(String::new());feature_description.set(String::new());feature_sort_order.set(next_feature_order+1);feature_draft_dirty.set(false);aux_dirty.set(photo_draft_dirty()||addon_draft_dirty());refresh_rental_editor_after_change(&id,message,on_changed).await},Err(error)=>message.set(error.message)}busy.set(false)});}}, if feature_id().is_empty(){"Add feature"}else{"Save feature"} } }
                         }
                         section { class:"admin-drawer-section", h3 { "RV-specific add-ons" }
-                            div { class:"admin-subentity-list", for addon in value.addons.clone(){ article { key:"{addon.addon_id}", Icon{name:"sparkles",size:16,color:"currentColor"} div { strong { "{addon.label}" } small { "CA${addon.price} · " if addon.charge_type=="per_unit" { "per night" } else { "per booking" } " · " if addon.is_active { "Active" } else { "Disabled" } } } button { r#type:"button", disabled:busy(), onclick:{let addon=addon.clone();move |_|{addon_id.set(addon.addon_id.clone());addon_label.set(addon.label.clone());addon_description.set(addon.description.clone());addon_icon.set(addon.icon_name.clone());addon_price.set(addon.price.clone());addon_charge.set(addon.charge_type.clone());addon_recommended.set(addon.is_recommended);addon_active.set(addon.is_active);addon_sort_order.set(addon.sort_order)}}, "Edit" } } } }
-                            div { class:"admin-subentity-form", label { "Name" input { value:"{addon_label}", oninput:move|e|addon_label.set(e.value()) } } label { "Description" input { value:"{addon_description}", oninput:move|e|addon_description.set(e.value()) } } label { "Icon" input { value:"{addon_icon}", oninput:move|e|addon_icon.set(e.value()) } } label { "Price (CAD)" input { r#type:"number", min:"0.01", step:"0.01", value:"{addon_price}", oninput:move|e|addon_price.set(e.value()) } } label { "Charge" select { value:"{addon_charge}", onchange:move|e|addon_charge.set(e.value()), option{value:"per_booking","Per booking"} option{value:"per_unit","Per night"} } } label { class:"admin-check-field", input { r#type:"checkbox", checked:addon_recommended(), onchange:move|e|addon_recommended.set(e.checked()) } "Recommended" } label { class:"admin-check-field", input { r#type:"checkbox", checked:addon_active(), onchange:move|e|addon_active.set(e.checked()) } "Active" } button { r#type:"button", disabled:busy()||addon_label().trim().is_empty(), onclick:{let id=rental_id.clone();move |_|{let edit=addon_id();let order=if edit.is_empty(){next_addon_order}else{addon_sort_order()};let payload=api::AdminAddonPayload{label:addon_label(),description:addon_description(),icon_name:addon_icon(),price:addon_price(),charge_type:addon_charge(),is_recommended:addon_recommended(),is_active:addon_active(),sort_order:order};let id=id.clone();busy.set(true);let _=spawn(async move{let result=if edit.is_empty(){api::create_admin_rental_addon(&id,&payload).await}else{api::update_admin_rental_addon(&id,&edit,&payload).await};match result{Ok(_)=>{addon_id.set(String::new());addon_label.set(String::new());addon_description.set(String::new());addon_icon.set("sparkles".into());addon_price.set("50".into());addon_charge.set("per_booking".into());addon_recommended.set(false);addon_active.set(true);addon_sort_order.set(next_addon_order+1);if let Ok(next)=api::admin_rental(&id).await{on_changed.call(next)}},Err(error)=>message.set(error.message)}busy.set(false)});}}, if addon_id().is_empty(){"Add add-on"}else{"Save add-on"} } }
+                            div { class:"admin-subentity-list", for addon in value.addons.clone(){ article { key:"{addon.addon_id}", Icon{name:"sparkles",size:16,color:"currentColor"} div { strong { "{addon.label}" } small { "CA${addon.price} · " if addon.charge_type=="per_unit" { "per night" } else { "per booking" } " · " if addon.is_active { "Active" } else { "Disabled" } } } button { r#type:"button", disabled:busy(), onclick:{let addon=addon.clone();move |_|{if addon_draft_dirty()&&!web_sys::window().and_then(|w|w.confirm_with_message("Discard unsaved add-on changes?").ok()).unwrap_or(false){return}addon_id.set(addon.addon_id.clone());addon_label.set(addon.label.clone());addon_description.set(addon.description.clone());addon_icon.set(addon.icon_name.clone());addon_price.set(addon.price.clone());addon_charge.set(addon.charge_type.clone());addon_recommended.set(addon.is_recommended);addon_active.set(addon.is_active);addon_sort_order.set(addon.sort_order);addon_draft_dirty.set(false);aux_dirty.set(photo_draft_dirty()||feature_draft_dirty())}}, "Edit" } } } }
+                            div { class:"admin-subentity-form", label { "Name" input { value:"{addon_label}", disabled:busy(), oninput:move|e|{addon_label.set(e.value());addon_draft_dirty.set(true);aux_dirty.set(true)} } } label { "Description" input { value:"{addon_description}", disabled:busy(), oninput:move|e|{addon_description.set(e.value());addon_draft_dirty.set(true);aux_dirty.set(true)} } } label { "Icon" input { value:"{addon_icon}", disabled:busy(), oninput:move|e|{addon_icon.set(e.value());addon_draft_dirty.set(true);aux_dirty.set(true)} } } label { "Price (CAD)" input { r#type:"number", min:"0.01", step:"0.01", value:"{addon_price}", disabled:busy(), oninput:move|e|{addon_price.set(e.value());addon_draft_dirty.set(true);aux_dirty.set(true)} } } label { "Charge" select { value:"{addon_charge}", disabled:busy(), onchange:move|e|{addon_charge.set(e.value());addon_draft_dirty.set(true);aux_dirty.set(true)}, option{value:"per_booking","Per booking"} option{value:"per_unit","Per night"} } } label { class:"admin-check-field", input { r#type:"checkbox", checked:addon_recommended(), disabled:busy(), onchange:move|e|{addon_recommended.set(e.checked());addon_draft_dirty.set(true);aux_dirty.set(true)} } "Recommended" } label { class:"admin-check-field", input { r#type:"checkbox", checked:addon_active(), disabled:busy(), onchange:move|e|{addon_active.set(e.checked());addon_draft_dirty.set(true);aux_dirty.set(true)} } "Active" } button { r#type:"button", disabled:busy()||addon_label().trim().is_empty(), onclick:{let id=rental_id.clone();move |_|{let edit=addon_id();let order=if edit.is_empty(){next_addon_order}else{addon_sort_order()};let payload=api::AdminAddonPayload{label:addon_label(),description:addon_description(),icon_name:addon_icon(),price:addon_price(),charge_type:addon_charge(),is_recommended:addon_recommended(),is_active:addon_active(),sort_order:order};let id=id.clone();busy.set(true);let _=spawn(async move{let result=if edit.is_empty(){api::create_admin_rental_addon(&id,&payload).await}else{api::update_admin_rental_addon(&id,&edit,&payload).await};match result{Ok(_)=>{addon_id.set(String::new());addon_label.set(String::new());addon_description.set(String::new());addon_icon.set("sparkles".into());addon_price.set("50".into());addon_charge.set("per_booking".into());addon_recommended.set(false);addon_active.set(true);addon_sort_order.set(next_addon_order+1);addon_draft_dirty.set(false);aux_dirty.set(photo_draft_dirty()||feature_draft_dirty());refresh_rental_editor_after_change(&id,message,on_changed).await},Err(error)=>message.set(error.message)}busy.set(false)});}}, if addon_id().is_empty(){"Add add-on"}else{"Save add-on"} } }
                         }
                     }
                 }
-                footer { class:"admin-drawer-actions", button { r#type:"button", disabled:busy(), onclick:move |_|save(), if busy(){"Saving…"}else{"Save changes"} }
-                    if !is_new { button { r#type:"button", class:if published{"danger"}else{""}, disabled:busy(), onclick:{let id=rental_id.clone();move |_|{let action=if published{"archive"}else{"publish"};let prompt=if published{"Archive this RV? Existing bookings remain unchanged."}else{"Publish this RV? It will immediately appear in booking."};if !web_sys::window().and_then(|w|w.confirm_with_message(prompt).ok()).unwrap_or(false){return}let id=id.clone();busy.set(true);let _=spawn(async move{match api::admin_rental_publication_action(&id,action).await{Ok(value)=>on_changed.call(value),Err(error)=>message.set(error.message)}busy.set(false)});}}, if published{"Archive RV"}else{"Publish RV"} } }
+                footer { class:"admin-drawer-actions", button { r#type:"button", disabled:busy()||!dirty(), onclick:move |_|save(), if busy(){"Saving…"}else{"Save changes"} }
+                    if !is_new { button { r#type:"button", class:if published{"danger"}else{""}, disabled:busy()||dirty()||aux_dirty(), title:if dirty()||aux_dirty(){"Save or discard draft changes first"}else{""}, onclick:{let id=rental_id.clone();move |_|{let action=if published{"archive"}else{"publish"};let prompt=if published{"Archive this RV? Existing bookings remain unchanged."}else{"Publish this RV? It will immediately appear in booking."};if !web_sys::window().and_then(|w|w.confirm_with_message(prompt).ok()).unwrap_or(false){return}let id=id.clone();busy.set(true);let _=spawn(async move{match api::admin_rental_publication_action(&id,action).await{Ok(value)=>on_changed.call(value),Err(error)=>message.set(error.message)}busy.set(false)});}}, if published{"Archive RV"}else{"Publish RV"} } }
                 }
         }
     }
@@ -1297,16 +1538,16 @@ fn PaymentsTab(
                 for payment in filtered.iter() {
                     article { key: "{payment.payment_obligation_id}", class: "admin-payment-row",
                         button { class: "admin-payment-main", r#type: "button", onclick: { let id = payment.booking_id.clone(); move |_| on_open_booking.call(id.clone()) },
-                            span { class: "admin-payment-type", if payment.payment_type == "damage_hold" { Icon { name: "shield", size: 17, color: "currentColor" } } else { Icon { name: "credit-card", size: 17, color: "currentColor" } } "{payment_label(&payment.payment_type)}" }
+                            span { class: "admin-payment-type", if payment.payment_type == "damage_hold" { Icon { name: "shield", size: 17, color: "currentColor" } } else { Icon { name: "credit-card", size: 17, color: "currentColor" } } "{payment_label(&payment.payment_type)}" if payment.collection_method == "e_transfer" { small { "e-Transfer" } } }
                             span { strong { "{payment_booking_context(payment, &bookings).1}" } small { "{payment_booking_context(payment, &bookings).0}" } }
                             span { strong { "{display_money(&payment.currency, &payment.amount)}" } if let Some(due) = payment.due_at.as_ref() { small { "Due {display_moment(due)}" } } }
                             span { class: "admin-status admin-pay-{payment.status}", "{payment_label(&payment.status)}" }
                         }
                         div { class: "admin-payment-actions",
-                            if !payment.financial_operation && payment.hosted_url.is_some() {
-                                button { r#type: "button", disabled: busy_id() == payment.payment_obligation_id, onclick: { let payment = payment.clone(); move |_| { message.set(String::new()); resend_confirmation.set(Some(payment.clone())); } }, "Resend link" }
+                            if can_resend_payment_link(payment) {
+                                button { r#type: "button", disabled: busy_id() == payment.payment_obligation_id, onclick: { let payment = payment.clone(); move |_| { message.set(String::new()); resend_confirmation.set(Some(payment.clone())); } }, "Resend payment email" }
                             }
-                            if payment.payment_id.is_some() && (!payment.financial_operation || payment.payment_type != "refund") {
+                            if payment.collection_method != "e_transfer" && payment.payment_id.is_some() && (!payment.financial_operation || payment.payment_type != "refund") {
                                 button { r#type: "button", disabled: !refreshing_id().is_empty(), onclick: { let payment_id = payment.payment_id.clone().unwrap_or_default(); move |_| { let payment_id = payment_id.clone(); async move { refreshing_id.set(payment_id.clone()); message.set(String::new()); match api::refresh_admin_payment_status(&payment_id).await { Ok(_) => { message.set("Stripe status refreshed. Webhook and authenticated reconciliation remain the payment source of truth.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } refreshing_id.set(String::new()); } } }, if refreshing_id() == payment.payment_id.clone().unwrap_or_default() { "Refreshing…" } else { "Refresh status" } }
                             }
                             button { r#type: "button", onclick: { let id = payment.booking_id.clone(); move |_| on_open_booking.call(id.clone()) }, "Details" }
@@ -1320,9 +1561,9 @@ fn PaymentsTab(
             div { class: "admin-confirm-layer", onclick: move |_| if busy_id().is_empty() { resend_confirmation.set(None); },
                 section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", aria_label: "Confirm payment-link resend", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if busy_id().is_empty() { resend_confirmation.set(None); } },
                     header { h3 { "Resend payment link?" } button { r#type: "button", disabled: !busy_id().is_empty(), aria_label: "Close resend confirmation", onclick: move |_| resend_confirmation.set(None), Icon { name: "x", size: 19, color: "currentColor" } } }
-                    p { "The existing {payment_label(&payment.payment_type)} link for {display_money(&payment.currency, &payment.amount)} will be emailed again. No new obligation or Stripe object is created." }
+                    p { "The existing secure Stripe link for the {payment_label(&payment.payment_type)} of {display_money(&payment.currency, &payment.amount)} will be queued for email delivery. No new charge, obligation or Stripe object is created." }
                     if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
-                    footer { button { r#type: "button", disabled: !busy_id().is_empty(), onclick: move |_| resend_confirmation.set(None), "Go back" } button { class: "primary", r#type: "button", disabled: !busy_id().is_empty(), onclick: { let id = payment.payment_obligation_id.clone(); move |_| { let id = id.clone(); async move { busy_id.set(id.clone()); message.set(String::new()); match api::resend_admin_payment_link(&id).await { Ok(()) => { message.set("The existing payment link was sent again.".into()); resend_confirmation.set(None); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy_id.set(String::new()); } } }, if busy_id().is_empty() { "Confirm resend" } else { "Sending…" } } }
+                    footer { button { r#type: "button", disabled: !busy_id().is_empty(), onclick: move |_| resend_confirmation.set(None), "Go back" } button { class: "primary", r#type: "button", disabled: !busy_id().is_empty(), onclick: { let id = payment.payment_obligation_id.clone(); move |_| { let id = id.clone(); async move { busy_id.set(id.clone()); message.set(String::new()); match api::resend_admin_payment_link(&id).await { Ok(()) => { message.set("The payment email was queued for delivery.".into()); resend_confirmation.set(None); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy_id.set(String::new()); } } }, if busy_id().is_empty() { "Queue resend" } else { "Queueing…" } } }
                 }
             }
         }
@@ -1332,6 +1573,8 @@ fn PaymentsTab(
 #[component]
 fn CalendarSyncDrawer(
     rentals: Vec<api::Rental>,
+    mut section_dirty: Signal<bool>,
+    mut section_busy: Signal<bool>,
     on_close: EventHandler<()>,
     on_calendar_changed: EventHandler<()>,
 ) -> Element {
@@ -1339,22 +1582,50 @@ fn CalendarSyncDrawer(
     let mut loading = use_signal(|| true);
     let mut message = use_signal(String::new);
     let mut reload_nonce = use_signal(|| 0_u32);
+    let pending_actions = use_signal(|| 0_usize);
+    let dirty_rows = use_signal(|| 0_usize);
+    use_effect(move || section_busy.set(pending_actions() > 0));
+    use_effect(move || section_dirty.set(dirty_rows() > 0));
 
     use_effect(move || {
-        let _reload = reload_nonce();
+        let reload = reload_nonce();
         loading.set(true);
         message.set(String::new());
         spawn(async move {
-            match api::admin_calendar_connections().await {
+            let result = api::admin_calendar_connections().await;
+            if *reload_nonce.peek() != reload {
+                return;
+            }
+            match result {
                 Ok(values) => connections.set(values),
-                Err(error) => message.set(error.message),
+                Err(error) => {
+                    connections.set(Vec::new());
+                    message.set(error.message);
+                }
             }
             loading.set(false);
         });
     });
+    let mut request_close = move || {
+        if pending_actions() > 0 {
+            return;
+        }
+        let may_close = dirty_rows() == 0
+            || web_sys::window()
+                .and_then(|window| {
+                    window
+                        .confirm_with_message("Discard unsaved calendar URL changes?")
+                        .ok()
+                })
+                .unwrap_or(false);
+        if may_close {
+            section_dirty.set(false);
+            on_close.call(());
+        }
+    };
 
     rsx! {
-        div { class: "admin-overlay admin-drawer-backdrop", onclick: move |_| on_close.call(()),
+        div { class: "admin-overlay admin-drawer-backdrop", onclick: move |_| request_close(),
             aside {
                 class: "admin-booking-drawer admin-calendar-sync-drawer",
                 role: "dialog",
@@ -1363,10 +1634,10 @@ fn CalendarSyncDrawer(
                 tabindex: "-1",
                 autofocus: true,
                 onclick: move |event| event.stop_propagation(),
-                onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); on_close.call(()); },
+                onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); request_close(); },
                 header { class: "admin-drawer-head",
                     div { h2 { "Calendar sync" } p { "RVezy and Outdoorsy · secure incoming feeds refresh every 15 minutes" } }
-                    button { r#type: "button", aria_label: "Close calendar sync", onclick: move |_| on_close.call(()), Icon { name: "x", size: 19, color: "currentColor" } }
+                    button { r#type: "button", disabled: pending_actions() > 0, aria_label: "Close calendar sync", onclick: move |_| request_close(), Icon { name: "x", size: 19, color: "currentColor" } }
                 }
                 div { class: "admin-drawer-scroll admin-calendar-sync-scroll",
                     section { class: "admin-calendar-sync-note",
@@ -1375,6 +1646,12 @@ fn CalendarSyncDrawer(
                     }
                     if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
                     if loading() { AdminLoading {} }
+                    else if !message.read().is_empty() {
+                        div { class: "admin-empty",
+                            p { "Calendar connections are unavailable, so sync actions are locked." }
+                            button { r#type: "button", onclick: move |_| reload_nonce.set(reload_nonce().wrapping_add(1)), "Retry" }
+                        }
+                    }
                     else {
                         for rental in rentals.iter() {
                             section { key: "sync-{rental.slug}", class: "admin-calendar-sync-rental",
@@ -1386,6 +1663,8 @@ fn CalendarSyncDrawer(
                                         rental_name: rental.name.clone(),
                                         provider: provider.to_string(),
                                         connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == provider).cloned(),
+                                        pending_actions,
+                                        dirty_rows,
                                         on_changed: move |_| {
                                             reload_nonce.set(reload_nonce().wrapping_add(1));
                                             on_calendar_changed.call(());
@@ -1407,6 +1686,8 @@ fn CalendarSyncRow(
     rental_name: String,
     provider: String,
     connection: Option<api::AdminCalendarConnection>,
+    mut pending_actions: Signal<usize>,
+    mut dirty_rows: Signal<usize>,
     on_changed: EventHandler<()>,
 ) -> Element {
     let mut calendar_url = use_signal(String::new);
@@ -1414,6 +1695,7 @@ fn CalendarSyncRow(
     let mut result_message = use_signal(String::new);
     let mut result_error = use_signal(|| false);
     let mut disconnect_open = use_signal(|| false);
+    let mut row_dirty = use_signal(|| false);
     let connection_id = connection
         .as_ref()
         .map(|value| value.external_calendar_id.clone())
@@ -1447,7 +1729,15 @@ fn CalendarSyncRow(
                     spellcheck: "false",
                     placeholder: if connection.as_ref().is_some_and(|value| value.has_external_url) { "Saved securely · paste a URL to replace it" } else { "Paste the provider iCal URL" },
                     value: "{calendar_url}",
-                    oninput: move |event| { calendar_url.set(event.value()); result_message.set(String::new()); }
+                    disabled: !busy_action().is_empty(),
+                    oninput: move |event| {
+                        calendar_url.set(event.value());
+                        result_message.set(String::new());
+                        if !row_dirty() {
+                            row_dirty.set(true);
+                            dirty_rows.set(dirty_rows().saturating_add(1));
+                        }
+                    }
                 }
             }
             div { class: "admin-calendar-sync-actions",
@@ -1455,18 +1745,29 @@ fn CalendarSyncRow(
                     r#type: "button",
                     disabled: !busy_action().is_empty() || calendar_url().trim().is_empty(),
                     onclick: {
+                        let slug = rental_slug.clone();
                         let provider = provider.clone();
                         move |_| {
+                            let slug = slug.clone();
                             let provider = provider.clone();
                             let url = calendar_url();
                             async move {
+                                pending_actions.set(pending_actions().saturating_add(1));
                                 busy_action.set("test".into());
                                 result_message.set(String::new());
-                                match api::test_admin_calendar(&provider, url.trim()).await {
-                                    Ok(result) => { result_error.set(false); result_message.set(format!("Calendar is valid · {} current periods found", result.imported_periods)); }
+                                match api::test_admin_calendar(&slug, &provider, url.trim()).await {
+                                    Ok(result) => {
+                                        result_error.set(result.conservative_fallbacks > 0);
+                                        result_message.set(if result.conservative_fallbacks > 0 {
+                                            format!("Calendar is valid, but {} event(s) could not be matched to one RV. VL will block those dates for every RV until the listing name is corrected.", result.conservative_fallbacks)
+                                        } else {
+                                            format!("Calendar is valid · {} current periods found", result.imported_periods)
+                                        });
+                                    }
                                     Err(error) => { result_error.set(true); result_message.set(error.message); }
                                 }
                                 busy_action.set(String::new());
+                                pending_actions.set(pending_actions().saturating_sub(1));
                             }
                         }
                     },
@@ -1486,12 +1787,13 @@ fn CalendarSyncRow(
                             let id = id.clone();
                             let url = calendar_url();
                             async move {
+                                pending_actions.set(pending_actions().saturating_add(1));
                                 busy_action.set("save".into());
                                 result_message.set(String::new());
                                 let saved = if id.is_empty() {
                                     api::save_admin_calendar(&slug, &provider, url.trim()).await.map(|connection| connection.status)
                                 } else {
-                                    match api::update_admin_calendar(&id, Some(url.trim()), None, None).await {
+                                    match api::update_admin_calendar(&id, Some(url.trim()), Some(true), Some(true)).await {
                                         Ok(_) => api::sync_admin_calendar(&id).await.map(|result| result.status),
                                         Err(error) => Err(error),
                                     }
@@ -1502,11 +1804,16 @@ fn CalendarSyncRow(
                                         result_error.set(needs_attention);
                                         result_message.set(if needs_attention { "Saved, but the first VL sync needs attention.".into() } else { "Saved and synced with VL Rental.".into() });
                                         calendar_url.set(String::new());
+                                        if row_dirty() {
+                                            row_dirty.set(false);
+                                            dirty_rows.set(dirty_rows().saturating_sub(1));
+                                        }
                                         on_changed.call(());
                                     }
-                                    Err(error) => { result_error.set(true); result_message.set(error.message); on_changed.call(()); }
+                                    Err(error) => { result_error.set(true); result_message.set(error.message); }
                                 }
                                 busy_action.set(String::new());
+                                pending_actions.set(pending_actions().saturating_sub(1));
                             }
                         }
                     },
@@ -1521,13 +1828,25 @@ fn CalendarSyncRow(
                             move |_| {
                                 let id = id.clone();
                                 async move {
+                                    pending_actions.set(pending_actions().saturating_add(1));
                                     busy_action.set("sync".into());
                                     result_message.set(String::new());
                                     match api::sync_admin_calendar(&id).await {
-                                        Ok(result) => { result_error.set(result.conflict_count > 0); result_message.set(format!("VL refreshed · {} periods · {} conflicts", result.imported_blocks, result.conflict_count)); on_changed.call(()); }
+                                        Ok(result) => {
+                                            let needs_attention = result.conflict_count > 0
+                                                || matches!(result.status.as_str(), "error" | "suspicious_empty");
+                                            result_error.set(needs_attention);
+                                            result_message.set(if needs_attention {
+                                                format!("VL refreshed, but needs attention · {} periods · {} conflicts", result.imported_blocks, result.conflict_count)
+                                            } else {
+                                                format!("VL refreshed · {} periods · {} conflicts", result.imported_blocks, result.conflict_count)
+                                            });
+                                            on_changed.call(());
+                                        }
                                         Err(error) => { result_error.set(true); result_message.set(error.message); }
                                     }
                                     busy_action.set(String::new());
+                                    pending_actions.set(pending_actions().saturating_sub(1));
                                 }
                             }
                         },
@@ -1564,7 +1883,7 @@ fn CalendarSyncRow(
                 }
             }
             if !connection_id.is_empty() {
-                button { class: "admin-calendar-disconnect", r#type: "button", disabled: !busy_action().is_empty(), onclick: move |_| disconnect_open.set(true), "Disconnect calendar" }
+                button { class: "admin-calendar-disconnect", r#type: "button", disabled: !busy_action().is_empty(), onclick: move |_| { result_message.set(String::new()); result_error.set(false); disconnect_open.set(true); }, "Disconnect calendar" }
             }
         }
         if disconnect_open() {
@@ -1572,9 +1891,10 @@ fn CalendarSyncRow(
                 section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", aria_label: "Disconnect calendar", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if busy_action().is_empty() { disconnect_open.set(false); } },
                     header { h3 { "Disconnect {provider_label}?" } button { r#type: "button", disabled: !busy_action().is_empty(), aria_label: "Close disconnect confirmation", onclick: move |_| disconnect_open.set(false), Icon { name: "x", size: 19, color: "currentColor" } } }
                     p { "Imported {provider_label} periods for {rental_name} will be removed and its VL export URL will be revoked. This does not change bookings on {provider_label}." }
+                    if !result_message.read().is_empty() { p { class: "admin-error", role: "alert", "{result_message}" } }
                     footer {
                         button { r#type: "button", disabled: !busy_action().is_empty(), onclick: move |_| disconnect_open.set(false), "Go back" }
-                        button { class: "danger", r#type: "button", disabled: !busy_action().is_empty(), onclick: { let id = connection_id.clone(); move |_| { let id = id.clone(); async move { busy_action.set("disconnect".into()); match api::disconnect_admin_calendar(&id).await { Ok(()) => { disconnect_open.set(false); on_changed.call(()); }, Err(error) => { result_error.set(true); result_message.set(error.message); } } busy_action.set(String::new()); } } }, if busy_action() == "disconnect" { "Disconnecting…" } else { "Disconnect" } }
+                        button { class: "danger", r#type: "button", disabled: !busy_action().is_empty(), onclick: { let id = connection_id.clone(); move |_| { let id = id.clone(); async move { pending_actions.set(pending_actions().saturating_add(1)); busy_action.set("disconnect".into()); match api::disconnect_admin_calendar(&id).await { Ok(()) => { calendar_url.set(String::new()); if row_dirty() { row_dirty.set(false); dirty_rows.set(dirty_rows().saturating_sub(1)); } disconnect_open.set(false); on_changed.call(()); }, Err(error) => { result_error.set(true); result_message.set(error.message); } } busy_action.set(String::new()); pending_actions.set(pending_actions().saturating_sub(1)); } } }, if busy_action() == "disconnect" { "Disconnecting…" } else { "Disconnect" } }
                     }
                 }
             }
@@ -1587,6 +1907,8 @@ fn CalendarTab(
     bookings: Vec<api::AdminBooking>,
     blocks: Vec<api::AdminAvailabilityBlock>,
     rentals: Vec<api::Rental>,
+    mut editor_dirty: Signal<bool>,
+    mut busy: Signal<bool>,
     on_open_booking: EventHandler<String>,
     on_refresh: EventHandler<()>,
 ) -> Element {
@@ -1605,8 +1927,24 @@ fn CalendarTab(
     let mut starts_on = use_signal(|| (today + Duration::days(1)).to_string());
     let mut ends_on = use_signal(|| (today + Duration::days(4)).to_string());
     let mut reason = use_signal(|| "Owner use".to_string());
-    let mut busy = use_signal(|| false);
     let mut message = use_signal(String::new);
+    let can_leave_editor = move || {
+        !busy()
+            && (!editor_dirty()
+                || web_sys::window()
+                    .and_then(|window| {
+                        window
+                            .confirm_with_message("Discard unsaved calendar changes?")
+                            .ok()
+                    })
+                    .unwrap_or(false))
+    };
+    let mut close_editor = move || {
+        if can_leave_editor() {
+            panel_open.set(false);
+            editor_dirty.set(false);
+        }
+    };
     let days = (0..14)
         .map(|offset| *window_start.read() + Duration::days(offset))
         .collect::<Vec<_>>();
@@ -1653,8 +1991,8 @@ fn CalendarTab(
                     button { r#type: "button", aria_label: "Previous two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current - Duration::days(14)); }, Icon { name: "chevron-left", size: 16, color: "currentColor" } }
                     button { r#type: "button", onclick: move |_| window_start.set(today), "Today" }
                     button { r#type: "button", aria_label: "Next two weeks", onclick: move |_| { let current = *window_start.read(); window_start.set(current + Duration::days(14)); }, Icon { name: "chevron-right", size: 16, color: "currentColor" } }
-                    button { class: "admin-calendar-sync-open", r#type: "button", onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, Icon { name: "refresh-cw", size: 15, color: "currentColor" } "Calendar sync" }
-                    button { class: "admin-primary-small", r#type: "button", onclick: move |_| { selected_block.set(None); panel_open.set(true); }, Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" }
+                    button { class: "admin-calendar-sync-open", r#type: "button", disabled: busy(), onclick: move |_| { if panel_open() && !can_leave_editor() { return; } selected_block.set(None); panel_open.set(false); editor_dirty.set(false); sync_open.set(true); }, Icon { name: "refresh-cw", size: 15, color: "currentColor" } "Calendar sync" }
+                    button { class: "admin-primary-small", r#type: "button", disabled: busy(), onclick: move |_| { if panel_open() { return; } selected_block.set(None); editor_dirty.set(false); message.set(String::new()); panel_open.set(true); }, Icon { name: "calendar-off", size: 15, color: "currentColor" } "Close dates" }
                 } }
                 div { class: "admin-calendar-legend", span { class: "booking", "VL booking" } span { class: "block", "Closed by admin" } span { class: "rvezy", "RVezy" } span { class: "outdoorsy", "Outdoorsy" } span { class: "conflict", "Conflict" } small { "Click an item for details · + closes an open day" } }
                 div { class: "admin-fleet-scroll",
@@ -1672,13 +2010,13 @@ fn CalendarTab(
                                     }
                                 }
                                 for group in aggregate_external_calendar_blocks(blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day))) {
-                                    button { class: "admin-calendar-chip {group.css_class}", r#type: "button", title: "{group.reason} · {group.count} external periods · open calendar sync", aria_label: if group.key == "conflict" { format!("Review {} conflicts for {}", group.count, rental.name) } else { format!("Manage {} calendar for {}", group.label, rental.name) }, onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, small { "{group.label}" } span { "{group.reason}" } if group.count > 1 { small { class: "admin-calendar-chip-count", "+{group.count - 1} periods" } } }
+                                    button { class: "admin-calendar-chip {group.css_class}", r#type: "button", disabled: busy(), title: "{group.reason} · {group.count} external periods · open calendar sync", aria_label: if group.key == "conflict" { format!("Review {} conflicts for {}", group.count, rental.name) } else { format!("Manage {} calendar for {}", group.label, rental.name) }, onclick: move |_| { if panel_open() && !can_leave_editor() { return; } selected_block.set(None); panel_open.set(false); editor_dirty.set(false); sync_open.set(true); }, small { "{group.label}" } span { "{group.reason}" } if group.count > 1 { small { class: "admin-calendar-chip-count", "+{group.count - 1} periods" } } }
                                 }
                                 for block in blocks.iter().filter(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day) && !is_external_calendar_block(block)) {
-                                    button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", title: "{block.reason} · view details", aria_label: "View closed dates for {rental.name}", onclick: { let block = block.clone(); move |_| { panel_open.set(false); selected_block.set(Some(block.clone())); } }, small { "CLOSED" } span { "{block.reason}" } }
+                                    button { class: "admin-calendar-chip {calendar_block_class(block)}", r#type: "button", disabled: busy(), title: "{block.reason} · view details", aria_label: "View closed dates for {rental.name}", onclick: { let block = block.clone(); move |_| { if panel_open() && !can_leave_editor() { return; } panel_open.set(false); editor_dirty.set(false); message.set(String::new()); selected_block.set(Some(block.clone())); } }, small { "CLOSED" } span { "{block.reason}" } }
                                 }
                                 if *day >= today && !bookings.iter().any(|booking| booking.rental_slug == rental.slug && booking_occupies_day(booking, *day)) && !blocks.iter().any(|block| block.rental_slug == rental.slug && block_occupies_day(block, *day)) {
-                                    button { class: "admin-calendar-cell-close", r#type: "button", title: "Close dates starting here", aria_label: "Close {rental.name} starting {day}", onclick: { let slug = rental.slug.clone(); let day = *day; move |_| { selected_block.set(None); rental_slug.set(slug.clone()); starts_on.set(day.to_string()); ends_on.set((day + Duration::days(3)).to_string()); reason.set("Owner use".into()); panel_open.set(true); } }, Icon { name: "plus", size: 12, color: "currentColor" } span { "Close" } }
+                                    button { class: "admin-calendar-cell-close", r#type: "button", disabled: busy(), title: "Close dates starting here", aria_label: "Close {rental.name} starting {day}", onclick: { let slug = rental.slug.clone(); let day = *day; move |_| { if panel_open() && !can_leave_editor() { return; } selected_block.set(None); rental_slug.set(slug.clone()); starts_on.set(day.to_string()); ends_on.set((day + Duration::days(3)).to_string()); reason.set("Owner use".into()); editor_dirty.set(false); message.set(String::new()); panel_open.set(true); } }, Icon { name: "plus", size: 12, color: "currentColor" } span { "Close" } }
                                 }
                             } }
                         }
@@ -1688,13 +2026,13 @@ fn CalendarTab(
                     h3 { "Schedule · {admin_calendar_short_date(*window_start.read())}–{admin_calendar_short_date(window_end)}" }
                     if schedule_bookings.is_empty() && schedule_blocks.is_empty() { div { class: "admin-empty", "No bookings or closed dates in this two-week window." } }
                     for booking in schedule_bookings.iter() { button { class: "booking", r#type: "button", onclick: { let id = booking.booking_id.clone(); move |_| on_open_booking.call(id.clone()) }, div { time { "{display_date(&booking.starts_at)} 2 PM → {display_date(&booking.ends_at)} 11 AM" } strong { "{booking.rental_name}" } span { "{booking.first_name} {booking.last_name} · {booking.booking_number}" } } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } } }
-                    for block in schedule_blocks.iter() { article { class: "{calendar_block_class(block)}", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" if let Some(provider) = calendar_block_provider(block) { " · {calendar_provider_label(provider)}" } } } if is_external_calendar_block(block) { button { class: "manage-external", r#type: "button", onclick: move |_| { selected_block.set(None); panel_open.set(false); sync_open.set(true); }, if block.has_conflict { "Review conflict" } else { "Manage sync" } } } else { button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { selected_block.set(None); message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } } }
+                    for block in schedule_blocks.iter() { article { class: "{calendar_block_class(block)}", div { time { "{display_date(&block.starts_at)} 2 PM → {display_date(&block.ends_at)} 11 AM" } strong { "{block.rental_name}" } span { "{block.reason}" if let Some(provider) = calendar_block_provider(block) { " · {calendar_provider_label(provider)}" } } } if is_external_calendar_block(block) { button { class: "manage-external", r#type: "button", disabled: busy(), onclick: move |_| { if panel_open() && !can_leave_editor() { return; } selected_block.set(None); panel_open.set(false); editor_dirty.set(false); sync_open.set(true); }, if block.has_conflict { "Review conflict" } else { "Manage sync" } } } else { button { r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); message.set(String::new()); match api::delete_admin_availability_block(&id).await { Ok(()) => { selected_block.set(None); message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, "Reopen" } } } }
                 }
                 if !message.read().is_empty() { p { class: "admin-inline-message", "{message}" } }
             }
             if let Some(block) = selected_block.read().clone() {
-                aside { class: "admin-panel admin-calendar-editor admin-calendar-block-detail", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); selected_block.set(None); },
-                    header { div { h3 { "Closed dates" } p { "Local admin block · customers cannot book this RV." } } button { r#type: "button", aria_label: "Close block details", onclick: move |_| selected_block.set(None), Icon { name: "x", size: 19, color: "currentColor" } } }
+                aside { class: "admin-panel admin-calendar-editor admin-calendar-block-detail", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if !busy() { selected_block.set(None); } },
+                    header { div { h3 { "Closed dates" } p { "Local admin block · customers cannot book this RV." } } button { r#type: "button", disabled: busy(), aria_label: "Close block details", onclick: move |_| if !busy() { selected_block.set(None); }, Icon { name: "x", size: 19, color: "currentColor" } } }
                     dl {
                         div { dt { "RV" } dd { "{block.rental_name}" } }
                         div { dt { "Closed from" } dd { "{display_date(&block.starts_at)} · 2:00 PM" } }
@@ -1702,21 +2040,25 @@ fn CalendarTab(
                         div { dt { "Reason" } dd { "{block.reason}" } }
                     }
                     p { class: "admin-calendar-block-note", "Reopening removes only this local block. External dates must be changed on their original platform." }
-                    button { class: "admin-submit danger", r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); match api::delete_admin_availability_block(&id).await { Ok(()) => { selected_block.set(None); message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, if busy() { "Reopening…" } else { "Reopen these dates" } }
+                    if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
+                    button { class: "admin-submit danger", r#type: "button", disabled: busy(), onclick: { let id = block.availability_block_id.clone(); move |_| { let id = id.clone(); async move { busy.set(true); message.set(String::new()); match api::delete_admin_availability_block(&id).await { Ok(()) => { selected_block.set(None); message.set("Dates reopened for customers.".into()); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } } }, if busy() { "Reopening…" } else { "Reopen these dates" } }
                 }
             } else if panel_open() {
-                aside { class: "admin-panel admin-calendar-editor", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); panel_open.set(false); },
-                    header { div { h3 { "Close dates" } p { "The RV becomes unavailable in customer search." } } button { r#type: "button", aria_label: "Close date editor", onclick: move |_| panel_open.set(false), Icon { name: "x", size: 19, color: "currentColor" } } }
-                    label { "RV" select { value: "{rental_slug}", onchange: move |event| rental_slug.set(event.value()), for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } } }
-                    div { class: "admin-date-grid", label { "Close from · 2:00 PM" input { r#type: "date", min: "{today}", value: "{starts_on}", onchange: move |event| starts_on.set(event.value()) } } label { "Open again · 11:00 AM" input { r#type: "date", min: "{today}", value: "{ends_on}", onchange: move |event| ends_on.set(event.value()) } } }
-                    label { "Reason (admin only)" input { value: "{reason}", maxlength: 300, oninput: move |event| reason.set(event.value()) } }
-                    button { class: "admin-submit", r#type: "button", disabled: busy() || rental_slug().is_empty(), onclick: move |_| { let values = (rental_slug(), starts_on(), ends_on(), reason()); async move { if values.2 <= values.1 { message.set("The reopening date must be later than the closing date.".into()); return; } busy.set(true); match api::create_admin_availability_block(&values.0, &values.1, &values.2, &values.3).await { Ok(_) => { message.set("Dates closed for customers.".into()); panel_open.set(false); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } }, if busy() { "Saving…" } else { "Close dates" } }
+                aside { class: "admin-panel admin-calendar-editor", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); close_editor(); },
+                    header { div { h3 { "Close dates" } p { "The RV becomes unavailable in customer search." } } button { r#type: "button", disabled: busy(), aria_label: "Close date editor", onclick: move |_| close_editor(), Icon { name: "x", size: 19, color: "currentColor" } } }
+                    label { "RV" select { value: "{rental_slug}", disabled: busy(), onchange: move |event| { rental_slug.set(event.value()); editor_dirty.set(true); }, for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } } }
+                    div { class: "admin-date-grid", label { "Close from · 2:00 PM" input { r#type: "date", min: "{today}", value: "{starts_on}", disabled: busy(), onchange: move |event| { starts_on.set(event.value()); editor_dirty.set(true); } } } label { "Open again · 11:00 AM" input { r#type: "date", min: "{today}", value: "{ends_on}", disabled: busy(), onchange: move |event| { ends_on.set(event.value()); editor_dirty.set(true); } } } }
+                    label { "Reason (admin only)" input { value: "{reason}", maxlength: 300, disabled: busy(), oninput: move |event| { reason.set(event.value()); editor_dirty.set(true); } } }
+                    if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
+                    button { class: "admin-submit", r#type: "button", disabled: busy() || rental_slug().is_empty(), onclick: move |_| { let values = (rental_slug(), starts_on(), ends_on(), reason()); async move { if values.2 <= values.1 { message.set("The reopening date must be later than the closing date.".into()); return; } busy.set(true); message.set(String::new()); match api::create_admin_availability_block(&values.0, &values.1, &values.2, &values.3).await { Ok(_) => { editor_dirty.set(false); message.set("Dates closed for customers.".into()); panel_open.set(false); on_refresh.call(()); }, Err(error) => message.set(error.message) } busy.set(false); } }, if busy() { "Saving…" } else { "Close dates" } }
                 }
             }
         }
         if sync_open() {
             CalendarSyncDrawer {
                 rentals: rentals.clone(),
+                section_dirty: editor_dirty,
+                section_busy: busy,
                 on_close: move |_| sync_open.set(false),
                 on_calendar_changed: move |_| on_refresh.call(()),
             }
@@ -1766,6 +2108,8 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
                         && *offset.peek() == page_offset
                         && *reload_nonce.peek() == reload =>
                 {
+                    reviews.set(Vec::new());
+                    next_offset.set(None);
                     message.set(error.message)
                 }
                 Err(_) => {}
@@ -1791,6 +2135,12 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
             }
             if !message.read().is_empty() { p { class: "admin-inline-message", role: "alert", "{message}" } }
             if loading() { AdminLoading {} }
+            else if !message.read().is_empty() {
+                div { class: "admin-empty",
+                    p { "Reviews are unavailable, so delete actions are locked." }
+                    button { r#type: "button", onclick: move |_| reload_nonce.set(reload_nonce().wrapping_add(1)), "Retry" }
+                }
+            }
             else if reviews.read().is_empty() { div { class: "admin-empty", "No reviews match this search." } }
             else {
                 div { class: "admin-table-wrap admin-reviews-table-wrap", table { class: "admin-bookings-table admin-reviews-table",
@@ -1802,7 +2152,7 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
                         td { if !review.title.is_empty() { strong { "{review.title}" } } p { class: "admin-review-body", "{review.body}" } }
                         td { "♥ {review.like_count}" }
                         td { if review.reviewed_at_label.is_empty() { "{display_moment(&review.created_at)}" } else { "{review.reviewed_at_label}" } }
-                        td { button { class: "admin-review-delete", r#type: "button", aria_label: "Delete review by {review.reviewer_name}", onclick: { let review = review.clone(); move |_| delete_target.set(Some(review.clone())) }, Icon { name: "trash-2", size: 15, color: "currentColor" } "Delete" } }
+                        td { button { class: "admin-review-delete", r#type: "button", aria_label: "Delete review by {review.reviewer_name}", onclick: { let review = review.clone(); move |_| { message.set(String::new()); delete_target.set(Some(review.clone())); } }, Icon { name: "trash-2", size: 15, color: "currentColor" } "Delete" } }
                     } } }
                 } }
                 div { class: "admin-review-pagination",
@@ -1813,13 +2163,14 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
             }
         }
         if let Some(target) = delete_target.read().clone() {
-            div { class: "admin-overlay admin-modal-backdrop", role: "presentation", onclick: move |_| if !delete_busy() { delete_target.set(None); },
-                section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", aria_label: "Delete review permanently", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if !delete_busy() { delete_target.set(None); } },
-                    header { h3 { "Delete review permanently?" } button { r#type: "button", aria_label: "Close delete confirmation", disabled: delete_busy(), onclick: move |_| delete_target.set(None), Icon { name: "x", size: 18, color: "currentColor" } } }
+            div { class: "admin-overlay admin-modal-backdrop", role: "presentation", onclick: move |_| if !delete_busy() { message.set(String::new()); delete_target.set(None); },
+                section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", aria_label: "Delete review permanently", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if !delete_busy() { message.set(String::new()); delete_target.set(None); } },
+                    header { h3 { "Delete review permanently?" } button { r#type: "button", aria_label: "Close delete confirmation", disabled: delete_busy(), onclick: move |_| { message.set(String::new()); delete_target.set(None); }, Icon { name: "x", size: 18, color: "currentColor" } } }
                     p { "The review and all of its likes will be removed. The customer cannot publish another review for this booking." }
                     p { class: "admin-action-limit", "This cannot be undone." }
+                    if !message.read().is_empty() { p { class: "admin-error", role: "alert", "{message}" } }
                     footer {
-                        button { r#type: "button", disabled: delete_busy(), onclick: move |_| delete_target.set(None), "Cancel" }
+                        button { r#type: "button", disabled: delete_busy(), onclick: move |_| { message.set(String::new()); delete_target.set(None); }, "Cancel" }
                         button { class: "danger", r#type: "button", disabled: delete_busy(), onclick: { let review_id = target.rental_review_id.clone(); move |_| { let review_id = review_id.clone(); async move { delete_busy.set(true); message.set(String::new()); match api::admin_delete_rental_review(&review_id).await { Ok(()) => { delete_target.set(None); reload_nonce.set(reload_nonce().wrapping_add(1)); }, Err(error) => message.set(error.message) } delete_busy.set(false); } } }, if delete_busy() { "Deleting…" } else { "Delete permanently" } }
                     }
                 }
@@ -1901,6 +2252,8 @@ fn BookingDrawer(
     let refundable = refundable_amount(&detail);
     let capturable = capturable_damage_amount(&detail);
     let has_active_hold = active_damage_hold(&detail).is_some();
+    let awaiting_etransfer_deposit = awaiting_etransfer_damage_hold(&detail);
+    let deposit_is_etransfer = etransfer_damage_hold(&detail).is_some();
     let hold_operation_active = hold_action_in_progress(&detail);
     let booking = detail.booking.clone();
     let customer_booking_id = booking.booking_id.clone();
@@ -1923,8 +2276,13 @@ fn BookingDrawer(
     let mut busy = use_signal(|| false);
     let mut message = use_signal(String::new);
     let mut modal_message = use_signal(String::new);
+    let mut contact_dirty = use_signal(|| false);
+    let mut notes_dirty = use_signal(|| false);
 
     let mut open_action = move |action: &'static str| {
+        if loading || busy() || uploads_pending() > 0 {
+            return;
+        }
         amount.set(String::new());
         reason.set(String::new());
         evidence_ids.set(Vec::new());
@@ -1935,23 +2293,43 @@ fn BookingDrawer(
     };
 
     let refresh_detail = move |booking_id: String| async move {
-        if let Ok(value) = api::admin_booking(&booking_id).await {
-            on_changed.call(value);
+        match api::admin_booking(&booking_id).await {
+            Ok(value) => on_changed.call(value),
+            Err(error) => message.set(format!(
+                "The change was saved, but booking details could not refresh: {}",
+                error.message
+            )),
+        }
+    };
+    let request_close = move || {
+        if busy() || uploads_pending() > 0 {
+            return;
+        }
+        let may_close = (!contact_dirty() && !notes_dirty())
+            || web_sys::window()
+                .and_then(|window| {
+                    window
+                        .confirm_with_message("Discard unsaved booking changes?")
+                        .ok()
+                })
+                .unwrap_or(false);
+        if may_close {
+            on_close.call(());
         }
     };
 
     rsx! {
-        div { class: "admin-overlay admin-drawer-backdrop", onclick: move |_| on_close.call(()),
-            aside { class: "admin-booking-drawer", role: "dialog", aria_modal: "true", aria_label: "Booking {booking.booking_number}", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if modal.read().is_some() { if !busy() && uploads_pending() == 0 { modal.set(None); } } else if !busy() { on_close.call(()); } },
+        div { class: "admin-overlay admin-drawer-backdrop", onclick: move |_| request_close(),
+            aside { class: "admin-booking-drawer", role: "dialog", aria_modal: "true", aria_label: "Booking {booking.booking_number}", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if modal.read().is_some() { if !busy() && uploads_pending() == 0 { modal.set(None); } } else { request_close(); } },
                 header { class: "admin-drawer-head",
                     div { p { "{booking.booking_number}" } h2 { "{booking.first_name} {booking.last_name}" } span { class: "admin-status admin-status-{booking.status}", "{status_label(&booking.status)}" } }
-                    button { r#type: "button", aria_label: "Close booking details", onclick: move |_| on_close.call(()), Icon { name: "x", size: 21, color: "currentColor" } }
+                    button { r#type: "button", disabled: busy() || uploads_pending() > 0, aria_label: "Close booking details", onclick: move |_| request_close(), Icon { name: "x", size: 21, color: "currentColor" } }
                 }
                 if loading { AdminLoading {} }
                 div { class: "admin-drawer-scroll",
                     section { class: "admin-drawer-section",
-                        div { class: "admin-section-title", h3 { "Customer" } button { r#type: "button", disabled: busy(), onclick: move |_| { let values = (first_name(), last_name(), email(), phone()); let id = customer_booking_id.clone(); async move { busy.set(true); message.set(String::new()); match api::update_admin_booking_customer(&id, &values.0, &values.1, &values.2, &values.3).await { Ok(_) => { message.set("Customer contacts updated.".into()); refresh_detail(id).await; }, Err(error) => message.set(error.message) } busy.set(false); } }, "Save contacts" } }
-                        div { class: "admin-drawer-fields", label { "First name" input { value: "{first_name}", oninput: move |event| first_name.set(event.value()) } } label { "Last name" input { value: "{last_name}", oninput: move |event| last_name.set(event.value()) } } label { "Email" input { r#type: "email", value: "{email}", oninput: move |event| email.set(event.value()) } } label { "Phone" input { r#type: "tel", value: "{phone}", oninput: move |event| phone.set(event.value()) } } }
+                        div { class: "admin-section-title", h3 { "Customer" } button { r#type: "button", disabled: loading || busy() || !contact_dirty(), onclick: move |_| { let values = (first_name(), last_name(), email(), phone()); let id = customer_booking_id.clone(); async move { busy.set(true); message.set(String::new()); match api::update_admin_booking_customer(&id, &values.0, &values.1, &values.2, &values.3).await { Ok(_) => { contact_dirty.set(false); message.set("Customer contacts updated.".into()); refresh_detail(id).await; }, Err(error) => message.set(error.message) } busy.set(false); } }, "Save contacts" } }
+                        div { class: "admin-drawer-fields", label { "First name" input { value: "{first_name}", disabled: loading || busy(), oninput: move |event| { first_name.set(event.value()); contact_dirty.set(true); } } } label { "Last name" input { value: "{last_name}", disabled: loading || busy(), oninput: move |event| { last_name.set(event.value()); contact_dirty.set(true); } } } label { "Email" input { r#type: "email", value: "{email}", disabled: loading || busy(), oninput: move |event| { email.set(event.value()); contact_dirty.set(true); } } } label { "Phone" input { r#type: "tel", value: "{phone}", disabled: loading || busy(), oninput: move |event| { phone.set(event.value()); contact_dirty.set(true); } } } }
                     }
                     section { class: "admin-drawer-section",
                         h3 { "Trip & quote" }
@@ -1969,7 +2347,7 @@ fn BookingDrawer(
                         h3 { "Payment schedule" }
                         if detail.obligations.is_empty() { div { class: "admin-empty", "No payment obligations are available yet." } }
                         else { div { class: "admin-obligation-list", for obligation in detail.obligations.iter() { article { key: "{obligation.payment_obligation_id}",
-                            div { strong { "{payment_label(&obligation.payment_type)}" } if let Some(due) = obligation.due_at.as_ref() { small { "Due {display_moment(due)}" } } if let Some(deadline) = obligation.capture_before.as_ref() { small { "Decision deadline {display_moment(deadline)}" } } }
+                            div { strong { "{payment_label(&obligation.payment_type)}" } if obligation.collection_method == "e_transfer" { small { "Interac e-Transfer · protrailercare@gmail.com" } } if let Some(due) = obligation.due_at.as_ref() { small { "Due {display_moment(due)}" } } if let Some(deadline) = obligation.capture_before.as_ref() { small { "Decision deadline {display_moment(deadline)}" } } }
                             span { "{display_money(&obligation.currency, &obligation.amount)}" }
                             b { class: "admin-status admin-pay-{obligation.status}", "{payment_label(&obligation.status)}" }
                         } } } }
@@ -2010,8 +2388,8 @@ fn BookingDrawer(
                         }
                     }
                     section { class: "admin-drawer-section",
-                        div { class: "admin-section-title", h3 { "Internal notes" } button { r#type: "button", disabled: busy(), onclick: move |_| { let id = notes_booking_id.clone(); let value = notes(); async move { busy.set(true); message.set(String::new()); match api::update_admin_booking_notes(&id, &value).await { Ok(_) => { message.set("Internal notes saved.".into()); refresh_detail(id).await; }, Err(error) => message.set(error.message) } busy.set(false); } }, "Save notes" } }
-                        textarea { value: "{notes}", placeholder: "Visible only to admins", oninput: move |event| notes.set(event.value()) }
+                        div { class: "admin-section-title", h3 { "Internal notes" } button { r#type: "button", disabled: loading || busy() || !notes_dirty(), onclick: move |_| { let id = notes_booking_id.clone(); let value = notes(); async move { busy.set(true); message.set(String::new()); match api::update_admin_booking_notes(&id, &value).await { Ok(_) => { notes_dirty.set(false); message.set("Internal notes saved.".into()); refresh_detail(id).await; }, Err(error) => message.set(error.message) } busy.set(false); } }, "Save notes" } }
+                        textarea { value: "{notes}", placeholder: "Visible only to admins", disabled: loading || busy(), oninput: move |event| { notes.set(event.value()); notes_dirty.set(true); } }
                     }
                     section { class: "admin-drawer-section",
                         h3 { "Timeline" }
@@ -2025,22 +2403,23 @@ fn BookingDrawer(
                     if !message.read().is_empty() { p { class: if message.read().starts_with("Booking updated, but") { "admin-error admin-inline-message" } else { "admin-inline-message" }, role: "status", "{message}" } }
                 }
                 footer { class: "admin-drawer-actions",
-                    if booking.status == "confirmed" { button { class: if delivery_ready { "primary" } else { "" }, r#type: "button", onclick: move |_| open_action(if delivery_ready { "delivered" } else { "delivered_blocked" }), if delivery_ready { "Mark delivered" } else { "Delivery requirements" } } }
-                    if booking.status == "active" { button { class: "primary", r#type: "button", onclick: move |_| open_action("returned"), "Mark returned" } }
-                    if booking.status == "completed" && has_active_hold && !hold_operation_active { button { r#type: "button", onclick: move |_| open_action("release"), "Refund deposit" } button { r#type: "button", disabled: capturable <= 0.0, onclick: move |_| open_action("capture"), "Settle damage" } }
-                    if booking.status == "completed" && hold_operation_active { span { class: "admin-inline-message", "A damage deposit action is awaiting Stripe reconciliation." } }
-                    if !matches!(booking.status.as_str(), "cancelled" | "expired" | "completed") { button { class: "danger", r#type: "button", onclick: move |_| open_action("cancel"), "Cancel booking" } }
+                    if booking.status == "confirmed" && awaiting_etransfer_deposit { button { class: "primary", r#type: "button", disabled: loading || busy(), onclick: move |_| open_action("confirm_deposit"), "Confirm e-Transfer received" } }
+                    if booking.status == "confirmed" { button { class: if delivery_ready { "primary" } else { "" }, r#type: "button", disabled: loading || busy(), onclick: move |_| open_action(if delivery_ready { "delivered" } else { "delivered_blocked" }), if delivery_ready { "Mark delivered" } else { "Delivery requirements" } } }
+                    if booking.status == "active" { button { class: "primary", r#type: "button", disabled: loading || busy(), onclick: move |_| open_action("returned"), "Mark returned" } }
+                    if booking.status == "completed" && has_active_hold && !hold_operation_active { button { r#type: "button", disabled: loading || busy(), onclick: move |_| open_action("release"), "Refund deposit" } button { r#type: "button", disabled: loading || busy() || capturable <= 0.0, onclick: move |_| open_action("capture"), "Settle damage" } }
+                    if booking.status == "completed" && hold_operation_active { span { class: "admin-inline-message", if deposit_is_etransfer { "A damage deposit action is pending." } else { "A damage deposit action is awaiting Stripe reconciliation." } } }
+                    if !matches!(booking.status.as_str(), "cancelled" | "expired" | "completed") { button { class: "danger", r#type: "button", disabled: loading || busy(), onclick: move |_| open_action("cancel"), "Cancel booking" } }
                 }
             }
             if let Some(action) = modal.read().clone() {
                 div { class: "admin-confirm-layer", onclick: move |event| event.stop_propagation(),
                     section { class: "admin-confirm-modal", role: "alertdialog", aria_modal: "true", tabindex: "-1", autofocus: true, onkeydown: move |event| if event.key() == Key::Escape && !busy() && uploads_pending() == 0 { event.stop_propagation(); modal.set(None); },
-                        header { h3 { if action == "delivered" { "Mark delivered?" } else if action == "delivered_blocked" { "Delivery is blocked" } else if action == "returned" { "Mark returned?" } else if action == "release" { "Refund damage deposit?" } else if action == "capture" { "Settle damage from deposit?" } else { "Cancel booking?" } } button { r#type: "button", disabled: busy() || uploads_pending() > 0, aria_label: "Close confirmation", onclick: move |_| modal.set(None), Icon { name: "x", size: 19, color: "currentColor" } } }
-                        p { if action == "delivered" { "The trip is fully paid and the refundable CA$1,000 damage deposit is paid. Confirm that the RV was delivered." } else if action == "delivered_blocked" { "The trip cannot be marked Delivered until every initial/balance obligation and the refundable CA$1,000 damage deposit are paid." } else if action == "returned" { "This opens the seven-day damage deposit decision period." } else if action == "release" { "Stripe will refund the full CA$1,000 damage deposit to the original payment method. Processing fees from the original charge are not returned to VL Rental." } else if action == "capture" { "Enter the documented damage amount. Stripe will refund the remaining deposit to the original payment method." } else { "The dates are released immediately. Any refund is tracked separately if Stripe reports a failure." } }
+                        header { h3 { if action == "delivered" { "Mark delivered?" } else if action == "delivered_blocked" { "Delivery is blocked" } else if action == "returned" { "Mark returned?" } else if action == "confirm_deposit" { "Confirm e-Transfer received?" } else if action == "release" { "Refund damage deposit?" } else if action == "capture" { "Settle damage from deposit?" } else { "Cancel booking?" } } button { r#type: "button", disabled: busy() || uploads_pending() > 0, aria_label: "Close confirmation", onclick: move |_| modal.set(None), Icon { name: "x", size: 19, color: "currentColor" } } }
+                        p { if action == "delivered" { "The trip is fully paid and the refundable CA$1,000 damage deposit is paid. Confirm that the RV was delivered." } else if action == "delivered_blocked" { "The trip cannot be marked Delivered until every initial/balance obligation and the refundable CA$1,000 damage deposit are paid." } else if action == "returned" { "This opens the seven-day damage deposit decision period." } else if action == "confirm_deposit" { "Confirm only after CA$1,000 has arrived at protrailercare@gmail.com. This marks the deposit Paid and emails the customer and vlrental.ca@gmail.com." } else if action == "release" && deposit_is_etransfer { "Confirm only after you have returned the full CA$1,000 by e-Transfer. This records the refund and emails the customer." } else if action == "release" { "Stripe will refund the full CA$1,000 damage deposit to the original payment method. Processing fees from the original charge are not returned to VL Rental." } else if action == "capture" && deposit_is_etransfer { "Enter the documented damage amount and attach evidence. Confirm only after returning the remaining e-Transfer deposit to the customer." } else if action == "capture" { "Enter the documented damage amount. Stripe will refund the remaining deposit to the original payment method." } else if action == "cancel" && deposit_is_etransfer && has_active_hold { "The dates are released immediately. Before confirming, return the separate CA$1,000 damage deposit to the customer by e-Transfer; the system will record that manual deposit refund. Any entered trip-price refund is handled separately through Stripe." } else { "The dates are released immediately. Any refund is tracked separately if Stripe reports a failure." } }
                         if matches!(action.as_str(), "cancel" | "capture") {
                             p { class: "admin-action-limit", if action == "cancel" { "Available to refund: CAD ${refundable:.2}" } else { "Available damage deposit: CAD ${capturable:.2}" } }
-                            label { if action == "cancel" { "Refund amount (CAD)" } else { "Damage amount (CAD)" } input { inputmode: "decimal", min: "0", max: if action == "cancel" { "{refundable:.2}" } else { "{capturable:.2}" }, value: "{amount}", placeholder: "0.00", oninput: move |event| amount.set(event.value()) } }
-                            label { "Reason" textarea { value: "{reason}", placeholder: "Required for audit and customer communication", oninput: move |event| reason.set(event.value()) } }
+                            label { if action == "cancel" { "Refund amount (CAD)" } else { "Damage amount (CAD)" } input { inputmode: "decimal", min: "0", max: if action == "cancel" { "{refundable:.2}" } else { "{capturable:.2}" }, value: "{amount}", placeholder: "0.00", disabled: busy() || uploads_pending() > 0, oninput: move |event| amount.set(event.value()) } }
+                            label { "Reason" textarea { value: "{reason}", placeholder: "Required for audit and customer communication", disabled: busy() || uploads_pending() > 0, oninput: move |event| reason.set(event.value()) } }
                         }
                         if action == "capture" {
                             label { class: "admin-evidence-upload", "Evidence photos" input { r#type: "file", accept: "image/jpeg,image/png,image/webp", multiple: true, disabled: busy() || uploads_pending() > 0, oninput: move |event| { let files = event.files(); for file in files { let name = file.name(); if file.size() > 10 * 1024 * 1024 { modal_message.set(format!("{name} is larger than 10 MB.")); continue; } let web_file = file.inner().downcast_ref::<web_sys::File>().cloned(); if let Some(web_file) = web_file { let booking_id = upload_booking_id.clone(); uploads_pending += 1; spawn(async move { match api::upload_admin_damage_evidence(&booking_id, &web_file).await { Ok(id) => { evidence_ids.write().push(id); evidence_names.write().push(name); }, Err(error) => modal_message.set(error.message) } uploads_pending -= 1; }); } else { modal_message.set(format!("{name} could not be read by this browser.")); } } } } }
@@ -2048,7 +2427,7 @@ fn BookingDrawer(
                             if !evidence_names.read().is_empty() { ul { class: "admin-evidence-list", for name in evidence_names.read().iter() { li { Icon { name: "image", size: 14, color: "currentColor" } "{name}" } } } }
                         }
                         if !modal_message.read().is_empty() { p { class: "admin-error", role: "alert", "{modal_message}" } }
-                        footer { button { r#type: "button", disabled: busy() || uploads_pending() > 0, onclick: move |_| modal.set(None), "Go back" } if action != "delivered_blocked" { button { class: if matches!(action.as_str(), "cancel" | "capture") { "danger" } else { "primary" }, r#type: "button", disabled: busy() || !action_confirmation_ready(&action, &amount(), &reason(), evidence_ids.read().len(), uploads_pending(), if action == "capture" { capturable } else { refundable }), onclick: { let action = action.clone(); move |_| { let id = action_booking_id.clone(); let action = action.clone(); let amount_value = amount(); let reason_value = reason(); let evidence = evidence_ids.read().clone(); async move { let maximum = if action == "capture" { capturable } else { refundable }; if !action_confirmation_ready(&action, &amount_value, &reason_value, evidence.len(), uploads_pending(), maximum) { modal_message.set("Complete all required confirmation details without exceeding the available amount.".into()); return; } busy.set(true); modal_message.set(String::new()); match api::admin_booking_action(&id, &action, (!amount_value.trim().is_empty()).then_some(amount_value.as_str()), (!reason_value.trim().is_empty()).then_some(reason_value.as_str()), (action == "capture").then_some(evidence.as_slice())).await { Ok(result) => { let cleanup_message = result.provider_cleanup.iter().find(|cleanup| cleanup.attention_required).and_then(|cleanup| cleanup.message.clone()); let provider_failed = result.provider_status.as_deref() == Some("failed") || cleanup_message.is_some(); modal.set(None); message.set(if provider_failed { format!("Booking updated, but Stripe needs attention: {}", cleanup_message.unwrap_or_else(|| "the provider operation failed".into())) } else if result.provider_status.is_some() { format!("{} submitted. Stripe confirmation remains pending until webhook reconciliation.", payment_label(&action)) } else if action == "cancel" { "Booking cancelled. No refund is waiting for Stripe confirmation.".into() } else { format!("{} completed.", payment_label(&action)) }); on_changed.call(result.booking); }, Err(error) => modal_message.set(error.message) } busy.set(false); } } }, if busy() { "Working…" } else { "Confirm" } } } }
+                        footer { button { r#type: "button", disabled: busy() || uploads_pending() > 0, onclick: move |_| modal.set(None), "Go back" } if action != "delivered_blocked" { button { class: if matches!(action.as_str(), "cancel" | "capture") { "danger" } else { "primary" }, r#type: "button", disabled: busy() || !action_confirmation_ready(&action, &amount(), &reason(), evidence_ids.read().len(), uploads_pending(), if action == "capture" { capturable } else { refundable }), onclick: { let action = action.clone(); move |_| { let id = action_booking_id.clone(); let action = action.clone(); let amount_value = amount(); let reason_value = reason(); let evidence = evidence_ids.read().clone(); async move { let maximum = if action == "capture" { capturable } else { refundable }; if !action_confirmation_ready(&action, &amount_value, &reason_value, evidence.len(), uploads_pending(), maximum) { modal_message.set("Complete all required confirmation details without exceeding the available amount.".into()); return; } busy.set(true); modal_message.set(String::new()); match api::admin_booking_action(&id, &action, (!amount_value.trim().is_empty()).then_some(amount_value.as_str()), (!reason_value.trim().is_empty()).then_some(reason_value.as_str()), (action == "capture").then_some(evidence.as_slice())).await { Ok(result) => { let cleanup_message = result.provider_cleanup.iter().find(|cleanup| cleanup.attention_required).and_then(|cleanup| cleanup.message.clone()); let provider_failed = result.provider_status.as_deref() == Some("failed") || cleanup_message.is_some(); modal.set(None); message.set(if provider_failed { format!("Booking updated, but Stripe needs attention: {}", cleanup_message.unwrap_or_else(|| "the provider operation failed".into())) } else if action == "confirm_deposit" { "e-Transfer receipt confirmed. The deposit is Paid and emails are queued for the customer and vlrental.ca@gmail.com.".into() } else if deposit_is_etransfer && matches!(action.as_str(), "release" | "capture") { "e-Transfer damage deposit decision recorded and customer email queued.".into() } else if action == "cancel" && deposit_is_etransfer && has_active_hold && result.provider_status.is_none() { "Booking cancelled and the manual e-Transfer deposit return was recorded. No refund is waiting for Stripe confirmation.".into() } else if result.provider_status.is_some() { format!("{} submitted. Stripe confirmation remains pending until webhook reconciliation.", payment_label(&action)) } else if action == "cancel" { "Booking cancelled. No refund is waiting for Stripe confirmation.".into() } else { format!("{} completed.", payment_label(&action)) }); on_changed.call(result.booking); }, Err(error) => modal_message.set(error.message) } busy.set(false); } } }, if busy() { "Working…" } else { "Confirm" } } } }
                     }
                 }
             }
@@ -2081,17 +2460,34 @@ fn ManualBookingModal(
     let mut notes = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(String::new);
+    let mut dirty = use_signal(|| false);
+    let request_close = move || {
+        if busy() {
+            return;
+        }
+        let may_close = !dirty()
+            || web_sys::window()
+                .and_then(|window| {
+                    window
+                        .confirm_with_message("Discard this phone booking draft?")
+                        .ok()
+                })
+                .unwrap_or(false);
+        if may_close {
+            on_close.call(());
+        }
+    };
     rsx! {
-        div { class: "admin-overlay admin-modal-backdrop", onclick: move |_| if !busy() { on_close.call(()); },
-            section { class: "admin-manual-modal", role: "dialog", aria_modal: "true", aria_label: "Create phone booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); if !busy() { on_close.call(()); } },
-                header { div { p { "TWO-HOUR RESERVATION" } h2 { "Create phone booking" } span { "A dynamic Stripe Checkout link is emailed to the customer." } } button { r#type: "button", disabled: busy(), aria_label: "Close phone booking", onclick: move |_| on_close.call(()), Icon { name: "x", size: 21, color: "currentColor" } } }
+        div { class: "admin-overlay admin-modal-backdrop", onclick: move |_| request_close(),
+            section { class: "admin-manual-modal", role: "dialog", aria_modal: "true", aria_label: "Create phone booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); request_close(); },
+                header { div { p { "TWO-HOUR RESERVATION" } h2 { "Create phone booking" } span { "A dynamic Stripe Checkout link is emailed to the customer." } } button { r#type: "button", disabled: busy(), aria_label: "Close phone booking", onclick: move |_| request_close(), Icon { name: "x", size: 21, color: "currentColor" } } }
                 div { class: "admin-manual-scroll",
-                    section { h3 { "Trip" } select { value: "{rental_slug}", onchange: move |event| rental_slug.set(event.value()), for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } } div { class: "admin-date-grid", label { "Delivery" input { r#type: "date", min: "{tomorrow}", value: "{starts_on}", onchange: move |event| starts_on.set(event.value()) } } label { "Return" input { r#type: "date", min: "{tomorrow}", value: "{ends_on}", onchange: move |event| ends_on.set(event.value()) } } } label { "Guests" input { r#type: "number", min: 1, max: 10, value: "{guests}", oninput: move |event| if let Ok(value) = event.value().parse::<i32>() { guests.set(value.clamp(1, 10)); } } } }
-                    section { h3 { "Customer" } div { class: "admin-drawer-fields", label { "First name" input { value: "{first_name}", oninput: move |event| first_name.set(event.value()) } } label { "Last name" input { value: "{last_name}", oninput: move |event| last_name.set(event.value()) } } label { "Email" input { r#type: "email", value: "{email}", oninput: move |event| email.set(event.value()) } } label { "Phone" input { r#type: "tel", value: "{phone}", oninput: move |event| phone.set(event.value()) } } } label { "Delivery address" input { value: "{address}", placeholder: "Exact delivery location", oninput: move |event| address.set(event.value()) } } label { "Internal notes" textarea { value: "{notes}", oninput: move |event| notes.set(event.value()) } } }
+                    section { h3 { "Trip" } select { value: "{rental_slug}", disabled: busy(), onchange: move |event| { rental_slug.set(event.value()); dirty.set(true); }, for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } } div { class: "admin-date-grid", label { "Delivery" input { r#type: "date", min: "{tomorrow}", value: "{starts_on}", disabled: busy(), onchange: move |event| { starts_on.set(event.value()); dirty.set(true); } } } label { "Return" input { r#type: "date", min: "{tomorrow}", value: "{ends_on}", disabled: busy(), onchange: move |event| { ends_on.set(event.value()); dirty.set(true); } } } } label { "Guests" input { r#type: "number", min: 1, max: 10, value: "{guests}", disabled: busy(), oninput: move |event| if let Ok(value) = event.value().parse::<i32>() { guests.set(value.clamp(1, 10)); dirty.set(true); } } } }
+                    section { h3 { "Customer" } div { class: "admin-drawer-fields", label { "First name" input { value: "{first_name}", disabled: busy(), oninput: move |event| { first_name.set(event.value()); dirty.set(true); } } } label { "Last name" input { value: "{last_name}", disabled: busy(), oninput: move |event| { last_name.set(event.value()); dirty.set(true); } } } label { "Email" input { r#type: "email", value: "{email}", disabled: busy(), oninput: move |event| { email.set(event.value()); dirty.set(true); } } } label { "Phone" input { r#type: "tel", value: "{phone}", disabled: busy(), oninput: move |event| { phone.set(event.value()); dirty.set(true); } } } } label { "Delivery address" input { value: "{address}", placeholder: "Exact delivery location", disabled: busy(), oninput: move |event| { address.set(event.value()); dirty.set(true); } } } label { "Internal notes" textarea { value: "{notes}", disabled: busy(), oninput: move |event| { notes.set(event.value()); dirty.set(true); } } } }
                     div { class: "admin-time-rule", Icon { name: "clock-3", size: 17, color: "var(--vl-forest)" } span { "Availability is reserved for two hours. The booking confirms only after Stripe payment is verified by webhook." } }
                     if !error.read().is_empty() { p { class: "admin-error", role: "alert", "{error}" } }
                 }
-                footer { button { r#type: "button", disabled: busy(), onclick: move |_| on_close.call(()), "Cancel" } button { class: "primary", r#type: "button", disabled: busy(), onclick: move |_| { let values = (rental_slug(), starts_on(), ends_on(), guests(), first_name(), last_name(), email(), phone(), address(), notes()); async move { if let Some(message) = manual_booking_error(today, &values.0, &values.1, &values.2, values.3, &values.4, &values.5, &values.6, &values.7, &values.8) { error.set(message.into()); return; } busy.set(true); error.set(String::new()); match api::create_manual_admin_booking(&values.0, &values.1, &values.2, values.3, &values.4, &values.5, &values.6, &values.7, &values.8, &values.9).await { Ok(created) => on_created.call(created), Err(api_error) => error.set(api_error.message) } busy.set(false); } }, if busy() { "Creating reservation…" } else { "Reserve and send payment link" } } }
+                footer { button { r#type: "button", disabled: busy(), onclick: move |_| request_close(), "Cancel" } button { class: "primary", r#type: "button", disabled: busy(), onclick: move |_| { let values = (rental_slug(), starts_on(), ends_on(), guests(), first_name(), last_name(), email(), phone(), address(), notes()); async move { if let Some(message) = manual_booking_error(today, &values.0, &values.1, &values.2, values.3, &values.4, &values.5, &values.6, &values.7, &values.8) { error.set(message.into()); return; } busy.set(true); error.set(String::new()); match api::create_manual_admin_booking(&values.0, &values.1, &values.2, values.3, &values.4, &values.5, &values.6, &values.7, &values.8, &values.9).await { Ok(created) => on_created.call(created), Err(api_error) => error.set(api_error.message) } busy.set(false); } }, if busy() { "Creating reservation…" } else { "Reserve and send payment link" } } }
             }
         }
     }
@@ -2294,6 +2690,30 @@ mod tests {
     }
 
     #[test]
+    fn payment_link_resend_is_only_available_for_active_unpaid_links() {
+        let mut payment = api::AdminPaymentObligation {
+            payment_type: "balance".into(),
+            status: "link_created".into(),
+            hosted_url: Some("https://invoice.stripe.test/i/test".into()),
+            ..api::AdminPaymentObligation::default()
+        };
+        assert!(can_resend_payment_link(&payment));
+
+        payment.status = "succeeded".into();
+        assert!(!can_resend_payment_link(&payment));
+
+        payment.status = "failed".into();
+        assert!(!can_resend_payment_link(&payment));
+
+        payment.status = "due".into();
+        assert!(!can_resend_payment_link(&payment));
+
+        payment.status = "link_created".into();
+        payment.payment_type = "initial".into();
+        assert!(!can_resend_payment_link(&payment));
+    }
+
+    #[test]
     fn refund_and_damage_limits_follow_backend_available_amounts() {
         let detail = api::AdminBookingDetail {
             obligations: vec![
@@ -2326,7 +2746,7 @@ mod tests {
     }
 
     #[test]
-    fn manual_booking_requires_future_three_night_trip_and_customer_details() {
+    fn manual_booking_requires_future_one_night_trip_and_customer_details() {
         let today = NaiveDate::from_ymd_opt(2030, 7, 10).unwrap();
         assert_eq!(
             manual_booking_error(
@@ -2348,7 +2768,7 @@ mod tests {
                 today,
                 "jayco26",
                 "2030-07-11",
-                "2030-07-13",
+                "2030-07-12",
                 4,
                 "Test",
                 "Guest",
@@ -2356,7 +2776,22 @@ mod tests {
                 "2505550100",
                 "Bear Creek Provincial Park"
             ),
-            Some("Choose an available RV and a future trip of at least three nights.")
+            None
+        );
+        assert_eq!(
+            manual_booking_error(
+                today,
+                "jayco26",
+                "2030-07-11",
+                "2030-07-11",
+                4,
+                "Test",
+                "Guest",
+                "guest@example.com",
+                "2505550100",
+                "Bear Creek Provincial Park"
+            ),
+            Some("Choose an available RV and a future trip of at least one night.")
         );
         assert_eq!(
             manual_booking_error(

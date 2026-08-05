@@ -308,7 +308,7 @@ pub(crate) fn normalized_catalog_search(
     search.guests = search.guests.clamp(1, 10);
     let valid_dates = parse_search_date(search.starts_on.as_deref())
         .zip(parse_search_date(search.ends_on.as_deref()))
-        .is_some_and(|(start, end)| start > today && (end - start).num_days() >= 3);
+        .is_some_and(|(start, end)| start > today && (end - start).num_days() >= 1);
     if !valid_dates {
         search.starts_on = None;
         search.ends_on = None;
@@ -408,9 +408,7 @@ fn next_catalog_date_selection(
 ) -> (Option<NaiveDate>, Option<NaiveDate>) {
     match (start, end) {
         (Some(first), None) if day == first => (None, None),
-        (Some(first), None) if day > first && (day - first).num_days() >= 3 => {
-            (Some(first), Some(day))
-        }
+        (Some(first), None) if day > first => (Some(first), Some(day)),
         (Some(first), None) if day < first => (Some(day), None),
         _ => (Some(day), None),
     }
@@ -573,7 +571,7 @@ pub(crate) fn CatalogSearchOverlay(
         .zip(*ends_on.read())
         .map(|(start, end)| (end - start).num_days())
         .unwrap_or(0);
-    let can_apply = (starts_on.read().is_none() && ends_on.read().is_none()) || nights >= 3;
+    let can_apply = (starts_on.read().is_none() && ends_on.read().is_none()) || nights >= 1;
     let guest_word = if *guests.read() == 1 {
         "guest"
     } else {
@@ -612,7 +610,7 @@ pub(crate) fn CatalogSearchOverlay(
             class: if *closing.read() { "cat-planner-backdrop is-closing" } else { "cat-planner-backdrop" },
             role: "presentation",
             onclick: move |_| close_overlay(),
-            div { class: "cat-planner-shell", role: "dialog", aria_modal: "true", aria_label: "Plan your RV search", onclick: move |event| event.stop_propagation(),
+            div { class: "cat-planner-shell", role: "dialog", aria_modal: "true", aria_label: "Plan your RV search", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); spawn(async move { close_overlay().await; }); },
               div { class: "cat-planner",
                 div { class: "cat-planner-head",
                     div {
@@ -666,7 +664,7 @@ pub(crate) fn CatalogSearchOverlay(
                     section { class: "cat-planner-trip",
                         div { class: "cat-planner-section-head",
                             div { class: "cat-planner-section-icon", Icon { name: "calendar", size: 18, color: "var(--vl-white)" } }
-                            div { h3 { "Travel dates" } p { "All RV stays require at least 3 nights." } }
+                            div { h3 { "Travel dates" } p { "Choose 1 or more nights. Short stays are priced at the 3-night minimum." } }
                         }
                         div { class: "cat-trip-summary",
                             label { class: "cat-trip-date-field",
@@ -686,7 +684,7 @@ pub(crate) fn CatalogSearchOverlay(
                                             start_input.set(value.clone());
                                             if let Some(date) = parse_manual_date_input(&value).filter(|date| *date > today) {
                                                 starts_on.set(Some(date));
-                                                if ends_on.peek().is_some_and(|end| end < date + chrono::Duration::days(3)) {
+                                                if ends_on.peek().is_some_and(|end| end <= date) {
                                                     ends_on.set(None);
                                                 }
                                                 visible_month.set(month_start(date));
@@ -698,7 +696,7 @@ pub(crate) fn CatalogSearchOverlay(
                                             let value = start_input.read().clone();
                                             if let Some(date) = parse_manual_date_input(&value).filter(|date| *date > today) {
                                                 starts_on.set(Some(date));
-                                                if ends_on.peek().is_some_and(|end| end < date + chrono::Duration::days(3)) {
+                                                if ends_on.peek().is_some_and(|end| end <= date) {
                                                     ends_on.set(None);
                                                 }
                                                 visible_month.set(month_start(date));
@@ -728,7 +726,7 @@ pub(crate) fn CatalogSearchOverlay(
                                             let value = format_manual_date_input(&event.value());
                                             end_input.set(value.clone());
                                             if let (Some(start), Some(date)) = (*starts_on.peek(), parse_manual_date_input(&value)) {
-                                                if date >= start + chrono::Duration::days(3) {
+                                                if date > start {
                                                     ends_on.set(Some(date));
                                                 } else if value.len() == 10 {
                                                     end_input.set(manual_date_text(*ends_on.peek()));
@@ -740,7 +738,7 @@ pub(crate) fn CatalogSearchOverlay(
                                         onblur: move |_| {
                                             let value = end_input.read().clone();
                                             if let (Some(start), Some(date)) = (*starts_on.peek(), parse_manual_date_input(&value)) {
-                                                if date >= start + chrono::Duration::days(3) {
+                                                if date > start {
                                                     ends_on.set(Some(date));
                                                 } else {
                                                     end_input.set(manual_date_text(*ends_on.peek()));
@@ -798,8 +796,8 @@ pub(crate) fn CatalogSearchOverlay(
                     div { class: "cat-planner-selection",
                         Icon { name: "sparkles", size: 20, color: "var(--vl-accent)" }
                         div {
-                            strong { if nights >= 3 { "{nights}-night Okanagan trip" } else { "Choose at least 3 nights" } }
-                            span { "{location} · within {radius} km · {guests} {guest_word}" }
+                            strong { if nights >= 1 { "{nights}-night Okanagan trip" } else { "Choose your travel dates" } }
+                            span { if (1..3).contains(&nights) { "Priced at 3-night minimum · {location} · {guests} {guest_word}" } else { "{location} · within {radius} km · {guests} {guest_word}" } }
                         }
                     }
                     button { class: "cat-planner-apply", r#type: "button", disabled: !can_apply, onclick: move |_| {
@@ -827,7 +825,6 @@ pub(crate) fn CatalogSearchOverlay(
 fn catalog_day_is_disabled(
     day: NaiveDate,
     today: NaiveDate,
-    too_short: bool,
     unavailable: bool,
     availability_pending: bool,
     availability_blocked: bool,
@@ -835,7 +832,6 @@ fn catalog_day_is_disabled(
 ) -> bool {
     availability_blocked
         || day <= today
-        || too_short
         || unavailable
         || (availability_pending && !is_selected_edge)
 }
@@ -855,7 +851,7 @@ fn calendar_day_status_label(
         return "Same-day delivery is unavailable; choose tomorrow or later".to_string();
     }
     if too_short {
-        return "Minimum 3-night stay; choose a later return date".to_string();
+        return "Short stay; selectable and priced at the 3-night minimum".to_string();
     }
     if unavailable && !show_availability_counts {
         return "Unavailable for this RV".to_string();
@@ -904,7 +900,6 @@ pub(crate) fn CatalogSearchMonth(
                             let disabled = catalog_day_is_disabled(
                                 day,
                                 today,
-                                too_short,
                                 unavailable,
                                 availability_pending,
                                 availability_blocked,
@@ -970,12 +965,21 @@ mod catalog_search_tests {
     }
 
     #[test]
+    fn one_night_return_completes_the_catalog_range() {
+        let selected = day("2030-08-10");
+        let next_day = day("2030-08-11");
+        assert_eq!(
+            next_catalog_date_selection(next_day, Some(selected), None),
+            (Some(selected), Some(next_day))
+        );
+    }
+
+    #[test]
     fn availability_error_locks_even_a_previously_selected_edge() {
         let selected = day("2030-08-10");
         assert!(catalog_day_is_disabled(
             selected,
             day("2030-08-01"),
-            false,
             false,
             false,
             true,
@@ -984,7 +988,6 @@ mod catalog_search_tests {
         assert!(!catalog_day_is_disabled(
             selected,
             day("2030-08-01"),
-            false,
             false,
             true,
             false,
@@ -1005,7 +1008,7 @@ mod catalog_search_tests {
         );
         assert_eq!(
             calendar_day_status_label(day("2030-08-11"), today, true, true, true, Some(0)),
-            "Minimum 3-night stay; choose a later return date"
+            "Short stay; selectable and priced at the 3-night minimum"
         );
         assert_eq!(
             calendar_day_status_label(day("2030-08-13"), today, false, false, true, Some(1)),
@@ -1184,6 +1187,10 @@ mod catalog_search_tests {
 #[component]
 pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
     let image = rental_image(&rental);
+    let policy_summary = format!(
+        "Sleeps {} · short stays use 3-night minimum pricing · Delivery only",
+        rental.capacity
+    );
     rsx! {
         Link { class: "listing-card", to: Route::RvDetail { slug: rental.slug.clone() },
             div { class: "lc-image", style: "background-image: url('{image}');",
@@ -1191,7 +1198,7 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
             }
             div { class: "lc-body",
                 div { class: "lc-title-row", div { class: "lc-title", "{rental.name}" } }
-                div { class: "lc-meta", "{rental.summary}" }
+                div { class: "lc-meta", "{policy_summary}" }
                 div { class: "lc-price-row", span { class: "lc-price", "${rental.base_rate}" } span { class: "lc-per", " / {rental.price_unit}" } }
                 div { class: "lc-price-note", "Plus mandatory fees · separate refundable CA$1,000 damage deposit" }
             }

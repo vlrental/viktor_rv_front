@@ -69,7 +69,7 @@ fn attraction_cards() -> Vec<AttractionCard> {
             id: "family",
             img: IMG_FAMILY,
             category: "Family",
-            title: "Family-Friendly Attractions",
+            title: "Family-Friendly Fun",
             desc: "Kelowna fun for every generation — activities the whole crew will love.",
         },
         AttractionCard {
@@ -87,7 +87,7 @@ pub fn Attractions() -> Element {
     let cards = attraction_cards();
     rsx! {
         section { class: "at-hero",
-            div { class: "at-hero-eyebrow", "ATTRACTIONS" }
+            div { class: "at-hero-eyebrow", "EXPLORE" }
             h1 { class: "at-hero-title", "Explore the Okanagan" }
             p { class: "at-hero-sub",
                 "Local favourites for your trip — lakes, trails, views and vineyards, all within reach of your rental."

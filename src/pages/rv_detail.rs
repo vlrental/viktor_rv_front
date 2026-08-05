@@ -22,8 +22,8 @@ const IMG_HOST: Asset = asset!(
 
 #[component]
 pub fn RvDetail(slug: String) -> Element {
-    let confirmation_slug = slug.clone();
-    let confirmed_booking = use_signal(move || {
+    let mut confirmed_booking = use_signal(|| None::<api::CreatedBooking>);
+    use_effect(use_reactive((&slug,), move |(confirmation_slug,)| {
         let saved = api::load_sensitive_json::<api::CreatedBooking>("vl_post_payment_booking")
             .filter(|created| {
                 created.booking.rental_slug == confirmation_slug
@@ -34,8 +34,8 @@ pub fn RvDetail(slug: String) -> Element {
             api::remove_saved("vl_active_quote");
             api::remove_saved("vl_trip_draft");
         }
-        saved
-    });
+        confirmed_booking.set(saved);
+    }));
     let rentals_href = api::frontend_path("/#home-rentals");
     let missing_rv_href = rentals_href.clone();
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
@@ -49,25 +49,30 @@ pub fn RvDetail(slug: String) -> Element {
     let initial_end = catalog_search.ends_on.clone().unwrap_or_default();
     let starts_on = use_signal(|| initial_start);
     let ends_on = use_signal(|| initial_end);
-    let api_slug = slug.clone();
-    let details = use_resource(move || {
-        let value = api_slug.clone();
-        async move { api::rental(&value).await }
-    });
+    let details = use_resource(use_reactive((&slug,), move |(value,)| async move {
+        api::rental(&value).await
+    }));
     rsx! {
         div { class: "rvd-body",
             if let Some(result) = details.read().as_ref() {
                 match result {
                     Ok(value) => rsx! {
-                        div { class: "rvd-crumb", a { href: rentals_href, "RV Rentals" } Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" } b { "{value.rental.name}" } }
-                        if let Some(created) = confirmed_booking.read().as_ref() {
-                            section { class: "rvd-booking-confirmed", role: "status",
-                                div { class: "rvd-booking-confirmed-icon", Icon { name: "check", size: 22, color: "var(--vl-white)" } }
-                                div { span { "BOOKING CONFIRMED" } h2 { "Your {value.rental.name} is booked" } p { if created.payment_option == "all_in" { "Reservation {created.booking.booking_number}. {created.all_in_offer.as_ref().map(|offer| offer.currency.as_str()).unwrap_or(created.booking.currency.as_str())} ${created.all_in_offer.as_ref().map(|offer| offer.total_due_today.as_str()).unwrap_or(created.booking.total.as_str())} paid the trip and refundable deposit in one transaction." } else { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." } } small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } } }
-                                Link { class: "rvd-booking-confirmed-link", to: Route::Account {}, "View my booking" }
+                        Fragment {
+                            key: "{value.rental.rental_id}",
+                            div { class: "rvd-crumb", a { href: rentals_href, "RV Rentals" } Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" } b { "{value.rental.name}" } }
+                            if let Some(created) = confirmed_booking.read().as_ref() {
+                                section { class: "rvd-booking-confirmed", role: "status",
+                                    div { class: "rvd-booking-confirmed-icon", Icon { name: "check", size: 22, color: "var(--vl-white)" } }
+                                    div { span { "BOOKING CONFIRMED" } h2 { "Your {value.rental.name} is booked" } p { if created.payment_option == "all_in" { "Reservation {created.booking.booking_number}. {created.all_in_offer.as_ref().map(|offer| offer.currency.as_str()).unwrap_or(created.booking.currency.as_str())} ${created.all_in_offer.as_ref().map(|offer| offer.total_due_today.as_str()).unwrap_or(created.booking.total.as_str())} paid the trip and refundable deposit in one transaction." } else { "Reservation {created.booking.booking_number}. {created.booking.currency} ${created.booking.amount_due_now} was confirmed by the payment system." } } small { if created.notification_email_sent { "A confirmation email was sent. You can also follow the trip from your account." } else { "The booking is confirmed. Email delivery was not confirmed, so keep this reservation number and check your account." } } }
+                                    Link { class: "rvd-booking-confirmed-link", to: Route::Account {}, "View my booking" }
+                                }
+                            }
+                            DynamicRvDetail {
+                                value: value.clone(),
+                                starts_on,
+                                ends_on,
                             }
                         }
-                        DynamicRvDetail { value: value.clone(), starts_on, ends_on }
                     },
                     Err(_) => rsx! { h1 { class: "rvd-min-pill", "This RV could not be found or is no longer available." } a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" } },
                 }
@@ -114,7 +119,7 @@ fn DynamicRvDetail(
         div { class: "rvd-content",
             div { class: "rvd-left",
                 div { class: "rvd-overview",
-                    div { div { class: "rvd-overview-t", "Entire {rv_type_label(&rental.rv_type)} · hosted by Viktor" } div { class: "rvd-overview-s", "Sleeps {rental.capacity} · {length_label} ft · {rental.slide_outs} slide-outs · 3-night minimum" } }
+                    div { div { class: "rvd-overview-t", "Entire {rv_type_label(&rental.rv_type)} · hosted by Viktor" } div { class: "rvd-overview-s", "Sleeps {rental.capacity} · short stays use 3-night minimum pricing · Delivery only" } }
                     div { class: "rvd-avatar", style: "background-image: url('{IMG_HOST}');" }
                 }
                 div { class: "rvd-divider" }
@@ -331,8 +336,9 @@ fn DynamicBookingCard(
         .zip(selected_date(&ends_on))
         .map(|(start, end)| (end - start).num_days())
         .unwrap_or(0);
-    let base = rental.base_rate.parse::<f64>().unwrap_or_default() * nights.max(0) as f64;
-    let known = base + pricing::mandatory_costs(nights);
+    let billable_nights = if nights > 0 { nights.max(3) } else { 0 };
+    let base = rental.base_rate.parse::<f64>().unwrap_or_default() * billable_nights as f64;
+    let known = base + pricing::mandatory_costs(billable_nights);
     let slug = rental.slug.clone();
     let rating = review_summary
         .average_rating
@@ -341,11 +347,11 @@ fn DynamicBookingCard(
     let review_count = review_summary.review_count;
     rsx! {
         div { class:"rvd-booking", div { class:"rvd-price-row", div { class:"rvd-price", span { class:"rvd-price-v", "CA${rental.base_rate}" } span { class:"rvd-price-u", " / night" } } a { class:"rvd-price-r", href:"#guest-reviews", aria_label:"Read {review_count} guest reviews", Icon{name:"star",size:14,color:"var(--vl-accent)"} b { "{rating}" } span { "({review_count})" } } }
-            div { class:"rvd-min-pill", Icon{name:"info",size:14,color:"var(--vl-muted)"} span { "3-night minimum · transparent pricing before confirmation" } }
-            button { class:"rvd-summary-dates", r#type:"button", onclick:move |_|{booking_step.set(1);booking_open.set(true)}, span { "DATES" } strong { if nights>=3 { "{starts_on} → {ends_on}" } else { "Choose dates" } } Icon{name:"chevron-right",size:15,color:"var(--vl-forest)"} }
-            div { class:"rvd-price-breakdown", div { class:"rvd-price-breakdown-head", strong { "What makes up your trip price" } span { "Exact delivery, add-ons and taxes are calculated in booking" } } div { span { "Base rental" } b { if nights>=3 { "{pricing::money(base)}" } else { "CA${rental.base_rate} / night" } } } div { span { "RV Preparation Fee" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } } div { span { "Stationary Plus Protection" } b { "CA$50.00 / night" } } if nights>=3 { div { class:"rvd-known-price", span { "Known trip costs before delivery, add-ons & tax" } b { "{pricing::money(known)}" } } } }
+            div { class:"rvd-min-pill", Icon{name:"info",size:14,color:"var(--vl-muted)"} span { "1–2 night stays welcome · 3-night minimum pricing · Delivery only" } }
+            button { class:"rvd-summary-dates", r#type:"button", onclick:move |_|{booking_step.set(1);booking_open.set(true)}, span { "DATES" } strong { if nights>=1 { "{starts_on} → {ends_on}" } else { "Choose dates" } } Icon{name:"chevron-right",size:15,color:"var(--vl-forest)"} }
+            div { class:"rvd-price-breakdown", div { class:"rvd-price-breakdown-head", strong { "What makes up your trip price" } span { "Exact delivery, add-ons and taxes are calculated in booking" } } div { span { if nights > 0 && nights < 3 { "Base rental · 3-night minimum (your stay: {nights})" } else { "Base rental" } } b { if nights>=1 { "{pricing::money(base)}" } else { "CA${rental.base_rate} / night" } } } div { span { "RV Preparation Fee" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } } div { span { "Stationary Plus Protection" } b { if nights>=1 { "{pricing::money(pricing::stationary_plus_amount(billable_nights))}" } else { "CA$150 for 3 nights, then CA$30/night" } } } if nights>=1 { div { class:"rvd-known-price", span { "Known trip costs before delivery, add-ons & tax" } b { "{pricing::money(known)}" } } } }
             div { class:"rvd-damage-deposit", div { Icon{name:"shield-check",size:17,color:"var(--vl-forest)"} strong { "Refundable CA$1,000 damage deposit" } } p { "Separate from the trip price. Due 48 hours before delivery." } }
-            button { class:"rvd-reserve", r#type:"button", onclick:move |_|{booking_step.set(if nights>=3{3}else{1});booking_open.set(true)}, "Open booking" }
+            button { class:"rvd-reserve", r#type:"button", onclick:move |_|{booking_step.set(if nights>=1{3}else{1});booking_open.set(true)}, "Open booking" }
         }
         if booking_open() { UnifiedBookingOverlay { location:planner_location, radius:planner_radius, starts_on:planner_starts_on, ends_on:planner_ends_on, guests:planner_guests, initial_rental_slug:Some(slug), initial_step:booking_step(), resume_after_auth:None, on_search_change:move |_|{starts_on.set(planner_starts_on().map(|d|d.to_string()).unwrap_or_default());ends_on.set(planner_ends_on().map(|d|d.to_string()).unwrap_or_default())}, on_close:move |_|booking_open.set(false) } }
     }
@@ -548,7 +554,7 @@ fn Overview() -> Element {
             div {
                 div { class: "rvd-overview-t", "Entire travel trailer · hosted by Viktor" }
                 div { class: "rvd-overview-s",
-                    "Sleeps 10 · 32 ft · Family bunkhouse · 3-night minimum"
+                    "Sleeps 10 · short stays use 3-night minimum pricing · Delivery only"
                 }
             }
             div { class: "rvd-avatar", style: "background-image: url('{IMG_HOST}');" }
@@ -629,8 +635,8 @@ fn GoodToKnow() -> Element {
                 div { class: "rvd-gtk-col",
                     GtkCard {
                         icon: "truck",
-                        title: "Delivery up to 150 km",
-                        desc: "CA$150 through 50 km, then CA$2 per additional kilometre, two way — calculated automatically.",
+                        title: "Delivery only · up to 150 km",
+                        desc: "CA$150 through 40 km, then CA$2 per additional kilometre, two way — calculated automatically.",
                     }
                     GtkCard {
                         icon: "shield-check",
@@ -720,9 +726,14 @@ fn BookingCard(
         .zip(selected_date(&ends_on))
         .map(|(start, end)| (end - start).num_days())
         .unwrap_or(0);
-    let rental_total = price_amount(listing.price) * selected_nights.max(0) as f64;
-    let protection_total = pricing::STATIONARY_PLUS_NIGHTLY_RATE * selected_nights.max(0) as f64;
-    let known_trip_cost = rental_total + pricing::mandatory_costs(selected_nights);
+    let billable_nights = if selected_nights > 0 {
+        selected_nights.max(3)
+    } else {
+        0
+    };
+    let rental_total = price_amount(listing.price) * billable_nights as f64;
+    let protection_total = pricing::stationary_plus_amount(billable_nights);
+    let known_trip_cost = rental_total + pricing::mandatory_costs(billable_nights);
     let resumed_booking_value = resumed_booking.read().clone();
     let overlay_rental_slug = resumed_booking_value
         .as_ref()
@@ -744,12 +755,12 @@ fn BookingCard(
             }
             div { class: "rvd-min-pill",
                 Icon { name: "info", size: 14, color: "var(--vl-muted)" }
-                span { "3-night minimum · transparent pricing before confirmation" }
+                span { "1–2 night stays welcome · 3-night minimum pricing · Delivery only" }
             }
             div { class: "rvd-unified-summary",
                 button { class: "rvd-summary-dates", r#type: "button", aria_label: "Choose or change booking dates", onclick: move |_| { booking_initial_step.set(1); booking_open.set(true); },
                     span { "DATES" }
-                    strong { if selected_nights >= 3 { "{starts_on} → {ends_on}" } else { "Choose dates" } }
+                    strong { if selected_nights >= 1 { "{starts_on} → {ends_on}" } else { "Choose dates" } }
                     Icon { name: "chevron-right", size: 15, color: "var(--vl-forest)" }
                 }
                 div { span { "RV" } strong { "{listing.title}" } }
@@ -759,13 +770,13 @@ fn BookingCard(
                     strong { "What makes up your trip price" }
                     span { "Exact delivery and taxes are calculated in booking" }
                 }
-                div { span { if selected_nights >= 3 { "Base rental · {selected_nights} nights" } else { "Base rental" } } b { if selected_nights >= 3 { "{pricing::money(rental_total)}" } else { "{listing.price} / night" } } }
+                div { span { if selected_nights > 0 && selected_nights < 3 { "Base rental · 3-night minimum (your stay: {selected_nights})" } else if selected_nights >= 3 { "Base rental · {selected_nights} nights" } else { "Base rental" } } b { if selected_nights >= 1 { "{pricing::money(rental_total)}" } else { "{listing.price} / night" } } }
                 div { span { "RV Preparation Fee · one time" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } }
-                div { span { if selected_nights >= 3 { "Stationary Plus Protection · {selected_nights} nights" } else { "Stationary Plus Protection" } } b { if selected_nights >= 3 { "{pricing::money(protection_total)}" } else { "CA$50.00 / night" } } }
+                div { span { if selected_nights >= 1 { "Stationary Plus Protection · {pricing::stationary_plus_detail(billable_nights)}" } else { "Stationary Plus Protection" } } b { if selected_nights >= 1 { "{pricing::money(protection_total)}" } else { "CA$150 for 3 nights, then CA$30/night" } } }
                 div { span { "Delivery & setup" } b { "From CA$150.00" } }
                 div { span { "Optional extras" } b { "Your choice" } }
                 div { span { "GST + PST" } b { "Calculated" } }
-                if selected_nights >= 3 {
+                if selected_nights >= 1 {
                     div { class: "rvd-known-price", span { "Known trip costs before delivery, extras & tax" } b { "{pricing::money(known_trip_cost)}" } }
                 }
             }
@@ -781,10 +792,10 @@ fn BookingCard(
                 Icon { name: "truck", size: 15, color: "var(--vl-forest)" }
                 span { "Dates, delivery, extras and confirmation now use one booking window." }
             }
-            button { class: "rvd-reserve", onclick: move |_| { booking_initial_step.set(if selected_nights >= 3 { 3 } else { 1 }); booking_open.set(true); },
+            button { class: "rvd-reserve", onclick: move |_| { booking_initial_step.set(if selected_nights >= 1 { 3 } else { 1 }); booking_open.set(true); },
                 "Open booking"
             }
-            div { class: "rvd-note", "Test booking · no card charged · 3-night minimum" }
+            div { class: "rvd-note", "Test booking · no card charged · short stays priced at 3-night minimum · Delivery only" }
             div { class: "rvd-contact",
                 Icon { name: "phone", size: 15, color: "var(--vl-forest)" }
                 span { "Questions? {PHONE}" }
@@ -942,9 +953,8 @@ fn date_is_selectable(
         if day <= start {
             return minimum_stay_can_start(day, minimum_nights, unavailable);
         }
-
-        return (day - start).num_days() >= minimum_nights
-            && stay_is_available(start, day, unavailable);
+        let blocked_until = day.max(start + Duration::days(minimum_nights));
+        return stay_is_available(start, blocked_until, unavailable);
     }
 
     minimum_stay_can_start(day, minimum_nights, unavailable)
@@ -954,6 +964,7 @@ fn next_date_selection(
     day: NaiveDate,
     selected_start: Option<NaiveDate>,
     selected_end: Option<NaiveDate>,
+    _minimum_nights: i64,
 ) -> (Option<NaiveDate>, Option<NaiveDate>) {
     if selected_start == Some(day) && selected_end.is_none() {
         return (None, None);
@@ -1020,8 +1031,12 @@ fn InlineAvailabilityCalendar(
     let selection_verified = availability_loaded
         && match (selected_start, selected_end) {
             (Some(start), Some(end)) => {
-                (end - start).num_days() >= minimum_nights
-                    && stay_is_available(start, end, &unavailable)
+                (end - start).num_days() >= 1
+                    && stay_is_available(
+                        start,
+                        end.max(start + Duration::days(minimum_nights)),
+                        &unavailable,
+                    )
             }
             (Some(start), None) => minimum_stay_can_start(start, minimum_nights, &unavailable),
             (None, None) => true,
@@ -1076,8 +1091,12 @@ fn InlineAvailabilityCalendar(
         if start < availability_start || end > availability_end {
             return;
         }
-        if (end - start).num_days() < current.minimum_nights
-            || !stay_is_available(start, end, &current.unavailable)
+        if (end - start).num_days() < 1
+            || !stay_is_available(
+                start,
+                end.max(start + Duration::days(current.minimum_nights)),
+                &current.unavailable,
+            )
         {
             starts_on.set(String::new());
             ends_on.set(String::new());
@@ -1122,7 +1141,7 @@ fn InlineAvailabilityCalendar(
                         on_select: move |day| {
                             let current_start = selected_date(&starts_on);
                             let current_end = selected_date(&ends_on);
-                            let (next_start, next_end) = next_date_selection(day, current_start, current_end);
+                            let (next_start, next_end) = next_date_selection(day, current_start, current_end, minimum_nights);
                             starts_on.set(next_start.map(|value| value.to_string()).unwrap_or_default());
                             ends_on.set(next_end.map(|value| value.to_string()).unwrap_or_default());
                             planner_starts_on.set(next_start);
@@ -1140,9 +1159,9 @@ fn InlineAvailabilityCalendar(
                     span { class: "is-warning", "{selection_notice}" }
                 } else if let Some(start) = selected_start {
                     if let Some(end) = selected_end {
-                        span { "{start} → {end} · {selected_nights} nights" }
+                        span { "{start} → {end} · {pricing::night_count_label(selected_nights)}" }
                     } else {
-                        span { "Delivery {start} selected · choose a return date ({minimum_nights}+ nights)" }
+                        span { "Delivery {start} selected · choose a return date (1+ nights; 3-night minimum pricing)" }
                     }
                 } else {
                     span { "Select an available delivery date to begin" }
@@ -1283,7 +1302,7 @@ mod availability_tests {
     fn clicking_selected_delivery_clears_selection() {
         let selected = day(2030, 8, 10);
         assert_eq!(
-            next_date_selection(selected, Some(selected), None),
+            next_date_selection(selected, Some(selected), None, 3),
             (None, None)
         );
     }
@@ -1293,9 +1312,32 @@ mod availability_tests {
         let selected = day(2030, 8, 10);
         let earlier = day(2030, 8, 8);
         assert_eq!(
-            next_date_selection(earlier, Some(selected), None),
+            next_date_selection(earlier, Some(selected), None, 3),
             (Some(earlier), None)
         );
+    }
+
+    #[test]
+    fn one_night_return_completes_inline_selection_and_protects_minimum() {
+        let selected = day(2030, 8, 10);
+        let next_day = day(2030, 8, 11);
+        assert!(date_is_selectable(next_day, Some(selected), None, 3, &[]));
+        assert_eq!(
+            next_date_selection(next_day, Some(selected), None, 3),
+            (Some(selected), Some(next_day))
+        );
+
+        let blocked_during_minimum = vec![(
+            local_moment(day(2030, 8, 12), 14).unwrap(),
+            local_moment(day(2030, 8, 13), 11).unwrap(),
+        )];
+        assert!(!date_is_selectable(
+            next_day,
+            Some(selected),
+            None,
+            3,
+            &blocked_during_minimum,
+        ));
     }
 
     #[test]
@@ -1371,6 +1413,7 @@ fn BookingCalendarOverlay(
     let mut suggestions_error = use_signal(String::new);
     let mut suggestions_open = use_signal(|| false);
     let mut suggestion_version = use_signal(|| 0_u32);
+    let mut address_request_version = use_signal(|| 0_u32);
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let initial_month = month_start(today);
     let mut visible_month = use_signal(|| {
@@ -1462,6 +1505,8 @@ fn BookingCalendarOverlay(
         .cloned();
     let calculate_address = move |_| {
         let address = delivery_address.read().trim().to_string();
+        let request_version = address_request_version().wrapping_add(1);
+        address_request_version.set(request_version);
         async move {
             suggestions_open.set(false);
             if address.chars().count() < 5 {
@@ -1472,7 +1517,13 @@ fn BookingCalendarOverlay(
             }
             address_busy.set(true);
             address_error.set(String::new());
-            match api::delivery_estimate(slug, &address).await {
+            let result = api::delivery_estimate(slug, &address).await;
+            if *address_request_version.peek() != request_version
+                || delivery_address.peek().trim() != address
+            {
+                return;
+            }
+            match result {
                 Ok(result) if result.within_range => {
                     delivery_address.set(result.resolved_address.clone());
                     delivery_km.set(Some(result.one_way_km.clone()));
@@ -1513,7 +1564,7 @@ fn BookingCalendarOverlay(
                 div { class: "rvd-calendar-overlay-head",
                     div {
                         h2 { class: "rvd-avail-t", "Choose your dates" }
-                        p { class: "rvd-avail-s", "Delivery/setup at 2:00 PM · return at 11:00 AM · {minimum_nights}-night minimum" }
+                        p { class: "rvd-avail-s", "Delivery only · setup at 2:00 PM · return at 11:00 AM · 1+ nights · {minimum_nights}-night minimum pricing" }
                     }
                     button {
                         class: "rvd-calendar-close",
@@ -1557,7 +1608,7 @@ fn BookingCalendarOverlay(
                         }
                     }
                 }
-                if nights >= minimum_nights {
+                if nights >= 1 {
                     div { class: "rvd-trip-options",
                         div { class: "rvd-trip-option-row",
                             div {
@@ -1571,7 +1622,7 @@ fn BookingCalendarOverlay(
                         }
                         div { class: "rvd-address-card",
                                 div { class: "rvd-trip-option-title", Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" } "Delivery address & live distance" }
-                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 50 km, then CA$2 per additional kilometre, two way · maximum 150 km." }
+                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 40 km, then CA$2 per additional kilometre, two way · maximum 150 km." }
                                 div { class: "rvd-address-search",
                                     div { class: "rvd-address-combobox",
                                         div { class: "rvd-address-input-wrap",
@@ -1593,6 +1644,8 @@ fn BookingCalendarOverlay(
                                                 },
                                                 oninput: move |event| {
                                                     let value = event.value();
+                                                    address_request_version.set(address_request_version().wrapping_add(1));
+                                                    address_busy.set(false);
                                                     delivery_address.set(value.clone());
                                                     delivery_km.set(None);
                                                     address_result.set(None);
@@ -1638,6 +1691,8 @@ fn BookingCalendarOverlay(
                                                             r#type: "button",
                                                             role: "option",
                                                             onclick: move |_| {
+                                                                address_request_version.set(address_request_version().wrapping_add(1));
+                                                                address_busy.set(false);
                                                                 delivery_address.set(suggestion.display_name.clone());
                                                                 delivery_km.set(None);
                                                                 address_result.set(None);
@@ -1724,7 +1779,7 @@ fn BookingCalendarOverlay(
                     }
                 }
                 div { class: "rvd-calendar-overlay-foot",
-                    if nights >= minimum_nights {
+                    if nights >= 1 {
                         div { class: "rvd-calendar-trip",
                             div { class: "rvd-calendar-trip-icon",
                                 Icon { name: "sparkles", size: 22, color: "var(--vl-white)" }
@@ -1744,7 +1799,7 @@ fn BookingCalendarOverlay(
                             if let Some(quote) = quote_response.as_ref() {
                                 div { class: "rvd-calendar-total", "{pricing::money(pricing::quote_trip_price(quote))}" }
                                 div { class: "rvd-calendar-total-note", "Preparation, protection, selected extras, delivery, GST and PST included" }
-                                div { class: "rvd-calendar-deposit-note", "Refundable CA$1,000 damage deposit · separate · charged 48 hours before delivery" }
+                                div { class: "rvd-calendar-deposit-note", "Refundable CA$1,000 damage deposit · Interac e-Transfer · due 48 hours before delivery" }
                             } else {
                                 div { class: "rvd-calendar-total", "Address required" }
                                 div { class: "rvd-calendar-total-note", "Calculate the delivery address to receive the exact trip price" }
@@ -1853,7 +1908,7 @@ fn CalendarMonth(
                                 onclick: move |_| {
                                     let current_start = selected_date(&starts_on);
                                     let current_end = selected_date(&ends_on);
-                                    let (next_start, next_end) = next_date_selection(day, current_start, current_end);
+                                    let (next_start, next_end) = next_date_selection(day, current_start, current_end, minimum_nights);
                                     match next_start {
                                         Some(value) => starts_on.set(value.to_string()),
                                         None => starts_on.set(String::new()),

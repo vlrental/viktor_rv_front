@@ -56,22 +56,22 @@ pub fn Contact() -> Element {
                 div { class: "ct-row",
                     label { class: "ct-field",
                         span { class: "ct-label", "Full name" }
-                        input { class: "ct-input", r#type: "text", placeholder: "Your name", value: "{full_name}", oninput: move |e| full_name.set(e.value()) }
+                        input { class: "ct-input", r#type: "text", placeholder: "Your name", value: "{full_name}", disabled: *busy.read(), oninput: move |e| full_name.set(e.value()) }
                     }
                     label { class: "ct-field",
                         span { class: "ct-label", "Email" }
-                        input { class: "ct-input", r#type: "email", placeholder: "you@email.com", value: "{email}", oninput: move |e| email.set(e.value()) }
+                        input { class: "ct-input", r#type: "email", placeholder: "you@email.com", value: "{email}", disabled: *busy.read(), oninput: move |e| email.set(e.value()) }
                     }
                 }
                 div { class: "ct-row",
                     label { class: "ct-field",
                         span { class: "ct-label", "Phone" }
-                        input { class: "ct-input", r#type: "tel", placeholder: "+1 (250) 000 0000", value: "{phone}", oninput: move |e| phone.set(e.value()) }
+                        input { class: "ct-input", r#type: "tel", placeholder: "+1 (250) 000 0000", value: "{phone}", disabled: *busy.read(), oninput: move |e| phone.set(e.value()) }
                     }
                     label { class: "ct-field",
                         span { class: "ct-label", "Interested in" }
                         div { class: "ct-select-wrap",
-                            select { class: "ct-select", value: "{interest}", onchange: move |e| interest.set(e.value()),
+                            select { class: "ct-select", value: "{interest}", disabled: *busy.read(), onchange: move |e| interest.set(e.value()),
                                 option { value: "rv", "RV Rental" }
                                 option { value: "cooler", "Cooler Trailer" }
                                 option { value: "other", "Something else" }
@@ -88,6 +88,7 @@ pub fn Contact() -> Element {
                         class: "ct-textarea",
                         placeholder: "Tell us your dates and what you're looking for…",
                         value: "{message}",
+                        disabled: *busy.read(),
                         oninput: move |e| message.set(e.value()),
                     }
                 }
@@ -124,20 +125,6 @@ pub fn Contact() -> Element {
                     div { class: "ct-info-c",
                         span { class: "ct-info-l", "Response time" }
                         span { class: "ct-info-v", "Usually within a few hours" }
-                    }
-                }
-                div { class: "ct-info-card",
-                    div { class: "ct-info-c ct-info-grow",
-                        span { class: "ct-info-l", "Follow us" }
-                        span { class: "ct-info-v", "@lairichviktor" }
-                    }
-                    div { class: "ct-social-btns",
-                        a { class: "ct-social-btn", href: "https://www.facebook.com/people/VL-Pro-Trailer-Care/61576201770508/", target: "_blank", rel: "noopener noreferrer", aria_label: "VL Rental on Facebook",
-                            Icon { name: "facebook", size: 18, color: "var(--vl-white)" }
-                        }
-                        a { class: "ct-social-btn", href: "https://www.instagram.com/lairichviktor/", target: "_blank", rel: "noopener noreferrer", aria_label: "VL Rental on Instagram",
-                            Icon { name: "instagram", size: 18, color: "var(--vl-white)" }
-                        }
                     }
                 }
             }

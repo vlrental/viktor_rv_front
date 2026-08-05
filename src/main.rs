@@ -6,7 +6,7 @@ mod pricing;
 mod push_notifications;
 mod timezone;
 
-use components::{Footer, Header};
+use components::{saved_cookie_consent, CookieConsentBanner, CookieConsentContext, Footer, Header};
 use pages::*;
 
 use dioxus::prelude::*;
@@ -99,6 +99,8 @@ pub enum Route {
         RvSales {},
         #[route("/terms")]
         Terms {},
+        #[route("/privacy")]
+        Privacy {},
         #[route("/login")]
         Login {},
         #[route("/register")]
@@ -201,8 +203,8 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "/about",
         ),
         Route::Attractions {} => SeoMetadata::indexed(
-            "Okanagan Attractions for Your RV Trip | VL Rental",
-            "Plan your Okanagan RV stay with ideas for family attractions, outdoor activities, and places to explore near Kelowna.",
+            "Explore the Okanagan on Your RV Trip | VL Rental",
+            "Plan your Okanagan RV stay with ideas for family activities, outdoor adventures, and places to explore near Kelowna.",
             "/attractions",
         ),
         Route::Restaurants {} => SeoMetadata::indexed(
@@ -229,6 +231,11 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "Rental Terms | VL Rental",
             "Read the terms and conditions for VL Rental RV bookings, delivery, payments, cancellations, and customer responsibilities.",
             "/terms",
+        ),
+        Route::Privacy {} => SeoMetadata::indexed(
+            "Privacy & Cookie Policy | VL Rental",
+            "Learn how VL Rental handles personal information, browser storage, cookies, service providers, and privacy choices in Canada.",
+            "/privacy",
         ),
         Route::Checkout {} => SeoMetadata::private(
             "Checkout | VL Rental",
@@ -296,8 +303,10 @@ fn App() -> Element {
 fn SiteShell() -> Element {
     let booking_launch_request = use_signal(|| false);
     let auth_session = use_signal(api::current_user);
+    let cookie_consent = use_signal(saved_cookie_consent);
     use_context_provider(|| BookingLaunchRequest(booking_launch_request));
     use_context_provider(|| AuthSession(auth_session));
+    use_context_provider(|| CookieConsentContext(cookie_consent));
 
     rsx! {
         SeoHead {}
@@ -306,6 +315,7 @@ fn SiteShell() -> Element {
             Header {}
             main { class: "site-main", Outlet::<Route> {} }
             Footer {}
+            CookieConsentBanner {}
         }
     }
 }
@@ -505,6 +515,7 @@ mod seo_tests {
             Route::Delivery {},
             Route::RvSales {},
             Route::Terms {},
+            Route::Privacy {},
             Route::Login {},
             Route::Register {},
             Route::AuthCallback {},

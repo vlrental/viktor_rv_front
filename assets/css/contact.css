@@ -137,19 +137,8 @@
   background: var(--vl-forest);
 }
 .ct-info-c { display: flex; flex-direction: column; gap: 3px; }
-.ct-info-c.ct-info-grow { flex: 1 1 0; min-width: 0; }
 .ct-info-l { font-size: 13px; color: var(--vl-muted); }
 .ct-info-v { font-size: 16px; font-weight: 600; color: var(--vl-ink); }
-.ct-social-btns { display: flex; gap: 10px; }
-.ct-social-btn {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 11px;
-  background: var(--vl-forest);
-}
 
 /* --- Mobile (по фрейму Kzp7R) --- */
 @media (max-width: 860px) {

@@ -8,6 +8,7 @@ pub fn ReviewForm(
     rental_name: String,
     on_published: EventHandler<api::RentalReview>,
     #[props(default)] on_cancel: Option<EventHandler<()>>,
+    #[props(default)] on_busy_change: Option<EventHandler<bool>>,
 ) -> Element {
     let mut rating = use_signal(|| 5_i32);
     let mut title = use_signal(String::new);
@@ -34,7 +35,7 @@ pub fn ReviewForm(
                 if let Some(cancel) = on_cancel {
                     button { r#type: "button", disabled: *busy.read(), onclick: move |_| cancel.call(()), "Cancel" }
                 }
-                button { class: "btn-forest", r#type: "button", disabled: *busy.read(), onclick: move |_| { let booking_id = booking_id.clone(); let title_value = title.read().clone(); let body_value = body.read().clone(); async move { if !(10..=2000).contains(&body_value.trim().chars().count()) { error.set("Write between 10 and 2000 characters about your experience.".into()); return; } busy.set(true); error.set(String::new()); match api::create_rental_review(&booking_id, *rating.read(), &title_value, &body_value).await { Ok(review) => on_published.call(review), Err(api_error) => error.set(api_error.message) } busy.set(false); } },
+                button { class: "btn-forest", r#type: "button", disabled: *busy.read(), onclick: move |_| { let booking_id = booking_id.clone(); let title_value = title.read().clone(); let body_value = body.read().clone(); async move { if !(10..=2000).contains(&body_value.trim().chars().count()) { error.set("Write between 10 and 2000 characters about your experience.".into()); return; } busy.set(true); if let Some(handler) = on_busy_change { handler.call(true); } error.set(String::new()); let result = api::create_rental_review(&booking_id, *rating.read(), &title_value, &body_value).await; busy.set(false); if let Some(handler) = on_busy_change { handler.call(false); } match result { Ok(review) => on_published.call(review), Err(api_error) => error.set(api_error.message) } } },
                     if *busy.read() { "Publishing…" } else { "Publish review" }
                 }
             }
