@@ -9,12 +9,10 @@ use crate::{
 
 const LOGO: Asset = asset!(
     "/assets/img/logo.png",
-    AssetOptions::image()
-        .with_size(ImageSize::Manual {
-            width: 120,
-            height: 120,
-        })
-        .with_preload(true)
+    AssetOptions::image().with_size(ImageSize::Manual {
+        width: 120,
+        height: 120,
+    })
 );
 
 #[component]

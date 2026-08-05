@@ -76,6 +76,51 @@ pub fn auth_completion_url(path: &str) -> String {
     auth_completion_url_for_base(&frontend_base_url(), path)
 }
 
+/// Return the router path that is actually visible in the browser.  On
+/// GitHub Pages `Route::to_string()` can be evaluated while the router is
+/// mounted below the repository prefix and collapse an RV detail route to
+/// `/`.  OAuth must preserve the real path so the booking continuation is
+/// consumed by the same RV overlay after the one-time code exchange.
+pub fn current_auth_return_path() -> Option<String> {
+    let window = web_sys::window()?;
+    let location = window.location();
+    Some(auth_return_path_for_location(
+        &frontend_base_url(),
+        &location.origin().ok()?,
+        &location.pathname().ok()?,
+        &location.search().unwrap_or_default(),
+        &location.hash().unwrap_or_default(),
+    ))
+}
+
+fn auth_return_path_for_location(
+    base_url: &str,
+    origin: &str,
+    pathname: &str,
+    search: &str,
+    hash: &str,
+) -> String {
+    let base_path = base_url
+        .strip_prefix(origin)
+        .unwrap_or_default()
+        .split(['?', '#'])
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches('/');
+    let route = if base_path.is_empty() {
+        pathname
+    } else if pathname == base_path {
+        "/"
+    } else {
+        pathname
+            .strip_prefix(base_path)
+            .filter(|value| value.starts_with('/'))
+            .unwrap_or(pathname)
+    };
+    let route = normalized_frontend_path(route);
+    format!("{route}{search}{hash}")
+}
+
 fn frontend_path_for_base(base_url: &str, path: &str) -> String {
     format!(
         "{}{}",
@@ -4526,6 +4571,44 @@ mod delivery_draft_tests {
         assert_eq!(
             auth_completion_url_for_base(base, "/account"),
             "https://gaponovalexey.github.io/viktor_rv_front/account?vl_auth_complete=1"
+        );
+    }
+
+    #[test]
+    fn oauth_return_uses_the_real_route_below_the_github_pages_prefix() {
+        assert_eq!(
+            auth_return_path_for_location(
+                "https://gaponovalexey.github.io/viktor_rv_front",
+                "https://gaponovalexey.github.io",
+                "/viktor_rv_front/rv/2015-keystone-bullet",
+                "",
+                "",
+            ),
+            "/rv/2015-keystone-bullet"
+        );
+        assert_eq!(
+            auth_return_path_for_location(
+                "https://gaponovalexey.github.io/viktor_rv_front",
+                "https://gaponovalexey.github.io",
+                "/viktor_rv_front/",
+                "?guests=4",
+                "#home-rentals",
+            ),
+            "/?guests=4#home-rentals"
+        );
+    }
+
+    #[test]
+    fn oauth_return_keeps_custom_domain_routes_unchanged() {
+        assert_eq!(
+            auth_return_path_for_location(
+                "https://vlrental.ca",
+                "https://vlrental.ca",
+                "/rv/jayco26",
+                "",
+                "",
+            ),
+            "/rv/jayco26"
         );
     }
 

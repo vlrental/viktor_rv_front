@@ -130,6 +130,20 @@ fn booking_overlay_close_blocked(
     closing || booking_busy || auth_busy || all_in_busy || edit_booking_busy
 }
 
+fn booking_creation_recovery_message(error: &api::ApiError) -> Option<&'static str> {
+    if error.code == "service_unavailable" {
+        Some(
+            "Secure payment could not start. Your dates and selections are still here; the exact price is refreshing so you can try again.",
+        )
+    } else if error.is_conflict() {
+        Some(
+            "Availability or the saved price changed. Your selections are still here; review the refreshed total and try again.",
+        )
+    } else {
+        None
+    }
+}
+
 fn payment_overlay_close_blocked(
     all_in_busy: bool,
     edit_booking_busy: bool,
@@ -1346,7 +1360,8 @@ pub(crate) fn UnifiedBookingOverlay(
     let navigator = use_navigator();
     let google_href = api::google_login_url();
     let facebook_href = api::FACEBOOK_AUTH_ENABLED.then(api::facebook_login_url);
-    let google_return = use_route::<Route>().to_string();
+    let route = use_route::<Route>();
+    let google_return = api::current_auth_return_path().unwrap_or_else(|| route.to_string());
     let facebook_return = google_return.clone();
 
     use_effect(move || {
@@ -2650,7 +2665,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                     if payment_availability == api::PaymentAvailability::Loading { p { class: "ub-muted", role: "status", "Checking whether this environment uses Stripe test payments…" } }
                                     if payment_availability == api::PaymentAvailability::Blocked { p { class: "ub-error", role: "alert", if payment_config_error.read().is_empty() { "Checkout is blocked because the returned Stripe mode, key, or account is not the approved test configuration." } else { "Payment configuration could not be verified. Retry before creating a reservation." } } button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); }, "Retry payment configuration" } }
                                     if !booking_error.read().is_empty() { p { class: "ub-error", role: "alert", "{booking_error}" } }
-                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); let rental_slug = selected_slug.read().clone(); let rental_name = selected_name_for_booking.clone(); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(mut created) => { fill_booking_rental(&mut created.booking, rental_slug, rental_name); let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); payment_overlay_open.set(true); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_sensitive_json("vl_last_booking", &created); let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &created); let _ = api::save_sensitive_json(SAVED_DEPOSIT_INSTRUCTIONS, &created); deposit_overlay_booking.set(Some(created)); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
+                                    button { class: "ub-primary ub-confirm", r#type: "button", disabled: *booking_busy.read() || *quote_busy.read() || quote.read().is_none() || !booking_can_submit, onclick: move |_| { let active_quote = quote.read().clone(); let values = (first_name.read().clone(), last_name.read().clone(), booking_email.read().clone(), phone.read().clone(), notes.read().clone(), *accepted.read()); let draft = make_draft(&selected_slug.read(), *starts_on.read(), *ends_on.read(), *guests.read(), &delivery_address.read(), delivery_km.read().clone(), addon_keys.read().clone(), false, false); let rental_slug = selected_slug.read().clone(); let rental_name = selected_name_for_booking.clone(); async move { if !booking_can_submit { booking_error.set("Payment configuration must be verified before a booking can be created.".into()); return; } else if !values.5 { booking_error.set("Please accept the rental terms.".into()); return; } else if values.0.trim().len() < 2 || values.1.trim().len() < 2 || !values.2.contains('@') || values.3.trim().len() < 7 { booking_error.set("Enter your full name, email, and phone number.".into()); return; } let Some(active_quote) = active_quote else { booking_error.set("Wait for the price calculation to finish.".into()); return; }; booking_busy.set(true); booking_error.set(String::new()); let booking_notes = format!("{}\nFestival/event: no\nTowing after delivery: no\nDelivery only: yes", values.4.trim()); match api::create_booking(&active_quote.quote.quote_id, &values.0, &values.1, &values.2, &values.3, &booking_notes).await { Ok(mut created) => { fill_booking_rental(&mut created.booking, rental_slug, rental_name); let _ = api::save_json("vl_trip_draft", &draft); let _ = api::save_json("vl_active_quote", &active_quote); if created.client_secret.is_some() && !created.access_token.is_empty() { let _ = api::save_sensitive_json(SAVED_PENDING_PAYMENT, &created); payment_attempt_nonce.set(payment_attempt_nonce().wrapping_add(1)); payment_overlay_open.set(true); payment_phase.set("idle".into()); pending_payment.set(Some(created)); } else if created.booking.status == "confirmed" || created.booking.payment_status == "test_paid" { let _ = api::save_sensitive_json("vl_last_booking", &created); let _ = api::save_sensitive_json(SAVED_POST_PAYMENT_BOOKING, &created); let _ = api::save_sensitive_json(SAVED_DEPOSIT_INSTRUCTIONS, &created); deposit_overlay_booking.set(Some(created)); } else { booking_error.set("The booking was reserved, but Stripe Checkout was not returned. Please contact support before trying again.".into()); } }, Err(error) if booking_creation_recovery_message(&error).is_some() => { let message = booking_creation_recovery_message(&error).unwrap_or("The saved booking price changed. Review the refreshed total and try again."); api::remove_saved("vl_active_quote"); quote.set(None); let next_quote = quote_refresh_nonce().wrapping_add(1); quote_refresh_nonce.set(next_quote); booking_error.set(message.into()); }, Err(error) => booking_error.set(error.message) } booking_busy.set(false); } }, if *booking_busy.read() { "Creating reservation…" } else if payment_availability == api::PaymentAvailability::TestReady { "Continue to secure test payment" } else { "Confirm test booking" } }
                                 } }
                             }
                         }
@@ -3256,6 +3271,33 @@ mod saved_address_tests {
         assert!(!booking_overlay_close_blocked(
             false, false, false, false, false
         ));
+    }
+
+    #[test]
+    fn checkout_failures_refresh_the_quote_without_discarding_the_draft() {
+        let unavailable = api::ApiError {
+            status: 503,
+            code: "service_unavailable".into(),
+            message: "safe server message".into(),
+        };
+        let stale_quote = api::ApiError {
+            status: 409,
+            code: "conflict".into(),
+            message: "conflict".into(),
+        };
+        let validation = api::ApiError {
+            status: 400,
+            code: "validation_error".into(),
+            message: "validation".into(),
+        };
+
+        assert!(booking_creation_recovery_message(&unavailable)
+            .unwrap()
+            .contains("selections are still here"));
+        assert!(booking_creation_recovery_message(&stale_quote)
+            .unwrap()
+            .contains("selections are still here"));
+        assert!(booking_creation_recovery_message(&validation).is_none());
     }
 
     #[test]

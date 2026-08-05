@@ -9,12 +9,10 @@ use crate::{
 
 const LOGO: Asset = asset!(
     "/assets/img/logo.png",
-    AssetOptions::image()
-        .with_size(ImageSize::Manual {
-            width: 120,
-            height: 120,
-        })
-        .with_preload(true)
+    AssetOptions::image().with_size(ImageSize::Manual {
+        width: 120,
+        height: 120,
+    })
 );
 
 fn focus_mobile_menu_toggle() {
@@ -52,8 +50,8 @@ pub fn Header() -> Element {
     let current_user = auth_session.read().clone();
     let signed_in = current_user.is_some();
     let rentals_href = api::frontend_path("/#home-rentals");
-    let auth_return_route = route.clone();
-    let facebook_auth_return_route = route.clone();
+    let auth_return_route = api::current_auth_return_path().unwrap_or_else(|| route.to_string());
+    let facebook_auth_return_route = auth_return_route.clone();
     let mobile_booking_route = route.clone();
     let mobile_navigator = navigator;
     let overlay = matches!(route, Route::Home {});
@@ -341,12 +339,12 @@ pub fn Header() -> Element {
                                     }
                                 }
                                 p { class: "nav-account-copy", "Keep your dates and continue booking right where you are." }
-                                a { class: "nav-account-google", href: api::google_login_url(), aria_disabled: *busy.read(), onclick: move |event| { if *busy.peek() { event.prevent_default(); } else { api::remember_auth_return(&auth_return_route.to_string()); } },
+                                a { class: "nav-account-google", href: api::google_login_url(), aria_disabled: *busy.read(), onclick: move |event| { if *busy.peek() { event.prevent_default(); } else { api::remember_auth_return(&auth_return_route); } },
                                     span { class: "auth-google-mark", "G" }
                                     "Continue with Google"
                                 }
                                 if api::FACEBOOK_AUTH_ENABLED {
-                                    a { class: "nav-account-facebook", href: api::facebook_login_url(), aria_disabled: *busy.read(), onclick: move |event| { if *busy.peek() { event.prevent_default(); } else { api::remember_auth_return(&facebook_auth_return_route.to_string()); } },
+                                    a { class: "nav-account-facebook", href: api::facebook_login_url(), aria_disabled: *busy.read(), onclick: move |event| { if *busy.peek() { event.prevent_default(); } else { api::remember_auth_return(&facebook_auth_return_route); } },
                                         span { class: "auth-facebook-mark", "f" }
                                         "Continue with Facebook"
                                     }
