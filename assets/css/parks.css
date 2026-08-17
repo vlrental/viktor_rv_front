@@ -1,0 +1,454 @@
+.parks-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+    align-items: end;
+    gap: 56px;
+    padding: 66px 72px 70px;
+    background: var(--vl-forest);
+}
+
+.parks-hero-copy {
+    display: grid;
+    gap: 13px;
+}
+
+.parks-eyebrow {
+    color: var(--vl-accent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: .06em;
+}
+
+.parks-hero h1 {
+    max-width: 760px;
+    margin: 0;
+    color: var(--vl-white);
+    font-family: var(--font-heading);
+    font-size: clamp(48px, 6vw, 76px);
+    font-weight: 400;
+    line-height: .98;
+}
+
+.parks-hero-copy p {
+    max-width: 660px;
+    margin: 2px 0 0;
+    color: #CFDDD1;
+    font-size: 17px;
+    line-height: 26px;
+}
+
+.parks-range-card {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    border: 1px solid #FFFFFF24;
+    border-radius: 16px;
+    background: #FFFFFF0A;
+}
+
+.parks-range-icon {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 13px;
+    background: #FFFFFF12;
+}
+
+.parks-range-card div:last-child {
+    display: grid;
+    gap: 5px;
+}
+
+.parks-range-card strong {
+    color: var(--vl-white);
+    font-size: 15px;
+}
+
+.parks-range-card span {
+    color: #B7C7BA;
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.parks-page {
+    background: var(--vl-surface);
+}
+
+.parks-section {
+    padding: 64px 72px 72px;
+}
+
+.parks-section-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 430px);
+    align-items: end;
+    gap: 44px;
+    margin-bottom: 34px;
+}
+
+.parks-section-head > div {
+    display: grid;
+    gap: 10px;
+}
+
+.parks-section-head h2,
+.parks-planning h2 {
+    margin: 0;
+    color: var(--vl-ink);
+    font-family: var(--font-heading);
+    font-size: 40px;
+    font-weight: 400;
+    line-height: 1.06;
+}
+
+.parks-section-head > p {
+    margin: 0;
+    color: var(--vl-muted);
+    font-size: 14px;
+    line-height: 22px;
+}
+
+.parks-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.park-card {
+    display: grid;
+    min-height: 232px;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 14px;
+    padding: 24px;
+    border: 1px solid var(--vl-hair);
+    border-radius: 16px;
+    background: var(--vl-white);
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.park-card:hover,
+.park-card:focus-visible {
+    border-color: #AFC5B4;
+    box-shadow: 0 12px 28px #10231712;
+    outline: none;
+    transform: translateY(-2px);
+}
+
+.park-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.park-number {
+    color: var(--vl-accent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.park-area {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--vl-muted);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.park-card h3 {
+    margin: 0;
+    color: var(--vl-ink);
+    font-family: var(--font-heading);
+    font-size: 25px;
+    font-weight: 400;
+    line-height: 1.08;
+}
+
+.park-card p {
+    margin: 0;
+    color: var(--vl-muted);
+    font-size: 14px;
+    line-height: 21px;
+}
+
+.park-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--vl-forest);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.campground-section {
+    border-top: 1px solid var(--vl-hair);
+    background: var(--vl-white);
+}
+
+.campground-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.campground-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 20px;
+    padding: 26px;
+    border: 1px solid var(--vl-hair);
+    border-radius: 16px;
+    background: var(--vl-surface);
+}
+
+.campground-card h3 {
+    margin: 0;
+    color: var(--vl-ink);
+    font-family: var(--font-heading);
+    font-size: 25px;
+    font-weight: 400;
+}
+
+.campground-card ul {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.campground-card li {
+    position: relative;
+    padding-left: 14px;
+    color: var(--vl-muted);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.campground-card li::before {
+    position: absolute;
+    top: 7px;
+    left: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--vl-accent);
+    content: "";
+}
+
+.campground-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 2px;
+}
+
+.campground-sources a {
+    display: inline-flex;
+    min-height: 38px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 11px;
+    border: 1px solid #C9D4CB;
+    border-radius: 9px;
+    color: var(--vl-forest);
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.campground-sources a:hover,
+.campground-sources a:focus-visible {
+    border-color: var(--vl-forest);
+    background: #EDF4EE;
+    outline: none;
+}
+
+.parks-planning {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 48px;
+    padding: 58px 72px 64px;
+    background: var(--vl-forest);
+}
+
+.parks-planning-copy {
+    display: grid;
+    max-width: 780px;
+    gap: 12px;
+}
+
+.parks-planning h2 {
+    color: var(--vl-white);
+}
+
+.parks-planning p {
+    margin: 0;
+    color: #CFDDD1;
+    font-size: 14px;
+    line-height: 22px;
+}
+
+.parks-planning .parks-exclusions {
+    color: #AFC0B2;
+    font-size: 12px;
+    line-height: 19px;
+}
+
+.parks-exclusions strong {
+    color: #DCE6DD;
+}
+
+.parks-planning-actions {
+    display: grid;
+    min-width: 246px;
+    gap: 10px;
+}
+
+.parks-primary-link,
+.parks-secondary-link {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 16px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.parks-primary-link {
+    background: var(--vl-accent);
+    color: var(--vl-forest-2);
+}
+
+.parks-secondary-link {
+    border: 1px solid #FFFFFF2B;
+    color: var(--vl-white);
+}
+
+.parks-primary-link:hover,
+.parks-primary-link:focus-visible {
+    filter: brightness(1.05);
+    outline: 2px solid var(--vl-white);
+    outline-offset: 2px;
+}
+
+.parks-secondary-link:hover,
+.parks-secondary-link:focus-visible {
+    border-color: #FFFFFF66;
+    background: #FFFFFF0A;
+    outline: none;
+}
+
+@media (max-width: 960px) {
+    .parks-hero,
+    .parks-section-head,
+    .parks-planning {
+        grid-template-columns: 1fr;
+    }
+
+    .parks-hero,
+    .parks-planning {
+        gap: 30px;
+    }
+
+    .parks-range-card {
+        max-width: 520px;
+    }
+
+    .parks-planning-actions {
+        width: min(100%, 360px);
+    }
+}
+
+@media (max-width: 860px) {
+    .parks-hero {
+        padding: 42px 18px 46px;
+    }
+
+    .parks-hero h1 {
+        font-size: 48px;
+    }
+
+    .parks-hero-copy p {
+        font-size: 15px;
+        line-height: 23px;
+    }
+
+    .parks-section {
+        padding: 44px 18px 50px;
+    }
+
+    .parks-section-head {
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+
+    .parks-section-head h2,
+    .parks-planning h2 {
+        font-size: 32px;
+    }
+
+    .parks-grid,
+    .campground-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .park-card {
+        min-height: 0;
+        padding: 21px;
+    }
+
+    .campground-card {
+        padding: 21px;
+    }
+
+    .parks-planning {
+        padding: 44px 18px 48px;
+    }
+}
+
+@media (max-width: 520px) {
+    .parks-hero h1 {
+        font-size: 42px;
+    }
+
+    .park-card-top {
+        align-items: flex-start;
+    }
+
+    .park-area {
+        justify-content: flex-end;
+        text-align: right;
+    }
+
+    .campground-card ul {
+        grid-template-columns: 1fr;
+    }
+
+    .parks-planning-actions {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .park-card {
+        transition: none;
+    }
+
+    .park-card:hover,
+    .park-card:focus-visible {
+        transform: none;
+    }
+}

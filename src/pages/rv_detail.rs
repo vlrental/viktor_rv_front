@@ -636,7 +636,7 @@ fn GoodToKnow() -> Element {
                     GtkCard {
                         icon: "truck",
                         title: "Delivery only · up to 150 km",
-                        desc: "CA$150 through 40 km, then CA$2 per additional kilometre, two way — calculated automatically.",
+                        desc: "CA$150 through 40 km, then CA$2.50 per additional kilometre, each way — calculated automatically.",
                     }
                     GtkCard {
                         icon: "shield-check",
@@ -985,18 +985,17 @@ fn InlineAvailabilityCalendar(
 ) -> Element {
     let today = Utc::now().with_timezone(&Vancouver).date_naive();
     let first_month = month_start(today);
-    let availability_start = first_month;
-    let availability_end = add_months(first_month, 3) + Duration::days(3);
-    let availability_starts_on = availability_start.to_string();
-    let availability_ends_on = availability_end.to_string();
+    let mut visible_month = use_signal(|| first_month);
+    let availability_start = *visible_month.read();
+    let availability_end = add_months(availability_start, 3) + Duration::days(3);
     let availability_slug = rental.slug.clone();
     let mut availability_retry = use_signal(|| 0_u32);
     let availability = use_resource(move || {
         let _retry = *availability_retry.read();
+        let range_start = *visible_month.read();
         let slug = availability_slug.clone();
-        let range_start = availability_starts_on.clone();
-        let range_end = availability_ends_on.clone();
-        async move { api::availability(&slug, &range_start, &range_end).await }
+        let range_end = add_months(range_start, 3) + Duration::days(3);
+        async move { api::availability(&slug, &range_start.to_string(), &range_end.to_string()).await }
     });
     let raw_response = availability
         .read()
@@ -1114,9 +1113,23 @@ fn InlineAvailabilityCalendar(
                     h2 { class: "rvd-h", "Available dates" }
                     p { "Choose delivery and return dates for the next three months." }
                 }
-                div { class: "rvd-inline-availability-legend", aria_label: "Calendar legend",
-                    span { i {} "Available" }
-                    span { class: "booked", i {} "Unavailable" }
+                div { class: "rvd-inline-availability-controls",
+                    div { class: "rvd-inline-month-nav",
+                        button { r#type: "button", aria_label: "Previous month", disabled: *visible_month.read() <= first_month, onclick: move |_| {
+                            let current = *visible_month.peek();
+                            if let Some(previous) = current.checked_sub_months(Months::new(1)) {
+                                visible_month.set(previous.max(first_month));
+                            }
+                        }, Icon { name: "chevron-left", size: 18, color: "var(--vl-ink)" } }
+                        button { r#type: "button", aria_label: "Next month", onclick: move |_| {
+                            let current = *visible_month.peek();
+                            visible_month.set(add_months(current, 1));
+                        }, Icon { name: "chevron-right", size: 18, color: "var(--vl-ink)" } }
+                    }
+                    div { class: "rvd-inline-availability-legend", aria_label: "Calendar legend",
+                        span { i {} "Available" }
+                        span { class: "booked", i {} "Unavailable" }
+                    }
                 }
             }
             if let Some(message) = availability_error.as_ref() {
@@ -1131,7 +1144,7 @@ fn InlineAvailabilityCalendar(
                 for offset in 0..3_u32 {
                     InlineAvailabilityMonth {
                         key: "inline-month-{offset}",
-                        month: add_months(first_month, offset),
+                        month: add_months(*visible_month.read(), offset),
                         today,
                         availability_loaded,
                         unavailable: unavailable.clone(),
@@ -1622,7 +1635,7 @@ fn BookingCalendarOverlay(
                         }
                         div { class: "rvd-address-card",
                                 div { class: "rvd-trip-option-title", Icon { name: "map-pin", size: 17, color: "var(--vl-forest)" } "Delivery address & live distance" }
-                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 40 km, then CA$2 per additional kilometre, two way · maximum 150 km." }
+                                div { class: "rvd-trip-option-help", "From 155 Potterton Rd · CA$150 through 40 km, then CA$2.50 per additional kilometre, each way · maximum 150 km." }
                                 div { class: "rvd-address-search",
                                     div { class: "rvd-address-combobox",
                                         div { class: "rvd-address-input-wrap",

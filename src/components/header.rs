@@ -196,7 +196,6 @@ pub fn Header() -> Element {
                     span { class: "mobile-menu-status", "MENU" }
                 }
                 a { class: "nav-link", href: rentals_href, aria_label: "RV Rentals", onclick: move |_| mobile_open.set(false), "RV Rentals" }
-                Link { class: "nav-link", to: Route::CoolerTrailers {}, aria_label: "Cooler Trailers", onclick: move |_| mobile_open.set(false), "Cooler Trailers" }
                 Link { class: "nav-link", to: Route::Delivery {}, aria_label: "Delivery", onclick: move |_| mobile_open.set(false), "Delivery" }
                 Link { class: "nav-link", to: Route::RvSales {}, aria_label: "RV Sales", onclick: move |_| mobile_open.set(false), "RV Sales" }
                 Link { class: "nav-link nav-menu-contact", to: Route::Contact {}, aria_label: "Contact", onclick: move |_| mobile_open.set(false), "Contact" }

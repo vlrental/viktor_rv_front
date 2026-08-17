@@ -536,7 +536,7 @@ fn HowItWorks(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>
 
 #[component]
 fn MoreServices() -> Element {
-    let services: [(&'static str, &'static str, &'static str, Route); 5] = [
+    let services: [(&'static str, &'static str, &'static str, Route); 4] = [
         (
             "snowflake",
             "Cooler Trailers",
@@ -557,15 +557,9 @@ fn MoreServices() -> Element {
         ),
         (
             "mountain",
-            "Explore",
-            "Local picks for the best of Kelowna",
-            Route::Attractions {},
-        ),
-        (
-            "utensils",
-            "Restaurants",
-            "Where to eat around the lake",
-            Route::Restaurants {},
+            "Parks in Our Range",
+            "Campgrounds across the Okanagan & Shuswap",
+            Route::ParksInOurRange {},
         ),
     ];
     rsx! {

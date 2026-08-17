@@ -10,6 +10,7 @@ pub const API_BASE: &str = match option_env!("VL_API_BASE_URL") {
     None => "https://api.vlrental.ca",
 };
 pub const DELIVERY_INCLUDED_KM: f64 = 40.0;
+pub const DELIVERY_PRICE_PER_LEG_KM: f64 = 2.5;
 
 pub fn frontend_base_url() -> String {
     browser_github_pages_base()
@@ -1234,7 +1235,7 @@ async fn client_delivery_estimate(address: &str) -> Result<DeliveryEstimate, Str
     let delivery_fee = if one_way_km <= DELIVERY_INCLUDED_KM {
         150.0
     } else {
-        150.0 + (one_way_km - DELIVERY_INCLUDED_KM) * 4.0
+        150.0 + (one_way_km - DELIVERY_INCLUDED_KM) * 2.0 * DELIVERY_PRICE_PER_LEG_KM
     };
     Ok(DeliveryEstimate {
         resolved_address: resolved.display_name,
@@ -4102,10 +4103,6 @@ struct ContactPayload<'a> {
     message: &'a str,
 }
 #[derive(Serialize)]
-struct NewsletterPayload<'a> {
-    email: &'a str,
-}
-#[derive(Serialize)]
 struct SalesPayload<'a> {
     full_name: &'a str,
     email: &'a str,
@@ -4148,10 +4145,6 @@ pub async fn send_contact(
     .await
 }
 
-pub async fn subscribe(email: &str) -> Result<(), String> {
-    post_public("newsletter", &NewsletterPayload { email }).await
-}
-
 pub async fn send_sales_inquiry(
     full_name: &str,
     email: &str,
@@ -4175,6 +4168,15 @@ pub async fn send_sales_inquiry(
 #[cfg(test)]
 mod delivery_draft_tests {
     use super::*;
+
+    #[test]
+    fn client_delivery_fallback_charges_two_fifty_for_each_direction() {
+        let one_way_km = 50.0;
+        let delivery_fee =
+            150.0 + (one_way_km - DELIVERY_INCLUDED_KM) * 2.0 * DELIVERY_PRICE_PER_LEG_KM;
+
+        assert_eq!(delivery_fee, 200.0);
+    }
 
     #[test]
     fn api_address_avoids_duplicate_canada_on_older_servers() {

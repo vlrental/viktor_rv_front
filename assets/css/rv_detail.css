@@ -325,10 +325,14 @@
 .rvd-inline-availability { display: grid; gap: 15px; width: 100%; padding: 20px; border: 1px solid var(--vl-hair); border-radius: 16px; background: var(--vl-white); box-shadow: 0 10px 28px #10231708; }
 .rvd-inline-availability-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
 .rvd-inline-availability-head p { margin-top: 5px; color: var(--vl-muted); font-size: 12px; line-height: 18px; }
+.rvd-inline-availability-controls { display: flex; align-items: flex-end; flex-direction: column; gap: 9px; }
 .rvd-inline-availability-legend { display: flex; align-items: center; gap: 13px; color: var(--vl-muted); font-size: 10px; white-space: nowrap; }
 .rvd-inline-availability-legend span { display: flex; align-items: center; gap: 5px; }
 .rvd-inline-availability-legend i { width: 8px; height: 8px; border: 1px solid var(--vl-hair); border-radius: 50%; background: var(--vl-white); }
 .rvd-inline-availability-legend .booked i { border-color: #D7D4CD; background: #E7E4DB; }
+.rvd-inline-month-nav { display: flex; justify-content: flex-end; gap: 8px; }
+.rvd-inline-month-nav button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--vl-hair); border-radius: 50%; background: var(--vl-white); }
+.rvd-inline-month-nav button:disabled { opacity: .35; }
 .rvd-inline-availability-state { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border-radius: 9px; background: var(--vl-surface); color: var(--vl-muted); font-size: 11px; }
 .rvd-inline-availability-state.is-error { background: #FFF1ED; color: #8B3A30; }
 .rvd-inline-availability-state button { flex: 0 0 auto; padding: 5px 9px; border: 1px solid currentColor; border-radius: 7px; font-size: 10px; font-weight: 750; }
@@ -395,6 +399,7 @@
     .rvd-review-like { min-height: 32px; padding: 0 10px; font-size: 10px; }
     .rvd-inline-availability { padding: 16px; }
     .rvd-inline-availability-head { align-items: flex-start; flex-direction: column; }
+    .rvd-inline-availability-controls { align-items: flex-end; width: 100%; }
     .rvd-inline-availability-legend { flex-wrap: wrap; }
     .rvd-inline-months { display: flex; overflow-x: auto; gap: 12px; padding-bottom: 6px; scroll-snap-type: x mandatory; scrollbar-width: thin; }
     .rvd-inline-month { min-width: min(290px, calc(100vw - 70px)); scroll-snap-align: start; }

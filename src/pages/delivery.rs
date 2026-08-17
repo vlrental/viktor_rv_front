@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::components::Icon;
 use crate::data::PHONE;
-use crate::Route;
+use crate::{BookingLaunchRequest, Route};
 
 const IMG_DELIVERY_HERO: Asset = asset!(
     "/assets/img/delivery-hero-v2.jpg",
@@ -40,6 +40,9 @@ const STEPS: [Step; 3] = [
 
 #[component]
 pub fn Delivery() -> Element {
+    let navigator = use_navigator();
+    let mut booking_launch_request = use_context::<BookingLaunchRequest>();
+
     rsx! {
         section { class: "dv-hero",
             div { class: "dv-hero-media",
@@ -53,9 +56,16 @@ pub fn Delivery() -> Element {
                 div { class: "eyebrow", "DELIVERY SERVICES" }
                 h1 { class: "dv-title", "We deliver, level & set up" }
                 p { class: "dv-sub",
-                    "No truck? No problem. Every RV includes required delivery and setup within 150 km of Kelowna. CA$150 through 40 km, then CA$2 per additional kilometre, two way."
+                    "No truck? No problem. Every RV includes required delivery and setup within 150 km of Kelowna. CA$150 through 40 km, then CA$2.50 per additional kilometre, each way."
                 }
-                Link { class: "dv-btn", to: Route::Contact {},
+                button {
+                    class: "dv-btn",
+                    r#type: "button",
+                    aria_haspopup: "dialog",
+                    onclick: move |_| {
+                        booking_launch_request.0.set(true);
+                        navigator.push(Route::Home {});
+                    },
                     span { "Request delivery" }
                     Icon { name: "arrow-right", size: 17, color: "var(--vl-white)" }
                 }
@@ -82,7 +92,7 @@ pub fn Delivery() -> Element {
                     div { class: "dv-coverage-title", "Delivery and Setup — real rates" }
                 }
                 p { class: "dv-coverage-sub",
-                    "Minimum fee CA$150 through 40 km, then CA$2 per additional kilometre, two way, up to 150 km. Enter your destination and the server calculates the driving route and exact fee automatically."
+                    "Minimum fee CA$150 through 40 km, then CA$2.50 per additional kilometre, each way, up to 150 km. Enter your destination and the server calculates the driving route and exact fee automatically."
                 }
             }
             a { class: "dv-phone-btn", href: "tel:+12508785874",

@@ -107,7 +107,7 @@
 
 - RVs are delivery-only; customer pickup is not supported. Delivery/setup is at 2:00 PM and return is at 11:00 AM in `America/Vancouver`.
 - A following customer may receive the same RV at 2:00 PM on the previous customer's return date; the 11:00 AM–2:00 PM gap is reserved for cleaning and transport.
-- RV delivery is limited to 150 km one way from the Kelowna base. The fee is CA$150 through 40 km, then CA$2/km in each direction (CA$4 total for the two-way journey per additional one-way kilometre).
+- RV delivery is limited to 150 km one way from the Kelowna base. The fee is CA$150 through 40 km, then CA$2.50/km in each direction (CA$5 total for the two-way journey per additional one-way kilometre).
 - Customers may book an RV for one or more nights. A 1–2 night booking keeps the customer-selected delivery and return dates everywhere, but is priced at the 3-night minimum and blocks availability through the full 3-night minimum window. Backend code is the source of truth for billable nights, blocked-until timestamps, date-to-time conversion, and availability.
 - Every RV quote includes a mandatory `RV Preparation Fee` of CA$97 once per booking.
 - Every RV quote includes mandatory `Stationary Plus Protection` at a fixed CA$150 for the first three booked nights, plus CA$30 for each additional night, automatically calculated from the calendar date difference. Both mandatory charges must appear as separate quote line items, and backend quote code is the pricing source of truth.

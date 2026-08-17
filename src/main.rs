@@ -22,8 +22,8 @@ const ABOUT_CSS: Asset = asset!(
     "/assets/css/about.css",
     AssetOptions::css().with_static_head(true)
 );
-const ATTRACTIONS_CSS: Asset = asset!(
-    "/assets/css/attractions.css",
+const PARKS_CSS: Asset = asset!(
+    "/assets/css/parks.css",
     AssetOptions::css().with_static_head(true)
 );
 const CHECKOUT_CSS: Asset = asset!(
@@ -44,10 +44,6 @@ const COOLER_TRAILERS_CSS: Asset = asset!(
 );
 const DELIVERY_CSS: Asset = asset!(
     "/assets/css/delivery.css",
-    AssetOptions::css().with_static_head(true)
-);
-const RESTAURANTS_CSS: Asset = asset!(
-    "/assets/css/restaurants.css",
     AssetOptions::css().with_static_head(true)
 );
 const RV_DETAIL_CSS: Asset = asset!(
@@ -87,10 +83,10 @@ pub enum Route {
         Contact {},
         #[route("/about")]
         About {},
-        #[route("/attractions")]
-        Attractions {},
-        #[route("/restaurants")]
-        Restaurants {},
+        #[route("/parks-in-our-range")]
+        ParksInOurRange {},
+        #[redirect("/attractions", || Route::ParksInOurRange {})]
+        #[redirect("/restaurants", || Route::ParksInOurRange {})]
         #[route("/cooler-trailers")]
         CoolerTrailers {},
         #[route("/delivery")]
@@ -202,15 +198,10 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "Learn about VL Rental, a Kelowna-based RV rental service offering delivered and set-up travel trailers across approved Okanagan destinations.",
             "/about",
         ),
-        Route::Attractions {} => SeoMetadata::indexed(
-            "Explore the Okanagan on Your RV Trip | VL Rental",
-            "Plan your Okanagan RV stay with ideas for family activities, outdoor adventures, and places to explore near Kelowna.",
-            "/attractions",
-        ),
-        Route::Restaurants {} => SeoMetadata::indexed(
-            "Okanagan Restaurants Near Your RV Stay | VL Rental",
-            "Discover restaurants and local food options to enjoy during your RV stay in Kelowna and the Okanagan.",
-            "/restaurants",
+        Route::ParksInOurRange {} => SeoMetadata::indexed(
+            "Parks in Our Range | Okanagan RV Campgrounds | VL Rental",
+            "Find provincial parks, private RV parks and municipal campgrounds across the Okanagan and Shuswap within VL Rental's delivery area.",
+            "/parks-in-our-range",
         ),
         Route::CoolerTrailers {} => SeoMetadata::indexed(
             "Cooler Trailers Coming Soon in Kelowna | VL Rental",
@@ -282,13 +273,12 @@ fn App() -> Element {
     let _route_styles = [
         MAIN_CSS,
         ABOUT_CSS,
-        ATTRACTIONS_CSS,
+        PARKS_CSS,
         CHECKOUT_CSS,
         CONFIRMED_CSS,
         CONTACT_CSS,
         COOLER_TRAILERS_CSS,
         DELIVERY_CSS,
-        RESTAURANTS_CSS,
         RV_DETAIL_CSS,
         RV_SALES_CSS,
         TERMS_CSS,
@@ -509,8 +499,7 @@ mod seo_tests {
             Route::Confirmed {},
             Route::Contact {},
             Route::About {},
-            Route::Attractions {},
-            Route::Restaurants {},
+            Route::ParksInOurRange {},
             Route::CoolerTrailers {},
             Route::Delivery {},
             Route::RvSales {},

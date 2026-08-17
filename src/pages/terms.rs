@@ -60,7 +60,7 @@ const TERM_SECTIONS: &[TermSection] = &[
         id: "delivery-fee",
         title: "6. Delivery area and delivery fee",
         paragraphs: &[
-            "VL Rental is delivery-only; customer pickup and customer towing are not offered. Delivery is limited to approved locations no more than 150 km one way from the Kelowna base. The fee is CA$150 for a destination through 40 km one way, then CA$2 per kilometre in each direction (CA$4 total for each additional one-way kilometre). The accepted server estimate and resolved delivery address control.",
+            "VL Rental is delivery-only; customer pickup and customer towing are not offered. Delivery is limited to approved locations no more than 150 km one way from the Kelowna base. The fee is CA$150 for a destination through 40 km one way, then CA$2.50 per kilometre in each direction (CA$5 total for each additional one-way kilometre). The accepted server estimate and resolved delivery address control.",
             "The customer is responsible for reserving and paying for a lawful campsite, obtaining permissions, providing an accurate address and access instructions, and ensuring the site is accessible to the delivery vehicle and RV. Extra work or a second delivery attempt caused by inaccurate information, blocked access, site restrictions, unsafe ground, or the customer's absence may be charged at the reasonable disclosed cost. VL Rental may decline an unsafe or unlawful setup location.",
         ],
         bullets: &[],
@@ -198,6 +198,31 @@ const TERM_SECTIONS: &[TermSection] = &[
 ];
 
 #[component]
+pub(crate) fn TermsAgreementContent() -> Element {
+    rsx! {
+        div { class: "tm-notice",
+            strong { "Booking-specific details matter." }
+            span { " Your accepted dates, RV, delivery address, itemized price, payment schedule, and selected extras are part of the Agreement." }
+        }
+        for section in TERM_SECTIONS.iter() {
+            section { key: "{section.id}", id: "terms-{section.id}", class: "tm-sec",
+                h2 { class: "tm-sec-h", "{section.title}" }
+                for (index, paragraph) in section.paragraphs.iter().enumerate() {
+                    p { key: "{section.id}-p-{index}", class: "tm-sec-p", "{paragraph}" }
+                }
+                if !section.bullets.is_empty() {
+                    ul { class: "tm-list",
+                        for (index, bullet) in section.bullets.iter().enumerate() {
+                            li { key: "{section.id}-b-{index}", "{bullet}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 pub fn Terms() -> Element {
     rsx! {
         section { class: "tm-header",
@@ -213,30 +238,13 @@ pub fn Terms() -> Element {
             nav { class: "tm-toc", aria_label: "Terms sections",
                 div { class: "tm-toc-h", "ON THIS PAGE" }
                 for section in TERM_SECTIONS.iter() {
-                    a { key: "toc-{section.id}", class: "tm-toc-link", href: "#{section.id}", "{section.title}" }
+                    a { key: "toc-{section.id}", class: "tm-toc-link", href: "#terms-{section.id}", "{section.title}" }
                 }
+                a { class: "tm-toc-link", href: "#terms-contact", "21. Contact and notices" }
             }
             article { class: "tm-content",
-                div { class: "tm-notice",
-                    strong { "Booking-specific details matter." }
-                    span { " Your accepted dates, RV, delivery address, itemized price, payment schedule, and selected extras are part of the Agreement." }
-                }
-                for section in TERM_SECTIONS.iter() {
-                    section { key: "{section.id}", id: "{section.id}", class: "tm-sec",
-                        h2 { class: "tm-sec-h", "{section.title}" }
-                        for (index, paragraph) in section.paragraphs.iter().enumerate() {
-                            p { key: "{section.id}-p-{index}", class: "tm-sec-p", "{paragraph}" }
-                        }
-                        if !section.bullets.is_empty() {
-                            ul { class: "tm-list",
-                                for (index, bullet) in section.bullets.iter().enumerate() {
-                                    li { key: "{section.id}-b-{index}", "{bullet}" }
-                                }
-                            }
-                        }
-                    }
-                }
-                div { class: "tm-contact", id: "contact",
+                TermsAgreementContent {}
+                div { class: "tm-contact", id: "terms-contact",
                     div {
                         h2 { "21. Contact and notices" }
                         p { "VL Rental · Kelowna, British Columbia, Canada" }

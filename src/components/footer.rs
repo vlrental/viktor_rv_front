@@ -19,28 +19,6 @@ const LOGO: Asset = asset!(
 pub fn Footer() -> Element {
     let rentals_href = api::frontend_path("/#home-rentals");
     let mut cookie_consent = use_context::<CookieConsentContext>();
-    let mut email = use_signal(String::new);
-    let mut status = use_signal(String::new);
-    let mut busy = use_signal(|| false);
-    let subscribe = move |_| {
-        let value = email.read().trim().to_string();
-        async move {
-            status.set(String::new());
-            if !value.contains('@') || !value.contains('.') {
-                status.set("Enter a valid email address.".into());
-                return;
-            }
-            busy.set(true);
-            match api::subscribe(&value).await {
-                Ok(()) => {
-                    status.set("Subscribed".into());
-                    email.set(String::new());
-                }
-                Err(error) => status.set(error),
-            }
-            busy.set(false);
-        }
-    };
     rsx! {
         footer { class: "site-footer",
             div { class: "footer-top",
@@ -70,8 +48,7 @@ pub fn Footer() -> Element {
                     div { class: "f-head", "SERVICES" }
                     Link { class: "f-link", to: Route::Delivery {}, "Delivery Services" }
                     Link { class: "f-link", to: Route::RvSales {}, "RV Sales" }
-                    Link { class: "f-link", to: Route::Attractions {}, "Explore" }
-                    Link { class: "f-link", to: Route::Restaurants {}, "Restaurants" }
+                    Link { class: "f-link", to: Route::ParksInOurRange {}, "Parks in Our Range" }
                 }
                 div { class: "f-col",
                     div { class: "f-head", "COMPANY" }
@@ -85,15 +62,6 @@ pub fn Footer() -> Element {
                         onclick: move |_| cookie_consent.0.set(CookieConsent::Undecided),
                         "Cookie choices"
                     }
-                }
-                div { class: "f-newsletter",
-                    div { class: "f-news-title", "Plan your trip" }
-                    div { class: "f-news-desc", "Get seasonal deals and availability straight to your inbox." }
-                    div { class: "f-news-input",
-                        input { r#type: "email", placeholder: "you@email.com", value: "{email}", disabled: *busy.read(), oninput: move |e| email.set(e.value()) }
-                        button { class: "f-news-go", disabled: *busy.read(), onclick: subscribe, if *busy.read() { "Joining…" } else { "Subscribe" } }
-                    }
-                    if !status.read().is_empty() { div { class: "f-news-desc", role: "status", "{status}" } }
                 }
             }
             div { class: "footer-divider" }

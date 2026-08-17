@@ -753,22 +753,24 @@ pub(crate) fn CatalogSearchOverlay(
                             }
                         }
                         div { class: "cat-month-nav",
-                            button { r#type: "button", aria_label: "Previous month", disabled: *visible_month.read() <= initial_month, onclick: move |_| {
-                                let current = *visible_month.peek();
-                                if let Some(previous) = current.checked_sub_months(Months::new(1)) {
-                                    if previous >= initial_month { visible_month.set(previous); }
-                                }
-                            }, Icon { name: "chevron-left", size: 18, color: "var(--vl-ink)" } }
                             span { "Choose delivery and return" }
-                            button { r#type: "button", aria_label: "Next month", disabled: *visible_month.read() >= add_months(initial_month, 15), onclick: move |_| {
-                                let current = *visible_month.peek();
-                                visible_month.set(add_months(current, 1));
-                            },
-                                Icon { name: "chevron-right", size: 18, color: "var(--vl-ink)" }
+                            div { class: "cat-month-nav-actions",
+                                button { r#type: "button", aria_label: "Previous month", disabled: *visible_month.read() <= initial_month, onclick: move |_| {
+                                    let current = *visible_month.peek();
+                                    if let Some(previous) = current.checked_sub_months(Months::new(1)) {
+                                        if previous >= initial_month { visible_month.set(previous); }
+                                    }
+                                }, Icon { name: "chevron-left", size: 18, color: "var(--vl-ink)" } }
+                                button { r#type: "button", aria_label: "Next month", disabled: *visible_month.read() >= add_months(initial_month, 15), onclick: move |_| {
+                                    let current = *visible_month.peek();
+                                    visible_month.set(add_months(current, 1));
+                                },
+                                    Icon { name: "chevron-right", size: 18, color: "var(--vl-ink)" }
+                                }
                             }
                         }
                         div { class: "cat-calendar-months",
-                            for offset in 0..2_u32 {
+                            for offset in 0..3_u32 {
                                 CatalogSearchMonth { month: add_months(*visible_month.read(), offset), today, starts_on, ends_on }
                             }
                         }
