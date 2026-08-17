@@ -1184,6 +1184,20 @@ mod catalog_search_tests {
             ["value-fit", "premium-fit", "compact", "large"]
         );
     }
+
+    #[test]
+    fn every_known_booking_slug_has_a_receipt_image() {
+        for slug in [
+            "jayco26",
+            "2015-keystone-bullet",
+            "2014-forest-river-rockwood",
+            "2025-open-range-1",
+            "2025-highland-ridge-2",
+            "2017-keystone-outback-ultra",
+        ] {
+            assert!(!rental_fallback_image(slug).is_empty(), "missing {slug}");
+        }
+    }
 }
 
 #[component]
@@ -1216,7 +1230,11 @@ pub(crate) fn rental_image(rental: &api::Rental) -> String {
     {
         return image.clone();
     }
-    match rental.slug.as_str() {
+    rental_fallback_image(&rental.slug)
+}
+
+pub(crate) fn rental_fallback_image(slug: &str) -> String {
+    match slug {
         "jayco26" => IMG_JAYCO.to_string(),
         "2015-keystone-bullet" => IMG_BULLET.to_string(),
         "2014-forest-river-rockwood" => IMG_ROCKWOOD.to_string(),

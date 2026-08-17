@@ -3,7 +3,7 @@ use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
 use super::{
-    catalog::{add_months, month_start, rental_image, CatalogSearchMonth},
+    catalog::{add_months, month_start, rental_fallback_image, rental_image, CatalogSearchMonth},
     terms::TermsAgreementContent,
 };
 use crate::{
@@ -3003,42 +3003,46 @@ pub(crate) fn UnifiedBookingOverlay(
                                 if payment_availability == api::PaymentAvailability::Blocked { button { class: "ub-payment-secondary", r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); payment_phase.set("idle".into()); }, "Retry test configuration" } }
                             }
                             aside { class: "ub-payment-price-summary", aria_label: "Payment schedule",
-                                h3 { "Your booking & payment" }
+                                h3 { "Booking receipt" }
                                 div { class: "ub-payment-booking-details",
-                                    span { class: "ub-payment-booking-kicker", "TRIP DETAILS" }
-                                    div { class: "ub-payment-selected-rv",
-                                        span { "Selected trailer" }
-                                        strong { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } }
-                                        small { "Booking {created.booking.booking_number}" }
-                                    }
-                                    div { class: "ub-payment-date-grid",
-                                        div {
-                                            span { "DELIVERY & SETUP" }
-                                            strong { "{display_booking_moment(&created.booking.starts_at)}" }
+                                    figure { class: "ub-payment-selected-rv",
+                                        if let Some(rental) = selected_rental.as_ref() {
+                                            img { src: "{rental_image(rental)}", alt: "Selected trailer for this booking", loading: "eager" }
+                                        } else if !created.booking.rental_slug.is_empty() {
+                                            img { src: "{rental_fallback_image(&created.booking.rental_slug)}", alt: "Selected trailer for this booking", loading: "eager" }
                                         }
-                                        div {
-                                            span { "RETURN" }
-                                            strong { "{display_booking_moment(&created.booking.ends_at)}" }
+                                        figcaption {
+                                            span { class: "ub-payment-booking-kicker", "SELECTED TRAILER" }
+                                            strong { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } }
                                         }
                                     }
-                                    div { class: "ub-payment-trip-meta",
+                                    dl { class: "ub-payment-trip-list",
+                                        div {
+                                            dt { "Booking" }
+                                            dd { "{created.booking.booking_number}" }
+                                        }
+                                        div {
+                                            dt { "Delivery & setup" }
+                                            dd { "{display_booking_moment(&created.booking.starts_at)}" }
+                                        }
+                                        div {
+                                            dt { "Return" }
+                                            dd { "{display_booking_moment(&created.booking.ends_at)}" }
+                                        }
                                         if let Some(stay_nights) = booking_stay_nights(&created.booking) {
-                                            span { Icon { name: "calendar-days", size: 13, color: "var(--vl-forest)" } "{pricing::night_count_label(stay_nights)}" }
+                                            div { dt { "Stay" } dd { "{pricing::night_count_label(stay_nights)}" } }
                                         }
                                         if let Some(value) = quote.read().as_ref().filter(|value| quote_matches_booking(value, &created.booking)) {
-                                            span { Icon { name: "users", size: 13, color: "var(--vl-forest)" } "{value.quote.guests} guests" }
+                                            div { dt { "Guests" } dd { "{value.quote.guests}" } }
                                         }
-                                        span { Icon { name: "truck", size: 13, color: "var(--vl-forest)" } "Delivery only" }
-                                    }
-                                    if let Some(payment_delivery_address) = payment_delivery_address.as_ref() {
-                                        div { class: "ub-payment-delivery-address",
-                                            Icon { name: "map-pin", size: 14, color: "var(--vl-forest)" }
-                                            span { small { "DELIVERY ADDRESS" } strong { "{payment_delivery_address}" } }
+                                        div { dt { "Service" } dd { "Delivery, leveling & setup" } }
+                                        if let Some(payment_delivery_address) = payment_delivery_address.as_ref() {
+                                            div { dt { "Address" } dd { "{payment_delivery_address}" } }
                                         }
                                     }
                                 }
                                 if let Some(value) = quote.read().as_ref().filter(|value| quote_matches_booking(value, &created.booking)) {
-                                    h4 { class: "ub-payment-breakdown-title", "Trip price details" }
+                                    h4 { class: "ub-payment-breakdown-title", "What you are paying for" }
                                     div { class: "ub-payment-price-breakdown",
                                         for item in value.items.iter().filter(|item| item.item_type != "deposit") {
                                             div { key: "payment-{item.item_key}-{item.amount}", class: "ub-payment-price-row",
