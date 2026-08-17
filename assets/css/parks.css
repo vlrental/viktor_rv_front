@@ -114,18 +114,17 @@
 
 .parks-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
 }
 
 .park-card {
     display: grid;
-    min-height: 232px;
-    grid-template-rows: auto auto 1fr auto;
-    gap: 14px;
-    padding: 24px;
+    min-width: 0;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
     border: 1px solid var(--vl-hair);
-    border-radius: 16px;
+    border-radius: 18px;
     background: var(--vl-white);
     transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
@@ -138,49 +137,111 @@
     transform: translateY(-2px);
 }
 
-.park-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
+.park-card-media {
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 8 / 5;
+    background: #D8E1D9;
+}
+
+.park-card-media::after {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #0B23120A 45%, #0B231250 100%);
+    content: "";
+    pointer-events: none;
+}
+
+.park-card-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 350ms ease;
+}
+
+.park-card:hover .park-card-media img,
+.park-card:focus-visible .park-card-media img {
+    transform: scale(1.025);
 }
 
 .park-number {
+    position: absolute;
+    z-index: 1;
+    top: 16px;
+    left: 16px;
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border: 1px solid #FFFFFF73;
+    border-radius: 50%;
+    background: #0D2917D9;
     color: var(--vl-accent);
     font-family: var(--font-mono);
     font-size: 12px;
     font-weight: 700;
+    backdrop-filter: blur(8px);
 }
 
 .park-area {
+    position: absolute;
+    z-index: 1;
+    top: 16px;
+    right: 16px;
     display: inline-flex;
+    min-height: 34px;
     align-items: center;
     gap: 5px;
-    color: var(--vl-muted);
+    padding: 0 11px;
+    border: 1px solid #FFFFFF8A;
+    border-radius: 999px;
+    background: #FFFEF6E8;
+    color: var(--vl-forest);
     font-size: 11px;
-    font-weight: 650;
+    font-weight: 700;
+    backdrop-filter: blur(8px);
 }
 
-.park-card h3 {
+.park-card-body {
+    display: grid;
+    min-width: 0;
+    grid-template-rows: auto 1fr auto auto;
+    gap: 11px;
+    padding: 21px 21px 20px;
+}
+
+.park-card-body h3 {
     margin: 0;
     color: var(--vl-ink);
     font-family: var(--font-heading);
-    font-size: 25px;
+    font-size: 26px;
     font-weight: 400;
-    line-height: 1.08;
+    line-height: 1.06;
 }
 
-.park-card p {
+.park-card-body p {
     margin: 0;
     color: var(--vl-muted);
     font-size: 14px;
-    line-height: 21px;
+    line-height: 22px;
+}
+
+.park-highlights {
+    width: fit-content;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--vl-mint);
+    color: var(--vl-forest);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
 }
 
 .park-link {
     display: inline-flex;
     align-items: center;
     gap: 7px;
+    margin-top: 2px;
     color: var(--vl-forest);
     font-size: 12px;
     font-weight: 750;
@@ -214,6 +275,35 @@
     font-family: var(--font-heading);
     font-size: 25px;
     font-weight: 400;
+}
+
+.campground-card-head {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+}
+
+.campground-card-head > div {
+    display: grid;
+    gap: 6px;
+}
+
+.campground-card-head p {
+    margin: 0;
+    color: var(--vl-muted);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.campground-card-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--vl-mint);
+    color: var(--vl-forest);
 }
 
 .campground-card ul {
@@ -370,6 +460,10 @@
     .parks-planning-actions {
         width: min(100%, 360px);
     }
+
+    .parks-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 860px) {
@@ -400,14 +494,16 @@
         font-size: 32px;
     }
 
-    .parks-grid,
     .campground-grid {
         grid-template-columns: 1fr;
     }
 
-    .park-card {
-        min-height: 0;
-        padding: 21px;
+    .parks-grid {
+        gap: 18px;
+    }
+
+    .park-card-body {
+        padding: 18px;
     }
 
     .campground-card {
@@ -416,6 +512,20 @@
 
     .parks-planning {
         padding: 44px 18px 48px;
+    }
+}
+
+@media (max-width: 620px) {
+    .parks-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .park-card-media {
+        aspect-ratio: 16 / 10;
+    }
+
+    .park-card-body h3 {
+        font-size: 24px;
     }
 }
 
