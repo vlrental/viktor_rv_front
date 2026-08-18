@@ -38,10 +38,6 @@ const CONTACT_CSS: Asset = asset!(
     "/assets/css/contact.css",
     AssetOptions::css().with_static_head(true)
 );
-const COOLER_TRAILERS_CSS: Asset = asset!(
-    "/assets/css/cooler_trailers.css",
-    AssetOptions::css().with_static_head(true)
-);
 const DELIVERY_CSS: Asset = asset!(
     "/assets/css/delivery.css",
     AssetOptions::css().with_static_head(true)
@@ -87,8 +83,7 @@ pub enum Route {
         ParksInOurRange {},
         #[redirect("/attractions", || Route::ParksInOurRange {})]
         #[redirect("/restaurants", || Route::ParksInOurRange {})]
-        #[route("/cooler-trailers")]
-        CoolerTrailers {},
+        #[redirect("/cooler-trailers", || Route::ParksInOurRange {})]
         #[route("/delivery")]
         Delivery {},
         #[route("/rv-sales")]
@@ -203,11 +198,6 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "Find provincial parks, private RV parks and municipal campgrounds across the Okanagan and Shuswap within VL Rental's delivery area.",
             "/parks-in-our-range",
         ),
-        Route::CoolerTrailers {} => SeoMetadata::indexed(
-            "Cooler Trailers Coming Soon in Kelowna | VL Rental",
-            "Learn about planned refrigerated cooler trailers for cold food and beverage storage at events and campsites. Not an RV and not yet available to book.",
-            "/cooler-trailers",
-        ),
         Route::Delivery {} => SeoMetadata::indexed(
             "RV Delivery & Setup in the Okanagan | VL Rental",
             "See how VL Rental delivers and sets up RVs across approved destinations within 150 km of the Kelowna base.",
@@ -277,7 +267,6 @@ fn App() -> Element {
         CHECKOUT_CSS,
         CONFIRMED_CSS,
         CONTACT_CSS,
-        COOLER_TRAILERS_CSS,
         DELIVERY_CSS,
         RV_DETAIL_CSS,
         RV_SALES_CSS,
@@ -500,7 +489,6 @@ mod seo_tests {
             Route::Contact {},
             Route::About {},
             Route::ParksInOurRange {},
-            Route::CoolerTrailers {},
             Route::Delivery {},
             Route::RvSales {},
             Route::Terms {},

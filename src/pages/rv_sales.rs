@@ -83,7 +83,7 @@ pub fn RvSales() -> Element {
             div { class: "eyebrow", "RV SALES" }
             h1 { class: "sale-title", "Own your next adventure" }
             p { class: "sale-sub",
-                "RV and cooler trailer sales are coming soon! In the meantime, explore our rental fleet — and tell us what you're looking to buy so we can reach out first."
+                "RV sales are coming soon! In the meantime, explore our rental fleet — and tell us what you're looking to buy so we can reach out first."
             }
         }
 

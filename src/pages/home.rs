@@ -536,13 +536,7 @@ fn HowItWorks(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>
 
 #[component]
 fn MoreServices() -> Element {
-    let services: [(&'static str, &'static str, &'static str, Route); 4] = [
-        (
-            "snowflake",
-            "Cooler Trailers",
-            "Keep food & drinks cold on any trip",
-            Route::CoolerTrailers {},
-        ),
+    let services: [(&'static str, &'static str, &'static str, Route); 3] = [
         (
             "truck",
             "Delivery Services",

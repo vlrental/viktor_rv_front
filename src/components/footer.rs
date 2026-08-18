@@ -42,7 +42,6 @@ pub fn Footer() -> Element {
                 div { class: "f-col",
                     div { class: "f-head", "RENTALS" }
                     a { class: "f-link", href: rentals_href, "RV Rentals" }
-                    Link { class: "f-link", to: Route::CoolerTrailers {}, "Cooler Trailers" }
                 }
                 div { class: "f-col",
                     div { class: "f-head", "SERVICES" }

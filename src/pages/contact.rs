@@ -73,7 +73,6 @@ pub fn Contact() -> Element {
                         div { class: "ct-select-wrap",
                             select { class: "ct-select", value: "{interest}", disabled: *busy.read(), onchange: move |e| interest.set(e.value()),
                                 option { value: "rv", "RV Rental" }
-                                option { value: "cooler", "Cooler Trailer" }
                                 option { value: "other", "Something else" }
                             }
                             span { class: "ct-select-chevron",

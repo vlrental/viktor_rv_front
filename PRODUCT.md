@@ -6,7 +6,7 @@ brand
 
 ## Users
 
-Customers in British Columbia who want to rent an RV or cooler trailer, plus rental owners and VL Rental administrators who manage bookings.
+Customers in British Columbia who want to rent an RV, plus rental owners and VL Rental administrators who manage bookings.
 
 ## Product Purpose
 
