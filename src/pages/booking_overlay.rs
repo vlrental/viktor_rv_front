@@ -775,7 +775,7 @@ fn display_booking_moment(timestamp: &str) -> String {
         .map(|value| {
             value
                 .with_timezone(&Vancouver)
-                .format("%A, %B %-d, %Y · %-I:%M %p %Z")
+                .format("%A, %B %-d, %Y · %-I:%M %p")
                 .to_string()
         })
         .unwrap_or_else(|_| timestamp.to_string())
@@ -799,7 +799,7 @@ fn display_deposit_due(timestamp: &str) -> String {
         .map(|value| {
             value
                 .with_timezone(&Vancouver)
-                .format("%B %-d, %Y at %-I:%M %p %Z")
+                .format("%B %-d, %Y at %-I:%M %p")
                 .to_string()
         })
         .unwrap_or_else(|_| timestamp.to_string())
@@ -4085,11 +4085,11 @@ mod saved_address_tests {
         assert_eq!(booking_stay_nights(&booking), Some(4));
         assert_eq!(
             display_booking_moment(&booking.starts_at),
-            "Friday, August 30, 2030 · 2:00 PM PDT"
+            "Friday, August 30, 2030 · 2:00 PM"
         );
         assert_eq!(
             display_booking_moment(&booking.ends_at),
-            "Tuesday, September 3, 2030 · 11:00 AM PDT"
+            "Tuesday, September 3, 2030 · 11:00 AM"
         );
         assert!(quote_matches_booking(&quote, &booking));
         let matching_draft = api::TripDraft {
@@ -4354,7 +4354,7 @@ mod saved_address_tests {
     fn damage_deposit_fallback_is_exactly_48_hours_before_delivery() {
         assert_eq!(
             display_delivery_deposit_due("2026-09-04T21:00:00Z"),
-            "September 2, 2026 at 2:00 PM PDT"
+            "September 2, 2026 at 2:00 PM"
         );
     }
 

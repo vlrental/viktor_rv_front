@@ -26,7 +26,7 @@ const PRIVACY_SECTIONS: &[PrivacySection] = &[
         ],
         bullets: &[
             "Identity and contact information: name, email address, telephone number, account identifier, and authenticated profile details.",
-            "Booking information: selected RV, dates, guest count, delivery address and distance, campsite details, extras, notes, timezone, quote, booking number, status, and communications.",
+            "Booking information: selected RV, dates, guest count, delivery address and distance, campsite details, extras, notes, quote, booking number, status, and communications.",
             "Payment information: amount, currency, payment schedule, Stripe customer, Checkout, PaymentIntent, invoice or refund references, payment status, and limited transaction metadata. Full card numbers and security codes are entered directly into Stripe and are not stored by VL Rental.",
             "Safety, damage, and claim information: inspection notes, incident details, reasons for a deposit decision, private photographs, repair or cleaning records, and related correspondence.",
             "Account and security information: password hash held by the backend, sign-in provider identifiers, session records, one-time-code hashes, authentication events, and fraud or abuse indicators.",

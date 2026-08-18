@@ -1,6 +1,6 @@
 # Viktor RV frontend — AI handoff
 
-Last updated: 2026-08-04
+Last updated: 2026-08-17
 
 This document records the current frontend booking architecture, the problems fixed during the one-page booking work, the verified behavior, and the safe continuation plan for future AI agents.
 
@@ -239,7 +239,7 @@ Do not create a test booking, send email, or mutate production merely to run an 
 - Auth sessions now expose the latest authenticated customer contact from the protected `/auth/me` response. Step 5 pre-fills that name and phone and collapses complete contact details into an editable summary. A new account with no saved customer contact still receives the minimal missing-contact fields because booking confirmation requires a name and phone; the signed-in email is locked to the authenticated account.
 - Stripe Priority Support answered case `sco_Ut5ECLsXyQP2d9` on 2026-07-15 and declined Extended Authorization eligibility. The owner subsequently selected the refundable CA$1,000 charge/refund model. The backend, admin UI, customer copy, Terms and tests must use this selected model; live activation remains separately prohibited until the complete new test report is green and directly approved.
 - On 2026-07-15, production access was recovered through the ignored backend `.env.prod`, which points to the correct Supabase project `pwhlkpwlansarstmstge`; the unrelated visible project `oysipecbuubmjgdiqrku` was not used. The three pending versioned admin/Stripe/security migrations were applied, all three production SQL safety suites passed, and the private `damage-evidence` bucket was confirmed with a 10 MiB limit.
-- On 2026-07-15, the email/Stripe readiness audit added sanitized SMTP failure codes, admin overview attention items, in-page test/retry controls, and preserved webhook-confirmed bookings when email fails. Customer browser IANA timezones are captured on booking; emails show customer-local times plus Kelowna `America/Vancouver` schedule when they differ, while browser timestamps show the viewer-local timezone.
+- On 2026-08-17, browser timezone inference was removed from booking requests and rendered schedules. Emails and browser UI use the fixed VL Rental operating schedule internally and show only the date and time, without timezone names, abbreviations, offsets, customer-timezone labels, or duplicate schedule rows.
 - Public authentication/booking/quote/form/review/address/delivery-estimate routes now have bounded per-client rate limits; the signed Stripe webhook is intentionally excluded. Checkout expiry now updates the booking, obligation, and stored Checkout Session payment row together.
 - Backend production deployment is gated by formatting, warning-free lint, normal tests, disposable PostgreSQL webhook/refund tests and both booking/block concurrency tests. Frontend Pages deployment is gated by formatting, tests, warning-free lint and the WASM target check.
 - Real private Storage E2E first passed with an ephemeral legacy service role and was repeated successfully with the configured modern backend-only `sb_secret_...` key: upload, short-lived signed download, deletion, and post-delete denial all passed. The backend rejects publishable keys in the secret setting and never sends a modern secret as a Bearer JWT. No secret value is stored in tracked source, plans, or handoff files.

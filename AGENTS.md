@@ -68,7 +68,7 @@
 
 - Booking confirmation email is sent by the backend through Amazon SES SMTP in `ca-central-1` from `no-reply@vlrental.ca`; the administrator recipient is `Vlrental.ca@gmail.com`.
 - A successful booking remains valid if email delivery fails; the confirmation page must report the email result returned by the backend.
-- Store timestamps in UTC. The RV delivery/return business schedule remains `America/Vancouver`; customer emails also show the validated browser timezone captured with the booking, and browser UI timestamps use the viewer's local timezone with an explicit timezone label.
+- Store timestamps in UTC and continue calculating the RV delivery/return business schedule internally in `America/Vancouver`. Never infer or display a customer's browser timezone. Customer/admin emails, browser UI, terms, and other rendered content must show booking dates and times on the fixed VL Rental operating schedule without timezone names, abbreviations, UTC offsets, or duplicate timezone-specific schedule rows.
 - Failed customer/admin email deliveries must retain a sanitized error code/message, appear in the existing admin overview, and be retryable from that page. Email failure never rolls back a webhook-confirmed payment or booking.
 - Public authentication, quote, booking, contact, newsletter, review, address and delivery-estimate endpoints must use bounded per-client rate limits. Stripe webhook delivery is protected by signature verification and is not placed behind the public client rate limiter.
 - Frontend and backend production workflows must run formatting, tests, warning-free lint checks, and the relevant browser/database target checks before any deployment job can begin.

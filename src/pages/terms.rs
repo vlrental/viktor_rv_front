@@ -40,7 +40,7 @@ const TERM_SECTIONS: &[TermSection] = &[
         id: "dates",
         title: "4. Rental dates, times, and minimum pricing",
         paragraphs: &[
-            "All delivery, return, payment-due, and availability rules are calculated by the backend in America/Vancouver time. Standard delivery and setup is at 2:00 PM, and standard return access is at 11:00 AM, on the dates in the booking summary. The RV must be vacant and ready for pickup at the return time.",
+            "All delivery, return, payment-due, and availability rules are calculated using VL Rental's local operating schedule. Standard delivery and setup is at 2:00 PM, and standard return access is at 11:00 AM, on the dates in the booking summary. The RV must be vacant and ready for pickup at the return time.",
             "Customers may select one or more nights. For a one- or two-night stay, the selected delivery and return dates remain unchanged, but the booking is priced at the three-night minimum and the RV remains unavailable through the full protected three-night window. The customer may not use or occupy the RV after the selected return time even when the protected availability window continues longer.",
         ],
         bullets: &[],

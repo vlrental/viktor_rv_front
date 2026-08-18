@@ -2004,7 +2004,6 @@ struct ManualBookingPayload<'a> {
     delivery_address: &'a str,
     notes: Option<&'a str>,
     admin_notes: &'a str,
-    customer_timezone: &'a str,
 }
 
 #[derive(Serialize)]
@@ -2051,7 +2050,6 @@ struct CreateBookingPayload<'a> {
     email: &'a str,
     phone: &'a str,
     notes: Option<&'a str>,
-    customer_timezone: &'a str,
 }
 
 #[derive(Serialize)]
@@ -2511,7 +2509,6 @@ async fn send_booking_request(
     phone: &str,
     notes: &str,
 ) -> Result<gloo_net::http::Response, ApiError> {
-    let customer_timezone = crate::timezone::browser_timezone();
     Request::post(&format!("{API_BASE}/api/v1/bookings"))
         .header("Content-Type", "application/json")
         .header("Authorization", &format!("Bearer {token}"))
@@ -2522,7 +2519,6 @@ async fn send_booking_request(
             email,
             phone,
             notes: (!notes.trim().is_empty()).then_some(notes),
-            customer_timezone: &customer_timezone,
         })
         .map_err(|error| ApiError::client(error.to_string()))?
         .send()
@@ -3617,7 +3613,6 @@ pub async fn create_manual_admin_booking(
 ) -> Result<CreatedBooking, ApiError> {
     let token = admin_access_token()?;
     let request_id = uuid::Uuid::new_v4().to_string();
-    let customer_timezone = crate::timezone::browser_timezone();
     let response = Request::post(&format!("{API_BASE}/api/v1/admin/bookings/manual"))
         .header("Content-Type", "application/json")
         .header("Authorization", &format!("Bearer {token}"))
@@ -3634,7 +3629,6 @@ pub async fn create_manual_admin_booking(
             delivery_address,
             notes: None,
             admin_notes: notes,
-            customer_timezone: &customer_timezone,
         })
         .map_err(|error| ApiError::client(error.to_string()))?
         .send()
@@ -4442,13 +4436,12 @@ mod delivery_draft_tests {
             delivery_address: "Kelowna, BC",
             notes: None,
             admin_notes: "",
-            customer_timezone: "America/Vancouver",
         };
         let value = serde_json::to_value(payload).unwrap();
 
         assert_eq!(value["admin_notes"], "");
         assert!(value["notes"].is_null());
-        assert_eq!(value["customer_timezone"], "America/Vancouver");
+        assert!(value.get("customer_timezone").is_none());
     }
 
     #[test]
