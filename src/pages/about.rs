@@ -80,13 +80,34 @@ pub fn About() -> Element {
             div { class: "ab-story-l",
                 h2 { class: "ab-story-h", "Who we are" }
                 p { class: "ab-story-p",
-                    "At VL Rental we believe the best memories are made outdoors — tracing scenic Okanagan highways and waking up beside the lake in a fully-equipped travel trailer."
+                    "VL Rental was built around a simple idea: "
+                    strong { "RV travel should be easy, comfortable, and enjoyable from the very beginning." }
                 }
                 p { class: "ab-story-p",
-                    "We're a passionate team of outdoor enthusiasts committed to delivering experiences, not just rentals. Every rig is meticulously maintained and safety-checked before it reaches you."
+                    "Based in the Okanagan, we started VL Rental with a focus on providing clean, well-maintained RVs and a rental experience that makes your trip easier — not more complicated."
                 }
                 p { class: "ab-story-p",
-                    "Transparent policies, fair pricing and helpful guidance mean you can focus on the fun — not the logistics."
+                    "We know that planning an RV trip already takes enough work. Finding the right trailer, picking it up, setting everything up, connecting the utilities, and making sure everything is ready can take time and add unnecessary stress. That’s why we offer "
+                    strong { "delivery and on-site setup" }
+                    ". Our goal is simple: when you arrive, your RV is already there, set up, and ready for you to enjoy."
+                }
+                p { class: "ab-story-p",
+                    "We take care of our trailers the way we would want someone to take care of our own. Every unit is inspected, cleaned, and prepared before each rental. We pay attention to the small details because we know those details can make a big difference during a trip."
+                }
+                p { class: "ab-story-p",
+                    "We also believe that rental pricing should be straightforward. You should know what you’re paying for and what to expect before your vacation begins — without unnecessary surprises."
+                }
+                p { class: "ab-story-p",
+                    "VL Rental is still a small, locally operated business, and we believe that’s one of our strengths. When you contact us, you’re dealing with people who know our RVs, know the Okanagan, and genuinely care about making sure your trip goes well."
+                }
+                p { class: "ab-story-p",
+                    "Whether you're planning a weekend getaway, a family vacation, or your first RV adventure, our goal is the same:"
+                }
+                p { class: "ab-story-p",
+                    strong { "You enjoy the trip. We take care of the RV." }
+                }
+                p { class: "ab-story-p",
+                    "That’s what VL Rental is all about."
                 }
             }
             div { class: "ab-story-r",
