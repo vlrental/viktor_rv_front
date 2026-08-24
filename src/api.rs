@@ -24,7 +24,7 @@ pub fn frontend_base_url() -> String {
                 .and_then(|window| window.location().origin().ok())
                 .map(|value| value.trim_end_matches('/').to_string())
         })
-        .unwrap_or_else(|| "https://gaponovalexey.github.io/viktor_rv_front".to_string())
+        .unwrap_or_else(|| "https://vlrental.github.io/viktor_rv_front".to_string())
 }
 
 fn browser_github_pages_base() -> Option<String> {
@@ -4549,23 +4549,23 @@ mod delivery_draft_tests {
 
     #[test]
     fn frontend_links_keep_the_github_pages_repository_prefix() {
-        let base = "https://gaponovalexey.github.io/viktor_rv_front/";
+        let base = "https://vlrental.github.io/viktor_rv_front/";
 
         assert_eq!(
             frontend_path_for_base(base, "/#home-rentals"),
-            "https://gaponovalexey.github.io/viktor_rv_front/#home-rentals"
+            "https://vlrental.github.io/viktor_rv_front/#home-rentals"
         );
         assert_eq!(
             frontend_path_for_base(base, "/admin"),
-            "https://gaponovalexey.github.io/viktor_rv_front/admin"
+            "https://vlrental.github.io/viktor_rv_front/admin"
         );
         assert_eq!(
             auth_completion_url_for_base(base, "/#home-rentals"),
-            "https://gaponovalexey.github.io/viktor_rv_front/?vl_auth_complete=1#home-rentals"
+            "https://vlrental.github.io/viktor_rv_front/?vl_auth_complete=1#home-rentals"
         );
         assert_eq!(
             auth_completion_url_for_base(base, "/account"),
-            "https://gaponovalexey.github.io/viktor_rv_front/account?vl_auth_complete=1"
+            "https://vlrental.github.io/viktor_rv_front/account?vl_auth_complete=1"
         );
     }
 
@@ -4573,8 +4573,8 @@ mod delivery_draft_tests {
     fn oauth_return_uses_the_real_route_below_the_github_pages_prefix() {
         assert_eq!(
             auth_return_path_for_location(
-                "https://gaponovalexey.github.io/viktor_rv_front",
-                "https://gaponovalexey.github.io",
+                "https://vlrental.github.io/viktor_rv_front",
+                "https://vlrental.github.io",
                 "/viktor_rv_front/rv/2015-keystone-bullet",
                 "",
                 "",
@@ -4583,8 +4583,8 @@ mod delivery_draft_tests {
         );
         assert_eq!(
             auth_return_path_for_location(
-                "https://gaponovalexey.github.io/viktor_rv_front",
-                "https://gaponovalexey.github.io",
+                "https://vlrental.github.io/viktor_rv_front",
+                "https://vlrental.github.io",
                 "/viktor_rv_front/",
                 "?guests=4",
                 "#home-rentals",
@@ -4611,12 +4611,12 @@ mod delivery_draft_tests {
     fn github_pages_runtime_cannot_fall_back_to_the_production_domain() {
         assert_eq!(
             github_pages_base(
-                "https://gaponovalexey.github.io",
-                "gaponovalexey.github.io",
+                "https://vlrental.github.io",
+                "vlrental.github.io",
                 "/viktor_rv_front/admin"
             )
             .as_deref(),
-            Some("https://gaponovalexey.github.io/viktor_rv_front")
+            Some("https://vlrental.github.io/viktor_rv_front")
         );
         assert_eq!(
             github_pages_base("https://vlrental.ca", "vlrental.ca", "/admin"),

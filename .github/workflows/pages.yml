@@ -38,7 +38,8 @@ jobs:
   build:
     # A dev build is available only through a deliberate manual dispatch. Normal
     # dev pushes do not publish anything; pushing main is the production path.
-    if: github.event_name == 'push' || github.ref_name == 'dev'
+    # Manual dispatches may republish either dev or main after repository moves
+    # or Pages configuration changes.
     needs: test
     runs-on: ubuntu-latest
     steps:

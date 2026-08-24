@@ -116,7 +116,7 @@ pub fn booking_launch_requires_home(route: &Route) -> bool {
 
 const SITE_URL: &str = match option_env!("VL_FRONTEND_BASE_URL") {
     Some(value) => value,
-    None => "https://gaponovalexey.github.io/viktor_rv_front",
+    None => "https://vlrental.github.io/viktor_rv_front",
 };
 
 #[derive(Clone, PartialEq)]
