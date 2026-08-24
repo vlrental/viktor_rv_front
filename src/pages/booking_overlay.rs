@@ -44,6 +44,19 @@ if (window.__vlEmbeddedCheckout) {
   window.__vlEmbeddedCheckout = null;
 }
 "#;
+const GUIDE_TO_PAYMENT_TERMS: &str = r#"
+await new Promise(resolve => window.setTimeout(resolve, 280));
+const target = document.getElementById('ub-payment-terms-confirmation');
+if (target) {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  target.scrollIntoView({
+    behavior: reducedMotion ? 'auto' : 'smooth',
+    block: 'center',
+    inline: 'nearest'
+  });
+  target.querySelector('input[type="checkbox"]')?.focus({ preventScroll: true });
+}
+"#;
 const CLEANUP_BOOKING_EPHEMERALS: &str = r#"
 const mapState = window.__vlBookingDeliveryMapState;
 if (mapState?.map) {
@@ -524,7 +537,7 @@ return await (async () => {{
   root.replaceChildren();
   const stripe = window.Stripe({publishable_key});
   const checkout = await stripe.initEmbeddedCheckout({{
-    clientSecret: {client_secret},
+    fetchClientSecret: async () => {client_secret},
     onComplete: () => {{ root.dataset.complete = 'true'; }}
   }});
   checkout.mount('#vl-embedded-checkout');
@@ -537,6 +550,10 @@ return await (async () => {{
 
 fn checkout_status_poll_due(iteration: u16, checkout_complete: bool) -> bool {
     checkout_complete || iteration.is_multiple_of(4)
+}
+
+fn payment_checkout_may_start(overlay_open: bool, terms_accepted: bool, phase: &str) -> bool {
+    overlay_open && terms_accepted && phase == "idle"
 }
 
 fn rental_selection_keeps_dates(trip_ready: bool, available_for_dates: Option<bool>) -> bool {
@@ -1075,6 +1092,10 @@ if (target) {{
     let _ = document::eval(&script).await;
 }
 
+async fn guide_to_payment_terms() {
+    let _ = document::eval(GUIDE_TO_PAYMENT_TERMS).await;
+}
+
 fn addon_description(key: &str) -> &'static str {
     if key == "bbq_fuel" {
         "Fuel supplied for the portable BBQ."
@@ -1550,13 +1571,24 @@ pub(crate) fn UnifiedBookingOverlay(
     });
 
     use_effect(move || {
+        let overlay_open = *payment_overlay_open.read();
+        let terms_accepted = *payment_terms_accepted.read();
+        let has_pending_payment = pending_payment.read().is_some();
+        if overlay_open && has_pending_payment && !terms_accepted {
+            spawn(guide_to_payment_terms());
+        }
+    });
+
+    use_effect(move || {
         let attempt = *payment_attempt_nonce.read();
         let pending = pending_payment.read().clone();
         let overlay_open = *payment_overlay_open.read();
+        let terms_accepted = *payment_terms_accepted.read();
         let config = payment_config.read().clone();
         let availability =
             api::payment_availability(config.as_ref(), !payment_config_error.read().is_empty());
-        if !overlay_open || payment_phase.read().as_str() != "idle" {
+        if !payment_checkout_may_start(overlay_open, terms_accepted, payment_phase.read().as_str())
+        {
             return;
         }
         let Some(created) = pending else {
@@ -2989,10 +3021,14 @@ pub(crate) fn UnifiedBookingOverlay(
                                 if payment_phase.read().as_str() == "checking" { p { class: "ub-stripe-state", "Checking webhook-backed booking status…" } }
                                 if payment_phase.read().as_str() == "mounting" { p { class: "ub-stripe-state", "Loading secure Checkout…" } }
                                 if !payment_terms_allow_checkout(*payment_terms_accepted.read()) {
-                                    div { class: "ub-payment-terms-wait", role: "status",
+                                    div { class: "ub-payment-terms-wait", role: "status", aria_live: "polite",
                                         Icon { name: "shield-check", size: 24, color: "var(--vl-forest)" }
                                         strong { "Accept the rental terms to continue" }
-                                        p { "Review and confirm the Terms & Conditions below. Secure Checkout will load here without leaving your payment." }
+                                        p { "We moved the booking receipt to the required checkbox. Confirm the Terms & Conditions there, and Secure Checkout will load here automatically." }
+                                        button { class: "ub-payment-terms-guide", r#type: "button", onclick: move |_| { spawn(guide_to_payment_terms()); },
+                                            span { "Review and accept terms" }
+                                            Icon { name: "arrow-right", size: 16, color: "currentColor" }
+                                        }
                                     }
                                 } else if payment_availability == api::PaymentAvailability::TestReady {
                                     div { id: "vl-embedded-checkout", class: "ub-embedded-checkout", aria_label: "Stripe test checkout" }
@@ -3098,7 +3134,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                 }
                                 if !all_in_error.read().is_empty() { p { class: "ub-error", role: "alert", "{all_in_error}" } }
                                 button { class: "ub-change-booking ub-change-booking-payment", r#type: "button", onclick: move |_| { edit_booking_error.set(String::new()); edit_booking_confirm_open.set(true); }, Icon { name: "pencil", size: 15, color: "var(--vl-forest)" } span { "Change booking details" } small { "Cancels this unpaid payment session, releases the dates, and recalculates your updated trip." } }
-                                div { class: if *payment_terms_accepted.read() { "ub-payment-terms-gate is-accepted" } else { "ub-payment-terms-gate" },
+                                div { id: "ub-payment-terms-confirmation", class: if *payment_terms_accepted.read() { "ub-payment-terms-gate is-accepted" } else { "ub-payment-terms-gate needs-attention" },
                                     label {
                                         input {
                                             r#type: "checkbox",
@@ -3959,9 +3995,25 @@ mod saved_address_tests {
 
         assert!(script.trim_start().starts_with("return await (async () =>"));
         assert!(script.contains("window.Stripe(\"pk_test_example\")"));
-        assert!(script.contains("clientSecret: \"secret_example\""));
+        assert!(script.contains("fetchClientSecret: async () => \"secret_example\""));
         assert!(script.contains("window.__vlEmbeddedCheckout.destroy()"));
         assert!(UNMOUNT_EMBEDDED_CHECKOUT.contains(".destroy()"));
+    }
+
+    #[test]
+    fn embedded_checkout_waits_for_payment_layer_terms() {
+        assert!(!payment_checkout_may_start(true, false, "idle"));
+        assert!(payment_checkout_may_start(true, true, "idle"));
+        assert!(!payment_checkout_may_start(false, true, "idle"));
+        assert!(!payment_checkout_may_start(true, true, "checking"));
+    }
+
+    #[test]
+    fn payment_terms_guidance_targets_the_required_checkbox_smoothly() {
+        assert!(GUIDE_TO_PAYMENT_TERMS.contains("ub-payment-terms-confirmation"));
+        assert!(GUIDE_TO_PAYMENT_TERMS.contains("scrollIntoView"));
+        assert!(GUIDE_TO_PAYMENT_TERMS.contains("behavior: reducedMotion ? 'auto' : 'smooth'"));
+        assert!(GUIDE_TO_PAYMENT_TERMS.contains("focus({ preventScroll: true })"));
     }
 
     #[test]
