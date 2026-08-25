@@ -1745,8 +1745,15 @@ body:has(.cat-planner-backdrop) {
 .admin-calendar-sync-rental > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--vl-hair); background: var(--vl-surface); }
 .admin-calendar-sync-rental > header h3 { color: var(--vl-ink); font: 500 21px var(--font-heading); }
 .admin-calendar-sync-rental > header small { color: var(--vl-muted); font: 600 8px var(--font-mono); }
+.admin-calendar-sync-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 17px; color: var(--vl-forest); cursor: pointer; font-size: 10px; font-weight: 750; list-style: none; }
+.admin-calendar-sync-details > summary::-webkit-details-marker { display: none; }
+.admin-calendar-sync-details > summary::before { width: 7px; height: 7px; border: solid currentColor; border-width: 0 1px 1px 0; content: ""; transform: rotate(-45deg); }
+.admin-calendar-sync-details > summary > span { margin-right: auto; }
+.admin-calendar-sync-details > summary small { padding: 4px 7px; border-radius: 999px; background: #E1F0E5; font: 750 8px var(--font-mono); letter-spacing: .04em; }
+.admin-calendar-sync-details[open] > summary { border-bottom: 1px solid var(--vl-hair); }
+.admin-calendar-sync-details[open] > summary::before { transform: rotate(45deg); }
 .admin-calendar-sync-row { display: grid; gap: 12px; padding: 17px; border-top: 1px solid var(--vl-hair); }
-.admin-calendar-sync-rental > header + .admin-calendar-sync-row { border-top: 0; }
+.admin-calendar-sync-details > .admin-calendar-sync-row { border-top: 0; }
 .admin-calendar-export-row { background: #F5FAF6; }
 .admin-calendar-export-row .admin-calendar-provider-dot { background: var(--vl-forest); }
 .admin-calendar-export-description { color: var(--vl-muted); font-size: 10px; line-height: 1.5; }

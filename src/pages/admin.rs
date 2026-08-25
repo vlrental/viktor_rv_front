@@ -1656,27 +1656,33 @@ fn CalendarSyncDrawer(
                         for rental in rentals.iter() {
                             section { key: "sync-{rental.slug}", class: "admin-calendar-sync-rental",
                                 header { h3 { "{rental.name}" } small { "{rental.slug}" } }
-                                CalendarExportRow {
-                                    key: "export-{rental.slug}",
-                                    rental_slug: rental.slug.clone(),
-                                    connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == "vl").cloned(),
-                                    pending_actions,
-                                    on_changed: move |_| {
-                                        reload_nonce.set(reload_nonce().wrapping_add(1));
+                                details { class: "admin-calendar-sync-details",
+                                    summary {
+                                        span { "Manage calendar links" }
+                                        small { "iCal" }
                                     }
-                                }
-                                for provider in ["rvezy", "outdoorsy"] {
-                                    CalendarSyncRow {
-                                        key: "{rental.slug}-{provider}",
+                                    CalendarExportRow {
+                                        key: "export-{rental.slug}",
                                         rental_slug: rental.slug.clone(),
-                                        rental_name: rental.name.clone(),
-                                        provider: provider.to_string(),
-                                        connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == provider).cloned(),
+                                        connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == "vl").cloned(),
                                         pending_actions,
-                                        dirty_rows,
                                         on_changed: move |_| {
                                             reload_nonce.set(reload_nonce().wrapping_add(1));
-                                            on_calendar_changed.call(());
+                                        }
+                                    }
+                                    for provider in ["rvezy", "outdoorsy"] {
+                                        CalendarSyncRow {
+                                            key: "{rental.slug}-{provider}",
+                                            rental_slug: rental.slug.clone(),
+                                            rental_name: rental.name.clone(),
+                                            provider: provider.to_string(),
+                                            connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == provider).cloned(),
+                                            pending_actions,
+                                            dirty_rows,
+                                            on_changed: move |_| {
+                                                reload_nonce.set(reload_nonce().wrapping_add(1));
+                                                on_calendar_changed.call(());
+                                            }
                                         }
                                     }
                                 }
