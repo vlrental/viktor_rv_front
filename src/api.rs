@@ -2851,6 +2851,27 @@ pub async fn sync_admin_calendar(calendar_id: &str) -> Result<AdminCalendarSyncR
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
+pub async fn rotate_admin_calendar_export_token(
+    calendar_id: &str,
+) -> Result<AdminCalendarConnection, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/calendar-connections/{}/rotate-export-token",
+        urlencoding::encode(calendar_id)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarConnection>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
 pub async fn disconnect_admin_calendar(calendar_id: &str) -> Result<(), ApiError> {
     let token = admin_access_token()?;
     let response = Request::post(&format!(

@@ -1702,6 +1702,10 @@ fn CalendarExportRow(
     let export_url = connection
         .as_ref()
         .and_then(|value| value.export_url.clone());
+    let connection_id = connection
+        .as_ref()
+        .map(|value| value.external_calendar_id.clone())
+        .unwrap_or_default();
 
     rsx! {
         article { class: "admin-calendar-sync-row admin-calendar-export-row",
@@ -1736,6 +1740,44 @@ fn CalendarExportRow(
                             }
                         },
                         "Copy link"
+                    }
+                    button {
+                        r#type: "button",
+                        disabled: busy(),
+                        onclick: {
+                            let id = connection_id.clone();
+                            move |_| {
+                                let id = id.clone();
+                                async move {
+                                    let confirmed = web_sys::window()
+                                        .and_then(|window| {
+                                            window
+                                                .confirm_with_message(
+                                                    "Create a new VL iCal link? The current link will stop working immediately.",
+                                                )
+                                                .ok()
+                                        })
+                                        .unwrap_or(false);
+                                    if !confirmed {
+                                        return;
+                                    }
+                                    busy.set(true);
+                                    pending_actions.set(pending_actions().saturating_add(1));
+                                    result_message.set(String::new());
+                                    match api::rotate_admin_calendar_export_token(&id).await {
+                                        Ok(_) => {
+                                            result_error.set(false);
+                                            result_message.set("New VL iCal link created. The old link no longer works.".into());
+                                            on_changed.call(());
+                                        }
+                                        Err(error) => { result_error.set(true); result_message.set(error.message); }
+                                    }
+                                    pending_actions.set(pending_actions().saturating_sub(1));
+                                    busy.set(false);
+                                }
+                            }
+                        },
+                        if busy() { "Creating…" } else { "Create new link" }
                     }
                 }
             } else {
