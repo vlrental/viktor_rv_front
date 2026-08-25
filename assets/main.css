@@ -1747,6 +1747,9 @@ body:has(.cat-planner-backdrop) {
 .admin-calendar-sync-rental > header small { color: var(--vl-muted); font: 600 8px var(--font-mono); }
 .admin-calendar-sync-row { display: grid; gap: 12px; padding: 17px; border-top: 1px solid var(--vl-hair); }
 .admin-calendar-sync-rental > header + .admin-calendar-sync-row { border-top: 0; }
+.admin-calendar-export-row { background: #F5FAF6; }
+.admin-calendar-export-row .admin-calendar-provider-dot { background: var(--vl-forest); }
+.admin-calendar-export-description { color: var(--vl-muted); font-size: 10px; line-height: 1.5; }
 .admin-calendar-sync-row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin-calendar-sync-row-head > div { display: flex; align-items: center; gap: 8px; color: var(--vl-ink); font-size: 12px; }
 .admin-calendar-provider-dot { width: 9px; height: 9px; border-radius: 50%; background: #3478B8; }

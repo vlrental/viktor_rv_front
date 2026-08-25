@@ -2724,6 +2724,27 @@ pub async fn admin_calendar_connections() -> Result<Vec<AdminCalendarConnection>
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
+pub async fn create_admin_calendar_export(
+    rental_slug: &str,
+) -> Result<AdminCalendarConnection, ApiError> {
+    let token = admin_access_token()?;
+    let response = Request::post(&format!(
+        "{API_BASE}/api/v1/admin/calendar-exports/{}",
+        urlencoding::encode(rental_slug)
+    ))
+    .header("Authorization", &format!("Bearer {token}"))
+    .send()
+    .await
+    .map_err(|error| ApiError::client(error.to_string()))?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<AdminCalendarConnection>()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
 pub async fn test_admin_calendar(
     rental_slug: &str,
     provider: &str,

@@ -1656,6 +1656,15 @@ fn CalendarSyncDrawer(
                         for rental in rentals.iter() {
                             section { key: "sync-{rental.slug}", class: "admin-calendar-sync-rental",
                                 header { h3 { "{rental.name}" } small { "{rental.slug}" } }
+                                CalendarExportRow {
+                                    key: "export-{rental.slug}",
+                                    rental_slug: rental.slug.clone(),
+                                    connection: connections.read().iter().find(|connection| connection.rental_slug == rental.slug && connection.provider == "vl").cloned(),
+                                    pending_actions,
+                                    on_changed: move |_| {
+                                        reload_nonce.set(reload_nonce().wrapping_add(1));
+                                    }
+                                }
                                 for provider in ["rvezy", "outdoorsy"] {
                                     CalendarSyncRow {
                                         key: "{rental.slug}-{provider}",
@@ -1676,6 +1685,89 @@ fn CalendarSyncDrawer(
                     }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn CalendarExportRow(
+    rental_slug: String,
+    connection: Option<api::AdminCalendarConnection>,
+    mut pending_actions: Signal<usize>,
+    on_changed: EventHandler<()>,
+) -> Element {
+    let mut busy = use_signal(|| false);
+    let mut result_message = use_signal(String::new);
+    let mut result_error = use_signal(|| false);
+    let export_url = connection.as_ref().and_then(|value| value.export_url.clone());
+
+    rsx! {
+        article { class: "admin-calendar-sync-row admin-calendar-export-row",
+            div { class: "admin-calendar-sync-row-head",
+                div { span { class: "admin-calendar-provider-dot" } strong { "VL iCal link" } }
+                span { class: "admin-calendar-connection-status status-connected", if export_url.is_some() { "Ready" } else { "Not created" } }
+            }
+            p { class: "admin-calendar-export-description", "Use this unique link on any other booking site to show this RV’s booked and blocked dates." }
+            if let Some(url) = export_url.as_ref() {
+                label { class: "admin-calendar-url-field",
+                    span { "Private iCal URL" }
+                    input { readonly: true, value: "{url}", aria_label: "VL iCal URL for this RV" }
+                }
+                div { class: "admin-calendar-sync-actions",
+                    button {
+                        class: "primary",
+                        r#type: "button",
+                        disabled: busy(),
+                        onclick: {
+                            let url = url.clone();
+                            move |_| {
+                                let url = url.clone();
+                                async move {
+                                    busy.set(true);
+                                    result_message.set(String::new());
+                                    match copy_calendar_url(&url).await {
+                                        Ok(()) => { result_error.set(false); result_message.set("VL iCal link copied.".into()); }
+                                        Err(error) => { result_error.set(true); result_message.set(error); }
+                                    }
+                                    busy.set(false);
+                                }
+                            }
+                        },
+                        "Copy link"
+                    }
+                }
+            } else {
+                div { class: "admin-calendar-sync-actions",
+                    button {
+                        class: "primary",
+                        r#type: "button",
+                        disabled: busy(),
+                        onclick: {
+                            let slug = rental_slug.clone();
+                            move |_| {
+                                let slug = slug.clone();
+                                async move {
+                                    busy.set(true);
+                                    pending_actions.set(pending_actions().saturating_add(1));
+                                    result_message.set(String::new());
+                                    match api::create_admin_calendar_export(&slug).await {
+                                        Ok(_) => {
+                                            result_error.set(false);
+                                            result_message.set("VL iCal link created. Copy it below after this section refreshes.".into());
+                                            on_changed.call(());
+                                        }
+                                        Err(error) => { result_error.set(true); result_message.set(error.message); }
+                                    }
+                                    pending_actions.set(pending_actions().saturating_sub(1));
+                                    busy.set(false);
+                                }
+                            }
+                        },
+                        if busy() { "Creating…" } else { "Create iCal link" }
+                    }
+                }
+            }
+            if !result_message.read().is_empty() { p { class: if result_error() { "admin-calendar-sync-result is-error" } else { "admin-calendar-sync-result" }, role: if result_error() { "alert" } else { "status" }, "{result_message}" } }
         }
     }
 }
@@ -2283,8 +2375,16 @@ fn BookingDrawer(
         if loading || busy() || uploads_pending() > 0 {
             return;
         }
-        amount.set(String::new());
-        reason.set(String::new());
+        if action == "cancel" {
+            // A cancellation request always needs both values at the API, even when no
+            // trip payment has been collected. Starting with the refundable amount
+            // avoids leaving the confirmation action silently disabled in Calendar.
+            amount.set(format!("{refundable:.2}"));
+            reason.set("Cancelled by administrator".into());
+        } else {
+            amount.set(String::new());
+            reason.set(String::new());
+        }
         evidence_ids.set(Vec::new());
         evidence_names.set(Vec::new());
         uploads_pending.set(0);
@@ -2420,6 +2520,7 @@ fn BookingDrawer(
                             p { class: "admin-action-limit", if action == "cancel" { "Available to refund: CAD ${refundable:.2}" } else { "Available damage deposit: CAD ${capturable:.2}" } }
                             label { if action == "cancel" { "Refund amount (CAD)" } else { "Damage amount (CAD)" } input { inputmode: "decimal", min: "0", max: if action == "cancel" { "{refundable:.2}" } else { "{capturable:.2}" }, value: "{amount}", placeholder: "0.00", disabled: busy() || uploads_pending() > 0, oninput: move |event| amount.set(event.value()) } }
                             label { "Reason" textarea { value: "{reason}", placeholder: "Required for audit and customer communication", disabled: busy() || uploads_pending() > 0, oninput: move |event| reason.set(event.value()) } }
+                            if action == "cancel" { p { class: "admin-action-limit", "Review the refund amount and reason, then confirm the cancellation." } }
                         }
                         if action == "capture" {
                             label { class: "admin-evidence-upload", "Evidence photos" input { r#type: "file", accept: "image/jpeg,image/png,image/webp", multiple: true, disabled: busy() || uploads_pending() > 0, oninput: move |event| { let files = event.files(); for file in files { let name = file.name(); if file.size() > 10 * 1024 * 1024 { modal_message.set(format!("{name} is larger than 10 MB.")); continue; } let web_file = file.inner().downcast_ref::<web_sys::File>().cloned(); if let Some(web_file) = web_file { let booking_id = upload_booking_id.clone(); uploads_pending += 1; spawn(async move { match api::upload_admin_damage_evidence(&booking_id, &web_file).await { Ok(id) => { evidence_ids.write().push(id); evidence_names.write().push(name); }, Err(error) => modal_message.set(error.message) } uploads_pending -= 1; }); } else { modal_message.set(format!("{name} could not be read by this browser.")); } } } } }
