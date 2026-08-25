@@ -1741,13 +1741,13 @@ body:has(.cat-planner-backdrop) {
 .admin-calendar-sync-scroll { display: grid; align-content: start; gap: 13px; }
 .admin-calendar-sync-note { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 14px 16px; border: 1px solid #ADC8B5; border-radius: 12px; background: #EDF5EF; color: var(--vl-forest); }
 .admin-calendar-sync-note p { font-size: 10px; line-height: 1.55; }
-.admin-calendar-sync-rental { overflow: hidden; border: 1px solid var(--vl-hair); border-radius: 14px; background: var(--vl-white); }
+.admin-calendar-sync-rental { min-height: 0; max-height: none; overflow: visible; border: 1px solid var(--vl-hair); border-radius: 14px; background: var(--vl-white); }
 .admin-calendar-sync-rental > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--vl-hair); background: var(--vl-surface); }
 .admin-calendar-sync-rental > header h3 { color: var(--vl-ink); font: 500 21px var(--font-heading); }
 .admin-calendar-sync-rental > header small { color: var(--vl-muted); font: 600 8px var(--font-mono); }
 .admin-calendar-sync-row { display: grid; gap: 12px; padding: 17px; border-top: 1px solid var(--vl-hair); }
 .admin-calendar-sync-rental > header + .admin-calendar-sync-row { border-top: 0; }
-.admin-calendar-export-row { background: #F5FAF6; }
+.admin-calendar-export-row { min-height: 148px; background: #F5FAF6; }
 .admin-calendar-export-row .admin-calendar-provider-dot { background: var(--vl-forest); }
 .admin-calendar-export-description { color: var(--vl-muted); font-size: 10px; line-height: 1.5; }
 .admin-calendar-sync-row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
