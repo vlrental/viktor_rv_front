@@ -1699,7 +1699,9 @@ fn CalendarExportRow(
     let mut busy = use_signal(|| false);
     let mut result_message = use_signal(String::new);
     let mut result_error = use_signal(|| false);
-    let export_url = connection.as_ref().and_then(|value| value.export_url.clone());
+    let export_url = connection
+        .as_ref()
+        .and_then(|value| value.export_url.clone());
 
     rsx! {
         article { class: "admin-calendar-sync-row admin-calendar-export-row",
