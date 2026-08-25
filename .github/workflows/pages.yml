@@ -65,10 +65,22 @@ jobs:
           if [ -d "$output" ]; then
             mv "$output" "$RUNNER_TEMP/viktor-rv-pages-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           fi
+      - name: Select production URL and base path
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "VL_FRONTEND_BASE_URL=https://vlrental.ca" >> "$GITHUB_ENV"
+            echo "VL_FRONTEND_BASE_PATH=" >> "$GITHUB_ENV"
+          else
+            echo "VL_FRONTEND_BASE_URL=https://${{ github.repository_owner }}.github.io/viktor_rv_front" >> "$GITHUB_ENV"
+            echo "VL_FRONTEND_BASE_PATH=viktor_rv_front" >> "$GITHUB_ENV"
+          fi
       - name: Build site
-        env:
-          VL_FRONTEND_BASE_URL: https://${{ github.repository_owner }}.github.io/viktor_rv_front
-        run: dx build --release --web --debug-symbols false --base-path viktor_rv_front
+        run: |
+          if [ -n "$VL_FRONTEND_BASE_PATH" ]; then
+            dx build --release --web --debug-symbols false --base-path "$VL_FRONTEND_BASE_PATH"
+          else
+            dx build --release --web --debug-symbols false
+          fi
       - name: Preserve one previous asset generation
         run: |
           output=target/dx/viktor_rv_front/release/web/public/assets
