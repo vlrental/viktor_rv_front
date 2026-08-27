@@ -1554,7 +1554,7 @@ pub const EXPECTED_STRIPE_ACCOUNT_ID: &str = "acct_1SpY7K2MR4C4rvKM";
 pub enum PaymentAvailability {
     Loading,
     Disabled,
-    TestReady,
+    Ready,
     Blocked,
 }
 
@@ -1571,11 +1571,13 @@ pub fn payment_availability(
     if !config.enabled {
         return PaymentAvailability::Disabled;
     }
-    if config.mode == "test"
-        && config.publishable_key.starts_with("pk_test_")
-        && config.account_id == EXPECTED_STRIPE_ACCOUNT_ID
-    {
-        PaymentAvailability::TestReady
+    let valid_key = match config.mode.as_str() {
+        "test" => config.publishable_key.starts_with("pk_test_"),
+        "live" => config.publishable_key.starts_with("pk_live_"),
+        _ => false,
+    };
+    if valid_key && config.account_id == EXPECTED_STRIPE_ACCOUNT_ID {
+        PaymentAvailability::Ready
     } else {
         PaymentAvailability::Blocked
     }
@@ -4382,30 +4384,39 @@ mod delivery_draft_tests {
     }
 
     #[test]
-    fn payment_availability_blocks_unexpected_mode_key_or_account() {
-        let ready = PaymentConfig {
+    fn payment_availability_accepts_verified_test_and_live_contracts() {
+        let test = PaymentConfig {
             enabled: true,
             mode: "test".into(),
             publishable_key: "pk_test_example".into(),
             account_id: EXPECTED_STRIPE_ACCOUNT_ID.into(),
         };
         assert_eq!(
-            payment_availability(Some(&ready), false),
-            PaymentAvailability::TestReady
+            payment_availability(Some(&test), false),
+            PaymentAvailability::Ready
+        );
+        let live = PaymentConfig {
+            mode: "live".into(),
+            publishable_key: "pk_live_example".into(),
+            ..test.clone()
+        };
+        assert_eq!(
+            payment_availability(Some(&live), false),
+            PaymentAvailability::Ready
         );
 
         for blocked in [
             PaymentConfig {
-                mode: "live".into(),
-                ..ready.clone()
+                mode: "unsupported".into(),
+                ..test.clone()
             },
             PaymentConfig {
                 publishable_key: "pk_live_example".into(),
-                ..ready.clone()
+                ..test.clone()
             },
             PaymentConfig {
                 account_id: "acct_unexpected".into(),
-                ..ready.clone()
+                ..test.clone()
             },
         ] {
             assert_eq!(

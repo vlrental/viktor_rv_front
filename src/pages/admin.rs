@@ -719,7 +719,16 @@ pub fn Admin() -> Element {
         payment_config.read().as_ref(),
         !payment_config_error.read().is_empty(),
     );
-    let payments_ready = payment_availability == api::PaymentAvailability::TestReady;
+    let payments_ready = payment_availability == api::PaymentAvailability::Ready;
+    let stripe_mode_label = match payment_config
+        .read()
+        .as_ref()
+        .map(|config| config.mode.as_str())
+    {
+        Some("live") => "Stripe live",
+        Some("test") => "Stripe test",
+        _ => "Stripe",
+    };
     let rv_editor_key = if rv_editor_new() {
         "new".to_string()
     } else {
@@ -810,11 +819,11 @@ pub fn Admin() -> Element {
                                 match payment_availability {
                                     api::PaymentAvailability::Loading => "Checking payments…",
                                     api::PaymentAvailability::Disabled => "Payments disabled",
-                                    api::PaymentAvailability::TestReady => "Stripe test",
+                                    api::PaymentAvailability::Ready => stripe_mode_label,
                                     api::PaymentAvailability::Blocked => "Payments unavailable",
                                 }
                             }
-                            button { class: "admin-book-link", r#type: "button", disabled: !payments_ready, title: if payments_ready { "Create a phone booking" } else { "Enable Stripe test payments before creating a phone booking" }, onclick: move |_| if payments_ready { manual_open.set(true); },
+                            button { class: "admin-book-link", r#type: "button", disabled: !payments_ready, title: if payments_ready { "Create a phone booking" } else { "Enable verified Stripe payments before creating a phone booking" }, onclick: move |_| if payments_ready { manual_open.set(true); },
                                 Icon { name: "phone-call", size: 17, color: "currentColor" }
                                 "Phone booking"
                             }
@@ -872,7 +881,7 @@ pub fn Admin() -> Element {
                     }
                     if payment_availability == api::PaymentAvailability::Blocked {
                         div { class: "admin-error admin-page-notice", role: "alert",
-                            span { if payment_config_error.read().is_empty() { "Stripe configuration is not a verified test-mode configuration. Payment actions are blocked." } else { "Payment configuration could not be verified: {payment_config_error}" } }
+                            span { if payment_config_error.read().is_empty() { "Stripe configuration could not be verified. Payment actions are blocked." } else { "Payment configuration could not be verified: {payment_config_error}" } }
                             button { r#type: "button", onclick: move |_| { let next = payment_config_retry().wrapping_add(1); payment_config_retry.set(next); }, "Retry" }
                         }
                     }
