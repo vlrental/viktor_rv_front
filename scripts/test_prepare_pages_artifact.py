@@ -22,6 +22,7 @@ SHELL = """<!doctype html>
   <meta name="twitter:title" content="Shell">
   <meta name="twitter:description" content="Shell description">
   <meta name="twitter:image" content="https://vlrental.ca/og-image.webp">
+  <meta name="google-site-verification" content="verification-test-token">
   <script type="application/ld+json">{}</script>
 </head>
 <body><div id="main"></div></body>
@@ -49,6 +50,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn('<article hidden class="seo-prerender"', document)
             self.assertIn(f'data-seo-route="{route.path}"', document)
             self.assertIn(f"https://example.test{route.path}", document)
+            self.assertIn('name="google-site-verification" content="verification-test-token"', document)
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()
