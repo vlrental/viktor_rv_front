@@ -152,6 +152,66 @@
             }
         </style>
         <script>
+            // Authentication credentials remain in per-tab sessionStorage.
+            // Open same-origin tabs exchange a complete session only through
+            // this in-memory channel; nothing sensitive enters localStorage.
+            (() => {
+                if (!("BroadcastChannel" in window) || window.__vlAuthTabChannel) return;
+
+                const keys = ["vl_access_token", "vl_refresh_token", "vl_auth_user"];
+                const readSession = () => {
+                    try {
+                        const values = keys.map((key) => sessionStorage.getItem(key));
+                        return values.every(Boolean) ? values : null;
+                    } catch (_) {
+                        return null;
+                    }
+                };
+                const writeSession = (values) => {
+                    if (!Array.isArray(values) || values.length !== keys.length || !values.every(Boolean)) return false;
+                    try {
+                        keys.forEach((key, index) => sessionStorage.setItem(key, values[index]));
+                        return true;
+                    } catch (_) {
+                        return false;
+                    }
+                };
+                const clearSession = () => {
+                    try { keys.forEach((key) => sessionStorage.removeItem(key)); } catch (_) {}
+                };
+                const requestId = typeof crypto.randomUUID === "function"
+                    ? crypto.randomUUID()
+                    : `${Date.now()}-${Math.random()}`;
+                const channel = new BroadcastChannel("vl_auth_session_v1");
+
+                window.__vlAuthTabChannel = channel;
+                window.__vlBroadcastAuthSession = () => {
+                    const values = readSession();
+                    if (values) channel.postMessage({ type: "session-update", values });
+                };
+                window.__vlBroadcastAuthLogout = () => channel.postMessage({ type: "logout" });
+
+                channel.addEventListener("message", (event) => {
+                    const message = event.data;
+                    if (!message || typeof message !== "object") return;
+                    if (message.type === "session-request") {
+                        const values = readSession();
+                        if (values) channel.postMessage({ type: "session-response", requestId: message.requestId, values });
+                    } else if (message.type === "session-response" && message.requestId === requestId) {
+                        if (!readSession() && writeSession(message.values)) location.reload();
+                    } else if (message.type === "session-update") {
+                        const hadSession = Boolean(readSession());
+                        if (writeSession(message.values) && !hadSession) location.reload();
+                    } else if (message.type === "logout" && readSession()) {
+                        clearSession();
+                        location.reload();
+                    }
+                });
+
+                if (!readSession()) channel.postMessage({ type: "session-request", requestId });
+            })();
+        </script>
+        <script>
             (() => {
                 const root = document.documentElement;
                 const recoveryKey = `vl-css-recovery:${location.pathname}`;

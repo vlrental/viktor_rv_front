@@ -419,7 +419,6 @@ fn SeoHead() -> Element {
 fn AuthSessionBridge() -> Element {
     let compatibility_callback = matches!(use_route::<Route>(), Route::AuthCallback {});
     use_effect(move || {
-        api::init_auth_tab_sync();
         spawn(async move {
             let result = api::finish_google_sign_in().await;
             match result {
