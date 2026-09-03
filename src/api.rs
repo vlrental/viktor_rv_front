@@ -1010,8 +1010,10 @@ fn admin_default_currency() -> String {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct AdminRentalsResponse {
-    rentals: Vec<AdminRentalSummary>,
+pub struct AdminRentalsResponse {
+    pub rentals: Vec<AdminRentalSummary>,
+    #[serde(default)]
+    pub addon_templates: Vec<RentalAddon>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -1039,6 +1041,8 @@ pub struct AdminRentalPayload {
     pub nightly_rate: String,
     pub cleaning_fee: String,
     pub sort_order: i32,
+    #[serde(default)]
+    pub addon_template_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -3111,7 +3115,7 @@ fn rental_media_form(
     Ok(form)
 }
 
-pub async fn admin_rentals() -> Result<Vec<AdminRentalSummary>, ApiError> {
+pub async fn admin_rentals() -> Result<AdminRentalsResponse, ApiError> {
     let url = format!("{API_BASE}/api/v1/admin/rentals");
     let response = admin_authorized_response(move |token| {
         let url = url.clone();
@@ -3130,7 +3134,6 @@ pub async fn admin_rentals() -> Result<Vec<AdminRentalSummary>, ApiError> {
     response
         .json::<AdminRentalsResponse>()
         .await
-        .map(|value| value.rentals)
         .map_err(|error| ApiError::client(error.to_string()))
 }
 

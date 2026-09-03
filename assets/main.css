@@ -1915,6 +1915,14 @@ body:has(.admin-overlay) { overflow: hidden; }
 .admin-subentity-list small { color: var(--vl-muted); font-size: 9px; }
 .admin-subentity-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 11px; padding: 11px; border-radius: 9px; background: var(--vl-surface); }
 .admin-subentity-form button { min-height: 36px; border: 0; border-radius: 7px; background: var(--vl-forest); color: var(--vl-white); font-weight: 750; }
+.admin-addon-template-actions { display: flex; gap: 7px; margin: 9px 0; }
+.admin-addon-template-actions button { border: 1px solid var(--vl-hair); border-radius: 7px; background: var(--vl-white); color: var(--vl-forest); padding: 7px 10px; font-weight: 750; }
+.admin-addon-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.admin-addon-template-choice { display: flex; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--vl-hair); border-radius: 8px; cursor: pointer; }
+.admin-addon-template-choice input { flex: 0 0 auto; }
+.admin-addon-template-choice span { display: grid; gap: 2px; }
+.admin-addon-template-choice strong { color: var(--vl-ink); font-size: 11px; }
+.admin-addon-template-choice small { color: var(--vl-muted); font-size: 9px; }
 
 @media (max-width: 980px) {
   .admin-overview-grid { grid-template-columns: 1fr; }
@@ -1988,7 +1996,7 @@ body:has(.admin-overlay) { overflow: hidden; }
   .admin-rv-editor-panel > .admin-drawer-head > button span { display: none; }
   .admin-rv-editor-panel > .admin-drawer-head > button { width: 38px; padding: 0; }
   .admin-rv-editor-panel > .admin-drawer-actions { bottom: 8px; margin: 0 10px 10px; }
-  .admin-rv-form-grid, .admin-rv-media-grid, .admin-subentity-form { grid-template-columns: 1fr; }
+  .admin-rv-form-grid, .admin-rv-media-grid, .admin-subentity-form, .admin-addon-template-grid { grid-template-columns: 1fr; }
   .admin-field-wide { grid-column: auto; }
   .admin-rv-photo-upload { grid-template-columns: 1fr; align-items: stretch; }
 }

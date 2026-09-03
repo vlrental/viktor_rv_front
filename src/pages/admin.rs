@@ -470,6 +470,7 @@ pub fn Admin() -> Element {
     let mut active_tab = use_signal(|| "overview".to_string());
     let mut rentals = use_signal(Vec::<api::Rental>::new);
     let mut admin_rentals = use_signal(Vec::<api::AdminRentalSummary>::new);
+    let mut addon_templates = use_signal(Vec::<api::RentalAddon>::new);
     let mut admin_rentals_loading = use_signal(|| true);
     let mut bookings = use_signal(Vec::<api::AdminBooking>::new);
     let mut blocks = use_signal(Vec::<api::AdminAvailabilityBlock>::new);
@@ -521,6 +522,7 @@ pub fn Admin() -> Element {
             audit.set(Vec::new());
             blocks.set(Vec::new());
             admin_rentals.set(Vec::new());
+            addon_templates.set(Vec::new());
             admin_rentals_loading.set(false);
             admin_data_initialized.set(true);
             admin_data_failed.set(false);
@@ -589,8 +591,14 @@ pub fn Admin() -> Element {
             Err(_) => blocks.set(Vec::new()),
         }
         match rentals_result {
-            Ok(values) => admin_rentals.set(values),
-            Err(_) => admin_rentals.set(Vec::new()),
+            Ok(value) => {
+                admin_rentals.set(value.rentals);
+                addon_templates.set(value.addon_templates);
+            }
+            Err(_) => {
+                admin_rentals.set(Vec::new());
+                addon_templates.set(Vec::new());
+            }
         }
         admin_rentals_loading.set(false);
         if bookings_loaded && !failed_sections.is_empty() {
@@ -909,6 +917,7 @@ pub fn Admin() -> Element {
                                 rsx! { RvEditorPanel {
                                     key: "{rv_editor_key}",
                                     detail: selected_rental.read().clone(),
+                                    addon_templates: addon_templates.read().clone(),
                                     is_new: rv_editor_new(),
                                     dirty: rv_editor_dirty,
                                     aux_dirty: rv_editor_aux_dirty,
@@ -1213,6 +1222,7 @@ async fn refresh_rental_editor_after_change(
 #[component]
 fn RvEditorPanel(
     detail: Option<api::AdminRentalDetail>,
+    addon_templates: Vec<api::RentalAddon>,
     is_new: bool,
     mut dirty: Signal<bool>,
     mut aux_dirty: Signal<bool>,
@@ -1356,6 +1366,7 @@ fn RvEditorPanel(
             .map(|value| value.addons.len() as i32)
             .unwrap_or(0)
     });
+    let mut selected_addon_templates = use_signal(std::collections::HashSet::<String>::new);
     let rental_id = initial
         .as_ref()
         .map(|v| v.rental.rental_id.clone())
@@ -1392,6 +1403,7 @@ fn RvEditorPanel(
     };
     let save_rental_id = rental_id.clone();
     let mut save = move || {
+        let creating = is_new;
         let payload = api::AdminRentalPayload {
             name: name(),
             model_year: year().trim().parse().ok(),
@@ -1411,9 +1423,13 @@ fn RvEditorPanel(
             nightly_rate: nightly(),
             cleaning_fee: cleaning(),
             sort_order: sort_order().trim().parse().unwrap_or(0),
+            addon_template_keys: if creating {
+                selected_addon_templates.read().iter().cloned().collect()
+            } else {
+                Vec::new()
+            },
         };
         let id = save_rental_id.clone();
-        let creating = is_new;
         busy.set(true);
         message.set(String::new());
         spawn(async move {
@@ -1457,6 +1473,24 @@ fn RvEditorPanel(
                             label { class:"admin-check-field", input { r#type:"checkbox", checked:pet_friendly(), disabled:busy(), onchange:move|e|{pet_friendly.set(e.checked());dirty.set(true)} } "Pet friendly" }
                         }
                         p { class:"admin-system-rules", "Fixed: RV · CAD · 1+ night stay with 3-night minimum pricing · CA$97 prep · protection CA$150 for 3 nights, then CA$30/extra night · CA$1,000 refundable deposit · delivery from Kelowna up to 150 km." }
+                    }
+                    if is_new && !addon_templates.is_empty() {
+                        section { class:"admin-drawer-section admin-addon-template-section",
+                            h3 { "Add-on templates" }
+                            p { class:"admin-system-rules", "Select the add-ons to copy into this RV. You can edit every copied item after the RV is saved." }
+                            div { class:"admin-addon-template-actions",
+                                button { r#type:"button", disabled:busy(), onclick:{let keys=addon_templates.iter().map(|item|item.addon_key.clone()).collect::<std::collections::HashSet<_>>();move |_|{selected_addon_templates.set(keys.clone());dirty.set(true)}}, "Select all" }
+                                button { r#type:"button", disabled:busy()||selected_addon_templates.read().is_empty(), onclick:move |_|{selected_addon_templates.set(std::collections::HashSet::new());dirty.set(true)}, "Clear" }
+                            }
+                            div { class:"admin-addon-template-grid",
+                                for template in addon_templates.iter() {
+                                    label { key:"template-{template.addon_key}", class:"admin-addon-template-choice",
+                                        input { r#type:"checkbox", checked:selected_addon_templates.read().contains(&template.addon_key), disabled:busy(), onchange:{let key=template.addon_key.clone();move|event|{let mut next=selected_addon_templates.read().clone();if event.checked(){next.insert(key.clone());}else{next.remove(&key);}selected_addon_templates.set(next);dirty.set(true)}} }
+                                        span { strong { "{template.label}" } small { "CA${template.price} · " if template.charge_type=="per_unit" { "per night" } else { "per booking" } } }
+                                    }
+                                }
+                            }
+                        }
                     }
                     if let Some(value)=detail {
                         section { class:"admin-drawer-section", h3 { "Photos ({value.media.len()}/40)" }
