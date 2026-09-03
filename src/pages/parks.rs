@@ -52,6 +52,7 @@ struct Park {
     image: Asset,
     image_alt: &'static str,
     url: &'static str,
+    detail_slug: Option<&'static str>,
 }
 
 #[derive(Clone, Copy)]
@@ -77,6 +78,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_BEAR_CREEK,
         image_alt: "Okanagan Lake shoreline at Bear Creek Park",
         url: "https://bcparks.ca/bear-creek-park/",
+        detail_slug: Some("bear-creek"),
     },
     Park {
         name: "Fintry",
@@ -86,6 +88,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_FINTRY,
         image_alt: "Waterfront and mountains at Fintry Park",
         url: "https://bcparks.ca/fintry-park/",
+        detail_slug: Some("fintry"),
     },
     Park {
         name: "Ellison",
@@ -95,6 +98,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_ELLISON,
         image_alt: "Rocky Okanagan Lake shoreline at Ellison Park",
         url: "https://bcparks.ca/ellison-park/",
+        detail_slug: Some("ellison"),
     },
     Park {
         name: "Kekuli Bay",
@@ -104,6 +108,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_KEKULI_BAY,
         image_alt: "Kalamalka Lake seen from Kekuli Bay Park",
         url: "https://bcparks.ca/kekuli-bay-park/",
+        detail_slug: None,
     },
     Park {
         name: "Okanagan Lake Provincial Park",
@@ -113,6 +118,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_OKANAGAN_LAKE,
         image_alt: "South campground entrance at Okanagan Lake Park",
         url: "https://bcparks.ca/okanagan-lake-park/",
+        detail_slug: None,
     },
     Park {
         name: "sx̌ʷəx̌ʷnitkʷ / Okanagan Falls",
@@ -122,6 +128,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_OKANAGAN_FALLS,
         image_alt: "Campground entrance at sx̌ʷəx̌ʷnitkʷ Park",
         url: "https://bcparks.ca/sxwexwnitkw-park/",
+        detail_slug: None,
     },
     Park {
         name: "Vaseux Lake",
@@ -131,6 +138,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_VASEUX_LAKE,
         image_alt: "Vaseux Lake Park campground entrance in the South Okanagan",
         url: "https://bcparks.ca/vaseux-lake-park/",
+        detail_slug: None,
     },
     Park {
         name: "sẁiẁs / Haynes Point",
@@ -140,6 +148,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_HAYNES_POINT,
         image_alt: "Wetland boardwalk at sẁiẁs Park on Osoyoos Lake",
         url: "https://bcparks.ca/swiws-park/",
+        detail_slug: None,
     },
     Park {
         name: "Shuswap Lake",
@@ -149,6 +158,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_SHUSWAP_LAKE,
         image_alt: "Beach and mountain view at Shuswap Lake Park",
         url: "https://bcparks.ca/shuswap-lake-park/",
+        detail_slug: None,
     },
     Park {
         name: "Herald",
@@ -158,6 +168,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_HERALD,
         image_alt: "Margaret Falls trail at Herald Park",
         url: "https://bcparks.ca/herald-park/",
+        detail_slug: None,
     },
 ];
 
@@ -301,13 +312,9 @@ pub fn ParksInOurRange() -> Element {
                 }
                 div { class: "parks-grid",
                     for (index, park) in PROVINCIAL_PARKS.iter().enumerate() {
-                        a {
+                        article {
                             key: "{park.url}",
                             class: "park-card",
-                            href: park.url,
-                            target: "_blank",
-                            rel: "noopener noreferrer",
-                            aria_label: "View {park.name} on BC Parks (opens in a new tab)",
                             div { class: "park-card-media",
                                 img {
                                     src: park.image,
@@ -325,9 +332,24 @@ pub fn ParksInOurRange() -> Element {
                                 h3 { "{park.name}" }
                                 p { "{park.description}" }
                                 span { class: "park-highlights", "{park.highlights}" }
-                                span { class: "park-link",
-                                    "Explore this park"
-                                    Icon { name: "arrow-up-right", size: 16, color: "currentColor" }
+                                div { class: "park-card-actions",
+                                    if let Some(slug) = park.detail_slug {
+                                        Link {
+                                            class: "park-link park-guide-link",
+                                            to: Route::ParkDetail { slug: slug.to_string() },
+                                            "RV delivery guide"
+                                            Icon { name: "arrow-right", size: 16, color: "currentColor" }
+                                        }
+                                    }
+                                    a {
+                                        class: "park-link",
+                                        href: park.url,
+                                        target: "_blank",
+                                        rel: "noopener noreferrer",
+                                        aria_label: "View {park.name} on BC Parks (opens in a new tab)",
+                                        "BC Parks"
+                                        Icon { name: "arrow-up-right", size: 16, color: "currentColor" }
+                                    }
                                 }
                             }
                         }

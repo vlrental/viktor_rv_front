@@ -82,6 +82,8 @@ pub enum Route {
         #[redirect("/aboutus", || Route::About {})]
         #[route("/parks-in-our-range")]
         ParksInOurRange {},
+        #[route("/parks/:slug")]
+        ParkDetail { slug: String },
         #[redirect("/attractions", || Route::ParksInOurRange {})]
         #[redirect("/restaurants", || Route::ParksInOurRange {})]
         #[redirect("/cooler-trailers", || Route::ParksInOurRange {})]
@@ -200,6 +202,28 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "Find provincial parks, private RV parks and municipal campgrounds across the Okanagan and Shuswap within VL Rental's delivery area.",
             "/parks-in-our-range",
         ),
+        Route::ParkDetail { slug } => match slug.as_str() {
+            "bear-creek" => SeoMetadata::indexed(
+                "RV Delivery to Bear Creek Provincial Park | VL Rental",
+                "Rent an RV for Bear Creek Provincial Park near Kelowna. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+                "/parks/bear-creek",
+            ),
+            "fintry" => SeoMetadata::indexed(
+                "RV Delivery to Fintry Provincial Park | VL Rental",
+                "Rent an RV for Fintry Provincial Park in the Okanagan. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+                "/parks/fintry",
+            ),
+            "ellison" => SeoMetadata::indexed(
+                "RV Delivery to Ellison Provincial Park | VL Rental",
+                "Rent an RV for Ellison Provincial Park near Vernon. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+                "/parks/ellison",
+            ),
+            _ => SeoMetadata::private(
+                "Park Delivery Guide | VL Rental",
+                "VL Rental park delivery guide.",
+                &format!("/parks/{slug}"),
+            ),
+        },
         Route::Delivery {} => SeoMetadata::indexed(
             "RV Rental Delivery & Setup in Kelowna and Okanagan | VL Rental",
             "RV delivery and setup within 150 km of Kelowna. CA$150 through 40 km, then CA$2.50 per additional kilometre each way.",
@@ -491,6 +515,9 @@ mod seo_tests {
             Route::Contact {},
             Route::About {},
             Route::ParksInOurRange {},
+            Route::ParkDetail {
+                slug: "bear-creek".into(),
+            },
             Route::Delivery {},
             Route::RvSales {},
             Route::Terms {},

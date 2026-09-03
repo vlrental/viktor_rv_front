@@ -95,6 +95,9 @@ def verify_artifact(root: Path) -> list[str]:
         "index.html",
         "delivery/index.html",
         "parks-in-our-range/index.html",
+        "parks/bear-creek/index.html",
+        "parks/fintry/index.html",
+        "parks/ellison/index.html",
         "rv/jayco26/index.html",
     }
     actual_routes = {path.relative_to(root).as_posix() for path in html_paths if path.is_file()}
