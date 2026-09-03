@@ -108,7 +108,7 @@ fn destination_recommendations() -> Vec<DestinationRecommendation> {
             name: "Shuswap Lake Provincial Park",
             region: "Scotch Creek · Shuswap Lake",
             description:
-                "A popular family campground with a long beach, play areas and a boat launch.",
+                "A popular family campground with a long beach, play areas and convenient lake access.",
             address: "4120 Squilax-Anglemont Rd, Scotch Creek, BC V0E 1M5",
             image: IMG_DESTINATION_SHUSWAP_LAKE,
         },
@@ -117,7 +117,7 @@ fn destination_recommendations() -> Vec<DestinationRecommendation> {
             name: "Kekuli Bay Provincial Park",
             region: "Vernon · Kalamalka Lake",
             description:
-                "Lake-view campsites beside the Okanagan Rail Trail, swimming and boating.",
+                "Lake-view campsites beside the Okanagan Rail Trail, swimming and lakeside recreation.",
             address: "421 High Ridge Rd, Vernon, BC V1H 1G1",
             image: IMG_DESTINATION_KEKULI_BAY,
         },

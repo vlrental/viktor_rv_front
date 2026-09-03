@@ -29,7 +29,7 @@ jobs:
       - name: Run frontend tests
         run: cargo test --all-targets
       - name: Test Pages artifact verifier
-        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py
+        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py scripts/test_rv_only_content.py
       - name: Reject compiler warnings
         run: cargo clippy --all-targets -- -D warnings
       - name: Check browser build target

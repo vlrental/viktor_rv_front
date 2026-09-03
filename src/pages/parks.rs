@@ -99,8 +99,8 @@ const PROVINCIAL_PARKS: [Park; 10] = [
     Park {
         name: "Kekuli Bay",
         area: "South of Vernon",
-        description: "Camp on a sunny hillside above the brilliant waters of Kalamalka Lake, with a beach, boat launch and direct highway access.",
-        highlights: "Lake views · Boating · Beach",
+        description: "Camp on a sunny hillside above the brilliant waters of Kalamalka Lake, with a beach, convenient lake access and direct highway access.",
+        highlights: "Lake views · Swimming · Beach",
         image: IMG_KEKULI_BAY,
         image_alt: "Kalamalka Lake seen from Kekuli Bay Park",
         url: "https://bcparks.ca/kekuli-bay-park/",
