@@ -1738,7 +1738,7 @@ body:has(.cat-planner-backdrop) {
 .admin-calendar-block-note { margin: 13px 0; padding: 11px 12px; border-radius: 9px; background: var(--vl-surface); color: var(--vl-muted); font-size: 9px; line-height: 1.5; }
 .admin-calendar-block-detail .admin-submit.danger { background: #9B2C1E; }
 .admin-calendar-sync-drawer { width: min(780px, 100vw); }
-.admin-calendar-sync-scroll { display: grid; align-content: start; gap: 13px; }
+.admin-calendar-sync-scroll { display: grid; grid-auto-rows: max-content; align-content: start; gap: 13px; }
 .admin-calendar-sync-note { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 14px 16px; border: 1px solid #ADC8B5; border-radius: 12px; background: #EDF5EF; color: var(--vl-forest); }
 .admin-calendar-sync-note p { font-size: 10px; line-height: 1.55; }
 .admin-calendar-sync-rental { overflow: hidden; border: 1px solid var(--vl-hair); border-radius: 14px; background: var(--vl-white); }
