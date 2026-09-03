@@ -2,7 +2,7 @@
 name = "viktor_rv_front"
 
 [web.app]
-title = "RV Rentals in Kelowna & Okanagan | VL Rental"
+title = "RV Rentals Kelowna & Okanagan — Delivered & Set Up | VL Rental"
 
 [web.resource]
 style = [

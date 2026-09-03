@@ -29,7 +29,7 @@ jobs:
       - name: Run frontend tests
         run: cargo test --all-targets
       - name: Test Pages artifact verifier
-        run: python3 -m unittest scripts/test_verify_pages_artifact.py
+        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py
       - name: Reject compiler warnings
         run: cargo clippy --all-targets -- -D warnings
       - name: Check browser build target
@@ -102,7 +102,7 @@ jobs:
         run: |
           sed -i 's#https://vlrental.ca/#https://${{ github.repository_owner }}.github.io/viktor_rv_front/#g' target/dx/viktor_rv_front/release/web/public/index.html
       - name: Prepare Pages artifact
-        run: cp target/dx/viktor_rv_front/release/web/public/index.html target/dx/viktor_rv_front/release/web/public/404.html
+        run: python3 scripts/prepare_pages_artifact.py target/dx/viktor_rv_front/release/web/public "$VL_FRONTEND_BASE_URL"
       - name: Verify Pages asset references and CSS recovery
         run: python3 scripts/verify_pages_artifact.py target/dx/viktor_rv_front/release/web/public
       - name: Save current Pages assets for the next deployment

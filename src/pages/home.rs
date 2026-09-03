@@ -291,9 +291,9 @@ fn Hero(
                     Icon { name: "map-pin", size: 15, color: "var(--vl-accent)" }
                     span { "Kelowna & the Okanagan" }
                 }
-                h1 { class: "hero-title", "Explore nature on the open road" }
+                h1 { class: "hero-title", "Delivered RV rentals in Kelowna & the Okanagan" }
                 p { class: "hero-sub",
-                    "Short stays welcome with 3-night minimum pricing. Delivery only — choose your RV in minutes, and we deliver, level and set it up."
+                    "Choose a fully equipped travel trailer. We deliver, level and set it up at your approved destination — no towing or truck required."
                 }
             }
             div { class: "searchbar",

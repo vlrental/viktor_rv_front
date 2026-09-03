@@ -83,12 +83,23 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
 
 def verify_artifact(root: Path) -> list[str]:
     failures: list[str] = []
-    for name in ("index.html", "404.html"):
-        path = root / name
+    html_paths = sorted(root.glob("**/index.html"))
+    html_paths.append(root / "404.html")
+    for path in html_paths:
         if not path.is_file():
-            failures.append(f"missing {name}")
+            failures.append(f"missing {path.relative_to(root)}")
         else:
             failures.extend(verify_html(root, path))
+
+    expected_routes = {
+        "index.html",
+        "delivery/index.html",
+        "parks-in-our-range/index.html",
+        "rv/jayco26/index.html",
+    }
+    actual_routes = {path.relative_to(root).as_posix() for path in html_paths if path.is_file()}
+    for route in sorted(expected_routes - actual_routes):
+        failures.append(f"missing prerendered route: {route}")
 
     generations: dict[tuple[str, str], list[str]] = {}
     assets = root / "assets"

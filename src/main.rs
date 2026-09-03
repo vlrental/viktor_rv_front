@@ -150,8 +150,8 @@ impl SeoMetadata {
 fn seo_metadata(route: &Route) -> SeoMetadata {
     match route {
         Route::Home {} => SeoMetadata::indexed(
-            "RV Rentals in Kelowna & Okanagan | VL Rental",
-            "Rent clean, fully equipped RVs in Kelowna and the Okanagan. Delivery and setup are available across approved destinations. Browse trailers and book online.",
+            "RV Rentals Kelowna & Okanagan — Delivered & Set Up | VL Rental",
+            "Book fully equipped RV rentals in Kelowna and the Okanagan. We deliver, level and set up your trailer at approved destinations within 150 km.",
             "/",
         ),
         Route::Catalog {} => {
@@ -199,8 +199,8 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "/parks-in-our-range",
         ),
         Route::Delivery {} => SeoMetadata::indexed(
-            "RV Delivery & Setup in the Okanagan | VL Rental",
-            "See how VL Rental delivers and sets up RVs across approved destinations within 150 km of the Kelowna base.",
+            "RV Rental Delivery & Setup in Kelowna and Okanagan | VL Rental",
+            "RV delivery and setup within 150 km of Kelowna. CA$150 through 40 km, then CA$2.50 per additional kilometre each way.",
             "/delivery",
         ),
         Route::RvSales {} => SeoMetadata::indexed(

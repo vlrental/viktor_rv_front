@@ -54,9 +54,9 @@ pub fn Delivery() -> Element {
             }
             div { class: "dv-hero-copy",
                 div { class: "eyebrow", "DELIVERY SERVICES" }
-                h1 { class: "dv-title", "We deliver, level & set up" }
+                h1 { class: "dv-title", "RV delivery & setup in Kelowna and the Okanagan" }
                 p { class: "dv-sub",
-                    "No truck? No problem. Every RV includes required delivery and setup within 150 km of Kelowna. CA$150 through 40 km, then CA$2.50 per additional kilometre, each way."
+                    "No truck or trailer hitch required. We deliver, position, level and set up every RV at approved campgrounds and destinations within 150 km of Kelowna."
                 }
                 button {
                     class: "dv-btn",
@@ -92,7 +92,7 @@ pub fn Delivery() -> Element {
                     div { class: "dv-coverage-title", "Delivery and Setup — real rates" }
                 }
                 p { class: "dv-coverage-sub",
-                    "Minimum fee CA$150 through 40 km, then CA$2.50 per additional kilometre, each way, up to 150 km. Enter your destination and the server calculates the driving route and exact fee automatically."
+                    "RV delivery and setup costs CA$150 through 40 km, then CA$2.50 per additional kilometre in each direction, up to 150 km one way. Enter your campground or destination and the server calculates the driving route and exact fee automatically."
                 }
             }
             a { class: "dv-phone-btn", href: "tel:+12508785874",
