@@ -549,6 +549,17 @@ pub fn Admin() -> Element {
         if *admin_load_version.peek() != request_version {
             return;
         }
+        let catalog_result = api::catalog(&api::CatalogSearchDraft {
+            location: "Kelowna, BC".into(),
+            radius_km: 150,
+            starts_on: None,
+            ends_on: None,
+            guests: 1,
+        })
+        .await;
+        if *admin_load_version.peek() != request_version {
+            return;
+        }
 
         let mut failed_sections = Vec::new();
         if dashboard_result.is_err() {
@@ -565,6 +576,9 @@ pub fn Admin() -> Element {
         }
         if rentals_result.is_err() {
             failed_sections.push("RVs");
+        }
+        if catalog_result.is_err() {
+            failed_sections.push("calendar RVs");
         }
         let bookings_loaded = bookings_result.is_ok();
         match bookings_result {
@@ -600,6 +614,10 @@ pub fn Admin() -> Element {
                 addon_templates.set(Vec::new());
             }
         }
+        match catalog_result {
+            Ok(values) => rentals.set(values),
+            Err(_) => rentals.set(Vec::new()),
+        }
         admin_rentals_loading.set(false);
         if bookings_loaded && !failed_sections.is_empty() {
             notice.set(format!(
@@ -620,16 +638,6 @@ pub fn Admin() -> Element {
                 Ok(user) if is_admin_role(&user.role) => {
                     let _ = api::save_auth_user(&user);
                     authorized.set(Some(true));
-                    let search = api::CatalogSearchDraft {
-                        location: "Kelowna, BC".into(),
-                        radius_km: 150,
-                        starts_on: None,
-                        ends_on: None,
-                        guests: 1,
-                    };
-                    if let Ok(values) = api::catalog(&search).await {
-                        rentals.set(values);
-                    }
                     payment_config.set(None);
                     payment_config_error.set(String::new());
                     match api::payment_config().await {
