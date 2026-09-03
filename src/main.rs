@@ -79,6 +79,7 @@ pub enum Route {
         Contact {},
         #[route("/about")]
         About {},
+        #[redirect("/aboutus", || Route::About {})]
         #[route("/parks-in-our-range")]
         ParksInOurRange {},
         #[redirect("/attractions", || Route::ParksInOurRange {})]
@@ -90,6 +91,7 @@ pub enum Route {
         RvSales {},
         #[route("/terms")]
         Terms {},
+        #[redirect("/trailertnc", || Route::Terms {})]
         #[route("/privacy")]
         Privacy {},
         #[route("/login")]

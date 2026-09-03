@@ -152,6 +152,14 @@ PRIVATE_ROUTES = (
     ("/admin", "Administration | VL Rental"),
 )
 
+LEGACY_REDIRECTS = (
+    ("/aboutus", "/about"),
+    ("/trailertnc", "/terms"),
+    ("/attractions", "/parks-in-our-range"),
+    ("/restaurants", "/parks-in-our-range"),
+    ("/cooler-trailers", "/parks-in-our-range"),
+)
+
 
 def replace_meta(document: str, selector: str, value: str) -> str:
     pattern = rf'(<meta\s+{selector}\s+content=")[^"]*("\s*/?>)'
@@ -264,6 +272,42 @@ def render_private(shell: str, path: str, title: str, site_url: str) -> str:
     return render_route(shell, route, site_url)
 
 
+def render_redirect(shell: str, old_path: str, target_path: str, site_url: str) -> str:
+    target = next(route for route in PUBLIC_ROUTES if route.path == target_path)
+    redirect_route = SeoRoute(
+        target.path,
+        target.title,
+        target.description,
+        "This page has moved",
+        "Continue to the current VL Rental page.",
+        robots="noindex,follow",
+    )
+    document = render_route(shell, redirect_route, site_url)
+    target_url = absolute_url(site_url, target_path)
+    document = document.replace(
+        "</head>",
+        f'        <meta http-equiv="refresh" content="0; url={html.escape(target_url, quote=True)}">\n    </head>',
+        1,
+    )
+    document = document.replace(
+        "</body>",
+        "        <script>window.location.replace("
+        + json.dumps(target_url)
+        + ");</script>\n    </body>",
+        1,
+    )
+    document = document.replace(
+        f'<a href="{html.escape(f"{site_url}/", quote=True)}">Browse delivered RV rentals</a>',
+        f'<a href="{html.escape(target_url, quote=True)}">Continue to the current page</a>',
+        1,
+    )
+    return document.replace(
+        f'data-seo-route="{target_path}"',
+        f'data-seo-route="{old_path}"',
+        1,
+    )
+
+
 def output_path(root: Path, path: str) -> Path:
     if path == "/":
         return root / "index.html"
@@ -285,6 +329,14 @@ def prepare_artifact(root: Path, site_url: str) -> None:
         target = output_path(root, path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(render_private(shell, path, title, site_url), encoding="utf-8")
+
+    for old_path, target_path in LEGACY_REDIRECTS:
+        target = output_path(root, old_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            render_redirect(shell, old_path, target_path, site_url),
+            encoding="utf-8",
+        )
 
     sitemap_urls = "\n".join(
         f"    <url><loc>{html.escape(absolute_url(site_url, route.path))}</loc></url>"
@@ -316,7 +368,10 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve()
     site_url = (sys.argv[2] if len(sys.argv) == 3 else PRODUCTION_URL).rstrip("/")
     prepare_artifact(root, site_url)
-    print(f"Prepared {len(PUBLIC_ROUTES)} public and {len(PRIVATE_ROUTES)} private route documents.")
+    print(
+        f"Prepared {len(PUBLIC_ROUTES)} public, {len(PRIVATE_ROUTES)} private "
+        f"and {len(LEGACY_REDIRECTS)} legacy route documents."
+    )
     return 0
 
 

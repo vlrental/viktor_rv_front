@@ -5,7 +5,7 @@ import unittest
 import html
 from pathlib import Path
 
-from scripts.prepare_pages_artifact import PUBLIC_ROUTES, prepare_artifact
+from scripts.prepare_pages_artifact import LEGACY_REDIRECTS, PUBLIC_ROUTES, prepare_artifact
 
 
 SHELL = """<!doctype html>
@@ -75,6 +75,19 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn(f"<loc>https://example.test{route.path}</loc>", sitemap)
         self.assertNotIn("/checkout", sitemap)
         self.assertNotIn("/admin", sitemap)
+
+    def test_legacy_routes_redirect_to_current_canonical_pages(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+
+        for old_path, target_path in LEGACY_REDIRECTS:
+            document = (root / old_path.strip("/") / "index.html").read_text(encoding="utf-8")
+            target_url = f"https://example.test{target_path}"
+            self.assertIn('name="robots" content="noindex,follow"', document)
+            self.assertIn(f'rel="canonical" href="{target_url}"', document)
+            self.assertIn(f'http-equiv="refresh" content="0; url={target_url}"', document)
+            self.assertIn(f'window.location.replace("{target_url}")', document)
+            self.assertIn(f'<a href="{target_url}">Continue to the current page</a>', document)
 
 
 if __name__ == "__main__":
