@@ -46,6 +46,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertTrue(path.is_file(), route.path)
             document = path.read_text(encoding="utf-8")
             self.assertIn(f"<title>{html.escape(route.title)}</title>", document)
+            self.assertIn('<article hidden class="seo-prerender"', document)
             self.assertIn(f'data-seo-route="{route.path}"', document)
             self.assertIn(f"https://example.test{route.path}", document)
 

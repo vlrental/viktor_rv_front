@@ -251,7 +251,7 @@ def render_route(shell: str, route: SeoRoute, site_url: str) -> str:
         flags=re.DOTALL,
     )
     snapshot = (
-        '<article class="seo-prerender" data-seo-route="'
+        '<article hidden class="seo-prerender" data-seo-route="'
         + html.escape(route.path, quote=True)
         + '"><h1>'
         + html.escape(route.heading)
