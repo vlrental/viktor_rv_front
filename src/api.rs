@@ -3190,6 +3190,32 @@ pub async fn admin_rental_publication_action(
         .map_err(|error| ApiError::client(error.to_string()))
 }
 
+pub async fn delete_admin_rental(rental_id: &str) -> Result<(), ApiError> {
+    let url = format!(
+        "{API_BASE}/api/v1/admin/rentals/{}",
+        urlencoding::encode(rental_id)
+    );
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let request_id = request_id.clone();
+        async move {
+            Request::delete(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(response_error(response).await)
+    }
+}
+
 pub async fn upload_admin_rental_media(
     rental_id: &str,
     file: &web_sys::File,

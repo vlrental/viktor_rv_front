@@ -934,6 +934,16 @@ pub fn Admin() -> Element {
                                         rv_editor_new.set(false);
                                         selected_rental.set(Some(value));
                                         spawn(async move { load_admin_data().await; });
+                                    },
+                                    on_deleted: move |_| {
+                                        rental_detail_version.set(rental_detail_version().wrapping_add(1));
+                                        rv_editor_open.set(false);
+                                        rv_editor_new.set(false);
+                                        rv_editor_dirty.set(false);
+                                        rv_editor_aux_dirty.set(false);
+                                        selected_rental.set(None);
+                                        notice.set("RV deleted.".into());
+                                        spawn(async move { load_admin_data().await; });
                                     }
                                 } }
                             } else {
@@ -1229,6 +1239,7 @@ fn RvEditorPanel(
     mut busy: Signal<bool>,
     on_close: EventHandler<()>,
     on_changed: EventHandler<api::AdminRentalDetail>,
+    on_deleted: EventHandler<()>,
 ) -> Element {
     if !is_new && detail.is_none() {
         return rsx! {
@@ -1514,6 +1525,7 @@ fn RvEditorPanel(
                 }
                 footer { class:"admin-drawer-actions", button { r#type:"button", disabled:busy()||!dirty(), onclick:move |_|save(), if photo_uploading(){"Uploading photo…"}else if busy(){"Saving…"}else{"Save changes"} }
                     if !is_new { button { r#type:"button", class:if published{"danger"}else{""}, disabled:busy()||dirty()||aux_dirty(), title:if dirty()||aux_dirty(){"Save or discard draft changes first"}else{""}, onclick:{let id=rental_id.clone();move |_|{let action=if published{"archive"}else{"publish"};let prompt=if published{"Archive this RV? Existing bookings remain unchanged."}else{"Publish this RV? It will immediately appear in booking."};if !web_sys::window().and_then(|w|w.confirm_with_message(prompt).ok()).unwrap_or(false){return}let id=id.clone();busy.set(true);let _=spawn(async move{match api::admin_rental_publication_action(&id,action).await{Ok(value)=>on_changed.call(value),Err(error)=>message.set(error.message)}busy.set(false)});}}, if published{"Archive RV"}else{"Publish RV"} } }
+                    if !is_new && !published { button { r#type:"button", class:"danger", disabled:busy()||dirty()||aux_dirty(), title:if dirty()||aux_dirty(){"Save or discard draft changes first"}else{""}, onclick:{let id=rental_id.clone();let rv_name=name();move |_|{let prompt=format!("Permanently delete ‘{rv_name}’? This is allowed only when the RV has no quote or booking history, and it cannot be undone.");if !web_sys::window().and_then(|w|w.confirm_with_message(&prompt).ok()).unwrap_or(false){return}let id=id.clone();busy.set(true);let _=spawn(async move{match api::delete_admin_rental(&id).await{Ok(())=>on_deleted.call(()),Err(error)=>message.set(error.message)}busy.set(false)});}}, "Delete RV permanently" } }
                 }
         }
     }
