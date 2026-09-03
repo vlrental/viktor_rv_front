@@ -1892,6 +1892,7 @@ body:has(.admin-overlay) { overflow: hidden; }
 .admin-rv-form-grid label, .admin-rv-photo-upload label { display: grid; gap: 5px; color: var(--vl-muted); font: 650 9px var(--font-mono); text-transform: uppercase; }
 .admin-rv-form-grid input, .admin-rv-form-grid select, .admin-rv-form-grid textarea, .admin-rv-photo-upload input, .admin-subentity-form input, .admin-subentity-form select { width: 100%; border: 1px solid var(--vl-hair); border-radius: 7px; background: var(--vl-white); color: var(--vl-ink); font: 500 11px var(--font-body); padding: 9px 10px; text-transform: none; }
 .admin-rv-form-grid textarea { resize: vertical; }
+.admin-photo-selected { color: var(--vl-forest); font: 650 9px var(--font-body); text-transform: none; }
 .admin-field-wide { grid-column: 1 / -1; }
 .admin-check-field { display: flex !important; align-items: center; gap: 7px !important; color: var(--vl-ink) !important; font: 650 10px var(--font-body) !important; text-transform: none !important; }
 .admin-check-field input { width: auto !important; }
