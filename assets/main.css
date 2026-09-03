@@ -253,7 +253,7 @@ img { display: block; max-width: 100%; }
 }
 .lc-body { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
 .lc-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.lc-title { flex: 1 1 0; font-size: 16px; font-weight: 600; line-height: 20px; height: 44px; color: var(--vl-ink); }
+.lc-title { flex: 1 1 0; font-size: 16px; font-weight: 600; line-height: 20px; min-height: 44px; color: var(--vl-ink); }
 .lc-rating { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: var(--vl-ink); }
 .lc-meta { font-size: 14px; color: var(--vl-muted); }
 .lc-price-row { display: flex; align-items: flex-end; gap: 5px; padding-top: 6px; }
