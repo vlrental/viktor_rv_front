@@ -553,6 +553,83 @@ fn storage() -> Option<web_sys::Storage> {
 fn session_storage() -> Option<web_sys::Storage> {
     web_sys::window()?.session_storage().ok().flatten()
 }
+
+/// Keep authentication session-only while allowing another open tab on the
+/// same origin to hand its current credentials to a newly opened tab. Tokens
+/// travel only through the in-memory BroadcastChannel and are never written to
+/// persistent local storage.
+pub fn init_auth_tab_sync() {
+    document::eval(
+        r#"
+            if (window.__vlAuthTabChannel) return;
+
+            const keys = ['vl_access_token', 'vl_refresh_token', 'vl_auth_user'];
+            const readSession = () => {
+                try {
+                    const values = keys.map((key) => sessionStorage.getItem(key));
+                    return values.every(Boolean) ? values : null;
+                } catch (_) {
+                    return null;
+                }
+            };
+            const writeSession = (values) => {
+                if (!Array.isArray(values) || values.length !== keys.length || !values.every(Boolean)) return false;
+                try {
+                    keys.forEach((key, index) => sessionStorage.setItem(key, values[index]));
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            };
+            const clearSession = () => {
+                try { keys.forEach((key) => sessionStorage.removeItem(key)); } catch (_) {}
+            };
+
+            const channel = new BroadcastChannel('vl_auth_session_v1');
+            const requestId = crypto.randomUUID();
+            window.__vlAuthTabChannel = channel;
+            window.__vlBroadcastAuthSession = () => {
+                const values = readSession();
+                if (values) channel.postMessage({ type: 'session-update', values });
+            };
+            window.__vlBroadcastAuthLogout = () => channel.postMessage({ type: 'logout' });
+
+            channel.addEventListener('message', (event) => {
+                const message = event.data;
+                if (!message || typeof message !== 'object') return;
+                if (message.type === 'session-request') {
+                    const values = readSession();
+                    if (values) channel.postMessage({ type: 'session-response', requestId: message.requestId, values });
+                    return;
+                }
+                if (message.type === 'session-response' && message.requestId === requestId) {
+                    if (!readSession() && writeSession(message.values)) location.reload();
+                    return;
+                }
+                if (message.type === 'session-update') {
+                    const hadSession = Boolean(readSession());
+                    if (writeSession(message.values) && !hadSession) location.reload();
+                    return;
+                }
+                if (message.type === 'logout' && readSession()) {
+                    clearSession();
+                    location.reload();
+                }
+            });
+
+            if (!readSession()) channel.postMessage({ type: 'session-request', requestId });
+        "#,
+    );
+}
+
+fn broadcast_auth_session() {
+    document::eval("window.__vlBroadcastAuthSession?.();");
+}
+
+fn broadcast_auth_logout() {
+    document::eval("window.__vlBroadcastAuthLogout?.();");
+}
+
 pub fn save_session(tokens: &AuthTokens) -> Result<(), String> {
     let auth_storage = session_storage().ok_or("Browser session storage is unavailable")?;
     let serialized_user = serde_json::to_string(&tokens.user).map_err(|error| error.to_string())?;
@@ -565,6 +642,7 @@ pub fn save_session(tokens: &AuthTokens) -> Result<(), String> {
         return Err("Could not save session".into());
     }
     remove_legacy_auth_values();
+    broadcast_auth_session();
     Ok(())
 }
 pub fn current_user() -> Option<AuthUser> {
@@ -658,6 +736,7 @@ pub async fn logout() {
         }
     }
     clear_session();
+    broadcast_auth_logout();
 }
 
 pub fn access_token() -> Option<String> {

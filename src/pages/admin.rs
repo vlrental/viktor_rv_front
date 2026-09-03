@@ -470,6 +470,7 @@ pub fn Admin() -> Element {
     let mut active_tab = use_signal(|| "overview".to_string());
     let mut rentals = use_signal(Vec::<api::Rental>::new);
     let mut admin_rentals = use_signal(Vec::<api::AdminRentalSummary>::new);
+    let mut admin_rentals_loading = use_signal(|| true);
     let mut bookings = use_signal(Vec::<api::AdminBooking>::new);
     let mut blocks = use_signal(Vec::<api::AdminAvailabilityBlock>::new);
     let mut dashboard = use_signal(api::AdminDashboard::default);
@@ -503,6 +504,7 @@ pub fn Admin() -> Element {
         let request_version = admin_load_version().wrapping_add(1);
         admin_load_version.set(request_version);
         loading.set(true);
+        admin_rentals_loading.set(true);
         notice.set(String::new());
         let bookings_result = api::admin_bookings().await;
         if *admin_load_version.peek() != request_version {
@@ -519,6 +521,7 @@ pub fn Admin() -> Element {
             audit.set(Vec::new());
             blocks.set(Vec::new());
             admin_rentals.set(Vec::new());
+            admin_rentals_loading.set(false);
             admin_data_initialized.set(true);
             admin_data_failed.set(false);
             loading.set(false);
@@ -589,6 +592,7 @@ pub fn Admin() -> Element {
             Ok(values) => admin_rentals.set(values),
             Err(_) => admin_rentals.set(Vec::new()),
         }
+        admin_rentals_loading.set(false);
         if bookings_loaded && !failed_sections.is_empty() {
             notice.set(format!(
                 "Some admin sections could not refresh: {}. Those sections were locked to an empty state; retry before taking action.",
@@ -924,7 +928,7 @@ pub fn Admin() -> Element {
                                     }
                                 } }
                             } else {
-                                rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: loading(), on_open_rental: open_rental, on_add_rental: move |_| {
+                                rsx! { RvsTab { rentals: admin_rentals.read().clone(), loading: admin_rentals_loading(), on_open_rental: open_rental, on_add_rental: move |_| {
                                     rental_detail_version.set(rental_detail_version().wrapping_add(1));
                                     selected_rental.set(None);
                                     rv_editor_new.set(true);
@@ -1141,7 +1145,9 @@ fn RvsTab(
     on_add_rental: EventHandler<()>,
 ) -> Element {
     let mut search = use_signal(String::new);
-    let mut status = use_signal(|| "published".to_string());
+    // New RVs are created as drafts. Showing every status by default keeps the
+    // newly saved RV visible when the editor returns to this list.
+    let mut status = use_signal(|| "all".to_string());
     let query = search().trim().to_lowercase();
     let filtered = rentals
         .iter()

@@ -134,7 +134,7 @@ This document records the current frontend booking architecture, the problems fi
 - `vl_catalog_search`: applied location, radius, dates, and guests.
 - `vl_delivery_addresses`: recent calculated delivery addresses.
 - `vl_saved_rvs`: saved/favorite RV slugs.
-- `vl_access_token`, `vl_refresh_token`, `vl_auth_user` (session storage): authenticated session. Older local-storage token sets are migrated together once and removed; closing the browser session requires signing in again.
+- `vl_access_token`, `vl_refresh_token`, `vl_auth_user` (session storage): authenticated session. Older local-storage token sets are migrated together once and removed; closing the browser session requires signing in again. A same-origin `BroadcastChannel` lets a newly opened tab copy the complete session from an already open signed-in tab without persisting credentials in local storage; session refreshes and explicit logout are synchronized across open tabs.
 - `vl_trip_draft`: last booking draft used for confirmation/conflict recovery.
 - `vl_active_quote`: last authoritative quote.
 - `vl_last_booking`: last successfully created booking shown on the confirmation page.
