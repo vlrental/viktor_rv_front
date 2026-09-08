@@ -32,10 +32,10 @@ class SeoRoute:
 PUBLIC_ROUTES = (
     SeoRoute(
         "/",
-        "RV Rentals Kelowna & Okanagan — Delivered & Set Up | VL Rental",
-        "Book fully equipped RV rentals in Kelowna and the Okanagan. We deliver, level and set up your trailer at approved destinations within 150 km.",
-        "Delivered RV Rentals in Kelowna & the Okanagan",
-        "Choose a clean, fully equipped travel trailer for your family, select your dates and destination, and arrive to an RV that has already been delivered, levelled and set up.",
+        "RV Rental Kelowna — Delivered & Set Up | VL Rental",
+        "Looking for an RV or camper rental in Kelowna? Choose a fully equipped travel trailer delivered, levelled and set up within 150 km.",
+        "RV Rentals in Kelowna, Delivered & Set Up",
+        "Rent an RV in Kelowna without towing. Compare fully equipped RV and camper rentals, select your dates and approved destination, and arrive to a trailer that has already been delivered, levelled and set up.",
         kind="WebPage",
     ),
     SeoRoute(

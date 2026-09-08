@@ -291,9 +291,9 @@ fn Hero(
                     Icon { name: "map-pin", size: 15, color: "var(--vl-accent)" }
                     span { "Kelowna & the Okanagan" }
                 }
-                h1 { class: "hero-title", "Delivered RV rentals in Kelowna & the Okanagan" }
+                h1 { class: "hero-title", "RV rentals in Kelowna, delivered & set up" }
                 p { class: "hero-sub",
-                    "Choose a fully equipped travel trailer. We deliver, level and set it up at your approved destination — no towing or truck required."
+                    "Rent an RV in Kelowna without towing. Choose a fully equipped camper trailer and we deliver, level and set it up at your approved Okanagan destination."
                 }
             }
             div { class: "searchbar",
@@ -425,7 +425,10 @@ fn PopularRvs(
             div { class: "sec-header",
                 div {
                     div { class: "eyebrow", "CHOOSE YOUR WHEELS" }
-                    h2 { class: "sec-title", "Explore available RVs" }
+                    h2 { class: "sec-title", "RV rentals available near Kelowna" }
+                }
+                p { class: "home-rentals-intro",
+                    "Compare delivered RV and camper rentals for Kelowna, the Okanagan and approved campgrounds within 150 km."
                 }
             }
             div { class: "home-catalog-toolbar",

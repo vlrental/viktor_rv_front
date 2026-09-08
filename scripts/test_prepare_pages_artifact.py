@@ -69,6 +69,15 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('"@type": "BreadcrumbList"', document)
         self.assertIn("RV Rental Delivery &amp; Setup in Kelowna", document)
 
+    def test_home_targets_real_kelowna_rv_queries(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("RV Rental Kelowna", document)
+        self.assertIn("camper rental in Kelowna", document)
+        self.assertNotIn("boat", document.lower())
+
     def test_sitemap_is_generated_from_public_routes_only(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

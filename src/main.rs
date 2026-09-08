@@ -154,8 +154,8 @@ impl SeoMetadata {
 fn seo_metadata(route: &Route) -> SeoMetadata {
     match route {
         Route::Home {} => SeoMetadata::indexed(
-            "RV Rentals Kelowna & Okanagan — Delivered & Set Up | VL Rental",
-            "Book fully equipped RV rentals in Kelowna and the Okanagan. We deliver, level and set up your trailer at approved destinations within 150 km.",
+            "RV Rental Kelowna — Delivered & Set Up | VL Rental",
+            "Looking for an RV or camper rental in Kelowna? Choose a fully equipped travel trailer delivered, levelled and set up within 150 km.",
             "/",
         ),
         Route::Catalog {} => {
