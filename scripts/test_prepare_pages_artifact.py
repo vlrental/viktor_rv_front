@@ -88,6 +88,29 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertNotIn("/checkout", sitemap)
         self.assertNotIn("/admin", sitemap)
 
+    def test_all_provincial_park_guides_are_public_and_indexable(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        park_paths = {
+            "/parks/bear-creek",
+            "/parks/fintry",
+            "/parks/ellison",
+            "/parks/kekuli-bay",
+            "/parks/okanagan-lake",
+            "/parks/okanagan-falls",
+            "/parks/vaseux-lake",
+            "/parks/swiws",
+            "/parks/shuswap-lake",
+            "/parks/herald",
+        }
+        public_paths = {route.path for route in PUBLIC_ROUTES}
+        self.assertTrue(park_paths <= public_paths)
+
+        for path in park_paths:
+            document = (root / path.strip("/") / "index.html").read_text(encoding="utf-8")
+            self.assertIn('name="robots" content="index,follow', document)
+            self.assertIn(f'rel="canonical" href="https://example.test{path}"', document)
+
     def test_legacy_routes_redirect_to_current_canonical_pages(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

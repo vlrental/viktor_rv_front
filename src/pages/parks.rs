@@ -108,7 +108,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_KEKULI_BAY,
         image_alt: "Kalamalka Lake seen from Kekuli Bay Park",
         url: "https://bcparks.ca/kekuli-bay-park/",
-        detail_slug: None,
+        detail_slug: Some("kekuli-bay"),
     },
     Park {
         name: "Okanagan Lake Provincial Park",
@@ -118,7 +118,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_OKANAGAN_LAKE,
         image_alt: "South campground entrance at Okanagan Lake Park",
         url: "https://bcparks.ca/okanagan-lake-park/",
-        detail_slug: None,
+        detail_slug: Some("okanagan-lake"),
     },
     Park {
         name: "sx̌ʷəx̌ʷnitkʷ / Okanagan Falls",
@@ -128,7 +128,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_OKANAGAN_FALLS,
         image_alt: "Campground entrance at sx̌ʷəx̌ʷnitkʷ Park",
         url: "https://bcparks.ca/sxwexwnitkw-park/",
-        detail_slug: None,
+        detail_slug: Some("okanagan-falls"),
     },
     Park {
         name: "Vaseux Lake",
@@ -138,7 +138,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_VASEUX_LAKE,
         image_alt: "Vaseux Lake Park campground entrance in the South Okanagan",
         url: "https://bcparks.ca/vaseux-lake-park/",
-        detail_slug: None,
+        detail_slug: Some("vaseux-lake"),
     },
     Park {
         name: "sẁiẁs / Haynes Point",
@@ -148,7 +148,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_HAYNES_POINT,
         image_alt: "Wetland boardwalk at sẁiẁs Park on Osoyoos Lake",
         url: "https://bcparks.ca/swiws-park/",
-        detail_slug: None,
+        detail_slug: Some("swiws"),
     },
     Park {
         name: "Shuswap Lake",
@@ -158,7 +158,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_SHUSWAP_LAKE,
         image_alt: "Beach and mountain view at Shuswap Lake Park",
         url: "https://bcparks.ca/shuswap-lake-park/",
-        detail_slug: None,
+        detail_slug: Some("shuswap-lake"),
     },
     Park {
         name: "Herald",
@@ -168,7 +168,7 @@ const PROVINCIAL_PARKS: [Park; 10] = [
         image: IMG_HERALD,
         image_alt: "Margaret Falls trail at Herald Park",
         url: "https://bcparks.ca/herald-park/",
-        detail_slug: None,
+        detail_slug: Some("herald"),
     },
 ];
 

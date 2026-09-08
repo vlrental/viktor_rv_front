@@ -14,6 +14,34 @@ const IMG_ELLISON: Asset = asset!(
     "/assets/img/park-ellison.webp",
     AssetOptions::image().with_jpg()
 );
+const IMG_KEKULI_BAY: Asset = asset!(
+    "/assets/img/park-kekuli-bay.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_OKANAGAN_LAKE: Asset = asset!(
+    "/assets/img/park-okanagan-lake.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_OKANAGAN_FALLS: Asset = asset!(
+    "/assets/img/park-okanagan-falls.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_VASEUX_LAKE: Asset = asset!(
+    "/assets/img/park-vaseux-lake.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_HAYNES_POINT: Asset = asset!(
+    "/assets/img/park-haynes-point.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_SHUSWAP_LAKE: Asset = asset!(
+    "/assets/img/park-shuswap-lake.webp",
+    AssetOptions::image().with_jpg()
+);
+const IMG_HERALD: Asset = asset!(
+    "/assets/img/park-herald.webp",
+    AssetOptions::image().with_jpg()
+);
 
 #[derive(Clone, Copy)]
 struct ParkGuide {
@@ -23,6 +51,9 @@ struct ParkGuide {
     image: Asset,
     image_alt: &'static str,
     official_url: &'static str,
+    planning_title: &'static str,
+    planning_copy: &'static str,
+    access_note: &'static str,
 }
 
 fn guide_for(slug: &str) -> Option<ParkGuide> {
@@ -34,6 +65,9 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             image: IMG_BEAR_CREEK,
             image_alt: "Okanagan Lake shoreline at Bear Creek Provincial Park",
             official_url: "https://bcparks.ca/bear-creek-park/",
+            planning_title: "Lakeside camping close to Kelowna",
+            planning_copy: "Bear Creek combines a sandy beach, shaded campsites and canyon trails on the west side of Okanagan Lake. It is a practical choice for families who want a campground near Kelowna while still arriving to a fully set-up RV.",
+            access_note: "Confirm your campsite number, trailer length allowance and arrival instructions before delivery.",
         }),
         "fintry" => Some(ParkGuide {
             name: "Fintry Provincial Park",
@@ -42,6 +76,9 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             image: IMG_FINTRY,
             image_alt: "Waterfront and mountains at Fintry Provincial Park",
             official_url: "https://bcparks.ca/fintry-park/",
+            planning_title: "Waterfront camping on Westside Road",
+            planning_copy: "Fintry offers a long Okanagan Lake shoreline, walking routes and access to the historic estate and nearby waterfall. Because the destination is reached along Westside Road, final delivery approval is based on the actual route and campsite details.",
+            access_note: "Send us the campground loop and site number so we can confirm access before your trip.",
         }),
         "ellison" => Some(ParkGuide {
             name: "Ellison Provincial Park",
@@ -50,6 +87,86 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             image: IMG_ELLISON,
             image_alt: "Rocky Okanagan Lake shoreline at Ellison Provincial Park",
             official_url: "https://bcparks.ca/ellison-park/",
+            planning_title: "A forested base near Vernon",
+            planning_copy: "Ellison is known for sheltered swimming coves and lakeside trails in a quieter forest setting near Vernon. It works well for guests who want an Okanagan Lake stay without collecting or towing a trailer themselves.",
+            access_note: "Reserve a site that accepts the length of your selected RV and share the site number with us.",
+        }),
+        "kekuli-bay" => Some(ParkGuide {
+            name: "Kekuli Bay Provincial Park",
+            area: "Kalamalka Lake, south of Vernon",
+            introduction: "Camp above Kalamalka Lake and arrive to an RV already delivered and set up. The park is reached from Highway 97, about 11 km south of Vernon.",
+            image: IMG_KEKULI_BAY,
+            image_alt: "Kalamalka Lake viewed from Kekuli Bay Provincial Park",
+            official_url: "https://bcparks.ca/kekuli-bay-park/",
+            planning_title: "Sunny sites and Kalamalka Lake views",
+            planning_copy: "Kekuli Bay has landscaped campsites, lake views and access to the Okanagan Rail Trail. The campground can have limited shade in summer, so guests should plan for warm daytime conditions and verify current park advisories before arrival.",
+            access_note: "The campground is beyond the signed Highway 97 turn-off; provide your loop and site number for final delivery approval.",
+        }),
+        "okanagan-lake" => Some(ParkGuide {
+            name: "Okanagan Lake Provincial Park",
+            area: "North of Summerland",
+            introduction: "Choose the North or South campground, reserve a suitable site and let VL Rental deliver and set up your RV beside Okanagan Lake.",
+            image: IMG_OKANAGAN_LAKE,
+            image_alt: "Okanagan Lake Provincial Park campground near Summerland",
+            official_url: "https://bcparks.ca/okanagan-lake-park/",
+            planning_title: "Two campgrounds beside Okanagan Lake",
+            planning_copy: "The park sits about 11 km north of Summerland on Highway 97 and offers two large campgrounds, beaches and panoramic lake views. Tell us whether your reservation is in the North or South campground so the delivery route and timing can be planned correctly.",
+            access_note: "North and South are separate campgrounds; your reservation must identify the correct campground, loop and site.",
+        }),
+        "okanagan-falls" => Some(ParkGuide {
+            name: "sx̌ʷəx̌ʷnitkʷ Provincial Park",
+            area: "Okanagan Falls",
+            introduction: "Stay beside the Okanagan River in Okanagan Falls with a delivered RV ready at your reserved campsite.",
+            image: IMG_OKANAGAN_FALLS,
+            image_alt: "Entrance to sx̌ʷəx̌ʷnitkʷ Provincial Park in Okanagan Falls",
+            official_url: "https://bcparks.ca/sxwexwnitkw-park/",
+            planning_title: "A compact riverside campground in town",
+            planning_copy: "The campground is on Green Lake Road, approximately 500 metres from Highway 97. It is managed by the Osoyoos Indian Band and is culturally significant; guests should review current notices and respect all posted rules and protected areas.",
+            access_note: "The approach includes a narrow road and blind corner. Share the exact site before delivery, and check the annual September closure notice.",
+        }),
+        "vaseux-lake" => Some(ParkGuide {
+            name: "Vaseux Lake Provincial Park",
+            area: "South Okanagan",
+            introduction: "Plan a quiet South Okanagan stay between Okanagan Falls and Oliver, with your selected RV delivered directly to an approved campsite.",
+            image: IMG_VASEUX_LAKE,
+            image_alt: "Vaseux Lake Provincial Park in the South Okanagan",
+            official_url: "https://bcparks.ca/vaseux-lake-park/",
+            planning_title: "A small nature-focused lakeside stay",
+            planning_copy: "Vaseux Lake is surrounded by dry-country scenery and important wildlife habitat. It suits guests looking for a quieter base for paddling, birdwatching and exploring the South Okanagan rather than a large resort-style campground.",
+            access_note: "Facilities and site dimensions are limited; verify the current campground details and the fit of your selected RV before booking.",
+        }),
+        "swiws" => Some(ParkGuide {
+            name: "sẁiẁs Provincial Park",
+            area: "Osoyoos",
+            introduction: "Reserve a waterfront campsite on Osoyoos Lake, then request final route approval for delivery and setup at this outer-range destination.",
+            image: IMG_HAYNES_POINT,
+            image_alt: "Wetland boardwalk at sẁiẁs Provincial Park on Osoyoos Lake",
+            official_url: "https://bcparks.ca/swiws-park/",
+            planning_title: "Water on both sides in Osoyoos",
+            planning_copy: "sẁiẁs extends into Osoyoos Lake and is valued for waterfront camping, swimming and wetland habitat. It sits near the outer edge of VL Rental's service range, so actual driving distance and route conditions must be approved before the booking is finalized.",
+            access_note: "Do not rely on straight-line distance. Send the exact campsite so we can verify the road route is within 150 km.",
+        }),
+        "shuswap-lake" => Some(ParkGuide {
+            name: "Shuswap Lake Provincial Park",
+            area: "Scotch Creek, Shuswap",
+            introduction: "Enjoy a family campground at Shuswap Lake with your RV transported, positioned and prepared at the reserved site.",
+            image: IMG_SHUSWAP_LAKE,
+            image_alt: "Beach and mountain view at Shuswap Lake Provincial Park",
+            official_url: "https://bcparks.ca/shuswap-lake-park/",
+            planning_title: "A family beach destination in the Shuswap",
+            planning_copy: "This large campground in Scotch Creek is known for its broad beach, warm-water swimming and paved approach. As a longer delivery from Kelowna, it requires an exact route calculation and confirmation that the chosen site fits the RV.",
+            access_note: "Provide the campsite loop and number early so delivery distance, access and timing can be confirmed.",
+        }),
+        "herald" => Some(ParkGuide {
+            name: "Herald Provincial Park",
+            area: "Tappen, Shuswap",
+            introduction: "Book a Shuswap Lake campsite near Tappen and arrive to a VL Rental RV delivered and set up for your stay.",
+            image: IMG_HERALD,
+            image_alt: "Margaret Falls trail at Herald Provincial Park",
+            official_url: "https://bcparks.ca/herald-park/",
+            planning_title: "Beach days and the Margaret Falls trail",
+            planning_copy: "Herald is a large campground with a family beach and a shaded walking route to Margaret Falls. The drive from Kelowna is near the outer portion of our service area, so delivery depends on the actual road distance and safe access to the reserved site.",
+            access_note: "Share your campsite details before paying so we can confirm the route remains within the 150 km delivery limit.",
         }),
         _ => None,
     }
@@ -102,6 +219,15 @@ pub fn ParkDetail(slug: String) -> Element {
 
             section { class: "park-detail-content",
                 div { class: "park-detail-main",
+                    section { class: "park-destination-intro",
+                        div { class: "parks-eyebrow", "WHY CAMP HERE" }
+                        h2 { "{park.planning_title}" }
+                        p { "{park.planning_copy}" }
+                        div { class: "park-access-note",
+                            Icon { name: "info", size: 18, color: "currentColor" }
+                            span { "{park.access_note}" }
+                        }
+                    }
                     div { class: "parks-eyebrow", "HOW IT WORKS" }
                     h2 { "Your campsite, our RV and setup" }
                     div { class: "park-steps",

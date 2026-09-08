@@ -218,6 +218,41 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
                 "Rent an RV for Ellison Provincial Park near Vernon. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
                 "/parks/ellison",
             ),
+            "kekuli-bay" => SeoMetadata::indexed(
+                "RV Delivery to Kekuli Bay Provincial Park | VL Rental",
+                "Rent a delivered RV for Kekuli Bay Provincial Park near Vernon, with setup at your reserved Kalamalka Lake campsite.",
+                "/parks/kekuli-bay",
+            ),
+            "okanagan-lake" => SeoMetadata::indexed(
+                "RV Delivery to Okanagan Lake Provincial Park | VL Rental",
+                "Rent an RV for Okanagan Lake Provincial Park near Summerland. We deliver and set up at approved North or South campground sites.",
+                "/parks/okanagan-lake",
+            ),
+            "okanagan-falls" => SeoMetadata::indexed(
+                "RV Delivery to sx̌ʷəx̌ʷnitkʷ Park | VL Rental",
+                "Plan a delivered RV stay at sx̌ʷəx̌ʷnitkʷ Park in Okanagan Falls, with setup at your reserved riverside campsite.",
+                "/parks/okanagan-falls",
+            ),
+            "vaseux-lake" => SeoMetadata::indexed(
+                "RV Delivery to Vaseux Lake Provincial Park | VL Rental",
+                "Rent a delivered RV for Vaseux Lake Provincial Park between Okanagan Falls and Oliver, subject to campsite and route approval.",
+                "/parks/vaseux-lake",
+            ),
+            "swiws" => SeoMetadata::indexed(
+                "RV Delivery to sẁiẁs Park in Osoyoos | VL Rental",
+                "Request RV delivery and setup at sẁiẁs Provincial Park on Osoyoos Lake, subject to the 150 km road-distance limit.",
+                "/parks/swiws",
+            ),
+            "shuswap-lake" => SeoMetadata::indexed(
+                "RV Delivery to Shuswap Lake Provincial Park | VL Rental",
+                "Rent a delivered RV for Shuswap Lake Provincial Park in Scotch Creek, with setup at an approved reserved campsite.",
+                "/parks/shuswap-lake",
+            ),
+            "herald" => SeoMetadata::indexed(
+                "RV Delivery to Herald Provincial Park | VL Rental",
+                "Plan an RV stay at Herald Provincial Park near Tappen with delivery and setup, subject to route and campsite approval.",
+                "/parks/herald",
+            ),
             _ => SeoMetadata::private(
                 "Park Delivery Guide | VL Rental",
                 "VL Rental park delivery guide.",
