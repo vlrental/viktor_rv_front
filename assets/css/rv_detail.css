@@ -26,6 +26,7 @@
 
 /* Gallery */
 .rvd-gallery { display: flex; gap: 12px; height: 456px; border-radius: 18px; overflow: hidden; width: 100%; }
+.rvd-fallback-gallery > img { width: 100%; height: 100%; object-fit: cover; }
 .rvd-gallery-main { flex: 1 1 66%; height: 100%; padding: 0; border: 0; cursor: zoom-in; }
 .rvd-gallery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 12px; width: 34%; height: 100%; }
 .rvd-gallery-row { display: flex; gap: 12px; flex: 1 1 0; width: 100%; }

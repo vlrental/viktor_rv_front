@@ -49,8 +49,9 @@ pub fn RvDetail(slug: String) -> Element {
     let initial_end = catalog_search.ends_on.clone().unwrap_or_default();
     let starts_on = use_signal(|| initial_start);
     let ends_on = use_signal(|| initial_end);
+    let fallback_listing = static_rv_listing(&slug);
     let details = use_resource(use_reactive((&slug,), move |(value,)| async move {
-        api::rental(&value).await
+        api::rental_with_status(&value).await
     }));
     rsx! {
         div { class: "rvd-body",
@@ -74,9 +75,65 @@ pub fn RvDetail(slug: String) -> Element {
                             }
                         }
                     },
-                    Err(_) => rsx! { h1 { class: "rvd-min-pill", "This RV could not be found or is no longer available." } a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" } },
+                    Err(error) if is_missing_rental(error) => rsx! { h1 { class: "rvd-min-pill", "This RV could not be found or is no longer available." } a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" } },
+                    Err(_) => rsx! {
+                        if let Some(listing) = fallback_listing {
+                            StaticRvFallback { listing }
+                        } else {
+                            h1 { class: "rvd-min-pill", "RV details are temporarily unavailable." }
+                            a { class: "rvd-reserve", href: missing_rv_href, "Browse RVs" }
+                        }
+                    },
                 }
-            } else { div { class: "rvd-min-pill", "Loading RV details…" } }
+            } else if let Some(listing) = fallback_listing {
+                StaticRvFallback { listing }
+            } else {
+                div { class: "rvd-min-pill", "Loading RV details…" }
+            }
+        }
+    }
+}
+
+fn static_rv_listing(slug: &str) -> Option<Listing> {
+    crate::data::rv_listings()
+        .into_iter()
+        .find(|listing| listing.slug == slug)
+}
+
+fn is_missing_rental(error: &api::ApiError) -> bool {
+    matches!(error.status, 404 | 410)
+}
+
+#[component]
+fn StaticRvFallback(listing: Listing) -> Element {
+    let rentals_href = api::frontend_path("/#home-rentals");
+    let photos = rv_gallery(listing.slug);
+    rsx! {
+        div { class: "rvd-crumb",
+            a { href: rentals_href, "RV Rentals" }
+            Icon { name: "chevron-right", size: 14, color: "var(--vl-muted)" }
+            b { "{listing.title}" }
+        }
+        div { class: "rvd-title-head",
+            div { class: "rvd-title-left",
+                h1 { class: "rvd-title", "{listing.title}" }
+                div { class: "rvd-meta", "{listing.meta} · Kelowna, BC" }
+            }
+        }
+        if let Some(photo) = photos.first() {
+            div { class: "rvd-gallery rvd-fallback-gallery",
+                img { src: "{photo}", alt: "{listing.title} RV rental" }
+            }
+        }
+        div { class: "rvd-content",
+            div { class: "rvd-left",
+                div { class: "rvd-sec",
+                    h2 { class: "rvd-h", "About this RV" }
+                    p { class: "rvd-p", "{listing.title} is an RV rental based in Kelowna, British Columbia. {listing.meta}. We deliver and set up RVs at campsites in the Okanagan; customer pickup is not offered." }
+                    p { class: "rvd-p", "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay." }
+                    a { class: "rvd-reserve", href: "tel:{PHONE}", "Call us about this RV" }
+                }
+            }
         }
     }
 }
@@ -1264,6 +1321,29 @@ fn InlineAvailabilityMonth(
 #[allow(clippy::items_after_test_module)]
 mod availability_tests {
     use super::*;
+
+    #[test]
+    fn static_fallback_covers_every_known_rv_but_no_unknown_slug() {
+        for listing in crate::data::rv_listings() {
+            assert_eq!(
+                static_rv_listing(listing.slug).map(|value| value.slug),
+                Some(listing.slug)
+            );
+        }
+        assert!(static_rv_listing("not-a-listed-rv").is_none());
+    }
+
+    #[test]
+    fn only_explicit_missing_statuses_hide_known_rv_fallback() {
+        for (status, expected) in [(0, false), (503, false), (404, true), (410, true)] {
+            let error = api::ApiError {
+                status,
+                code: "request_failed".into(),
+                message: "Request failed".into(),
+            };
+            assert_eq!(is_missing_rental(&error), expected);
+        }
+    }
 
     fn day(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()

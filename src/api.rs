@@ -2172,17 +2172,26 @@ pub async fn catalog(search: &CatalogSearchDraft) -> Result<Vec<Rental>, String>
 }
 
 pub async fn rental(slug: &str) -> Result<RentalResponse, String> {
+    rental_with_status(slug)
+        .await
+        .map_err(|error| error.message)
+}
+
+pub async fn rental_with_status(slug: &str) -> Result<RentalResponse, ApiError> {
     let response = Request::get(&format!(
         "{API_BASE}/api/v1/rentals/{}",
         urlencoding::encode(slug)
     ))
     .send()
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|error| ApiError::client(error.to_string()))?;
     if !response.ok() {
-        return Err(response_error(response).await.message);
+        return Err(response_error(response).await);
     }
-    response.json().await.map_err(|e| e.to_string())
+    response
+        .json()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
 }
 
 pub async fn rental_reviews(slug: &str) -> Result<RentalReviewsResponse, String> {
