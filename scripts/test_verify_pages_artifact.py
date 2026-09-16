@@ -46,6 +46,23 @@ class VerifyPagesArtifactTests(unittest.TestCase):
         failures = verify_html(root, html_path)
         self.assertTrue(any("missing asset" in failure for failure in failures))
 
+    def test_missing_social_preview_image_fails(self) -> None:
+        root, html_path = self.make_artifact()
+        html_path.write_text(
+            HTML.replace(
+                "</head>",
+                '<meta property="og:image" content="https://vlrental.ca/assets/img/park-fintry.webp">\n</head>',
+            ),
+            encoding="utf-8",
+        )
+        failures = verify_html(root, html_path)
+        self.assertTrue(any("park-fintry.webp" in failure for failure in failures))
+
+        image = root / "assets" / "img" / "park-fintry.webp"
+        image.parent.mkdir(parents=True)
+        image.write_bytes(b"test-image")
+        self.assertEqual(verify_html(root, html_path), [])
+
     def test_missing_css_marker_fails(self) -> None:
         root, html_path = self.make_artifact(":root{color:#17261c}")
         failures = verify_html(root, html_path)

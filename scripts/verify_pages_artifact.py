@@ -21,11 +21,15 @@ class AssetCollector(HTMLParser):
             self.urls.add(values["href"] or "")
         elif tag == "script" and values.get("src"):
             self.urls.add(values["src"] or "")
+        elif tag == "meta" and (
+            values.get("property") == "og:image" or values.get("name") == "twitter:image"
+        ) and values.get("content"):
+            self.urls.add(values["content"] or "")
 
 
 def artifact_path(root: Path, raw_url: str) -> Path | None:
     parsed = urlparse(raw_url)
-    if parsed.scheme or parsed.netloc:
+    if parsed.netloc and parsed.netloc not in {"vlrental.ca", "vlrental.github.io"}:
         return None
 
     path = unquote(parsed.path)

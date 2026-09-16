@@ -114,6 +114,15 @@ class PreparePagesArtifactTests(unittest.TestCase):
             canonical = page_url("https://example.test", path)
             self.assertIn(f'rel="canonical" href="{canonical}"', document)
 
+    def test_park_preview_images_exist_in_artifact(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+
+        for image in {route.image for route in PUBLIC_ROUTES if route.image.startswith("/assets/")}:
+            target = root / image.lstrip("/")
+            self.assertTrue(target.is_file(), image)
+            self.assertGreater(target.stat().st_size, 0, image)
+
     def test_legacy_routes_redirect_to_current_canonical_pages(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

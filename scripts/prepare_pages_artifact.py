@@ -6,6 +6,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -420,6 +421,18 @@ def prepare_artifact(root: Path, site_url: str) -> None:
     if not index.is_file():
         raise FileNotFoundError(f"missing built shell: {index}")
     shell = index.read_text(encoding="utf-8")
+
+    # Dioxus fingerprints and converts images used by the app. SEO metadata uses
+    # stable source URLs, so publish those files alongside the transformed assets.
+    source_root = Path(__file__).resolve().parents[1]
+    for image in {route.image for route in PUBLIC_ROUTES if route.image.startswith("/assets/")}:
+        relative = image.lstrip("/")
+        source = source_root / relative
+        if not source.is_file():
+            raise FileNotFoundError(f"missing SEO image: {source}")
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
 
     for route in PUBLIC_ROUTES:
         target = output_path(root, route.path)
