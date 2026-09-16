@@ -53,7 +53,7 @@ const REVIEWS: [(&str, &str, &str); 3] = [
 /// Цифры-факты (тёмная полоса Stats).
 const STATS: [(&str, &str); 4] = [
     ("6", "RVs in the fleet"),
-    ("Owner-run", "No middlemen, no fees"),
+    ("Owner-run", "Direct booking, clear pricing"),
     ("Kelowna", "Local Okanagan team"),
     ("Hours", "Typical response time"),
 ];
@@ -70,7 +70,7 @@ pub fn About() -> Element {
                 div { class: "eyebrow gold", "ABOUT VL RENTAL" }
                 h1 { class: "ab-hero-title", "Welcome to adventure, made simple" }
                 p { class: "ab-hero-sub",
-                    "Book directly with the owner — no middlemen, no service fees, no hassle. Fully-equipped RVs for every kind of Okanagan trip, all in one place in Kelowna."
+                    "Book directly with the owner and review your full trip quote before confirming. Fully-equipped RVs for Okanagan trips, delivered and set up from Kelowna."
                 }
             }
         }
@@ -115,7 +115,7 @@ pub fn About() -> Element {
                     div { class: "ab-host-photo", style: "background-image: url('{IMG_HOST}');" }
                     div { class: "ab-host-c",
                         div { class: "ab-host-n", "Viktor — owner & host" }
-                        div { class: "ab-host-d", "Book directly with the owner — no middlemen, no service fees." }
+                        div { class: "ab-host-d", "Book directly with the owner and see all required charges in your quote." }
                     }
                 }
                 for (icon, title, desc) in VALUES.iter() {
