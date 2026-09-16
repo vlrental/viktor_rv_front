@@ -123,6 +123,14 @@ const SITE_URL: &str = match option_env!("VL_FRONTEND_BASE_URL") {
     None => "https://vlrental.github.io/viktor_rv_front",
 };
 
+fn canonical_url(path: &str) -> String {
+    if path == "/" {
+        format!("{SITE_URL}/")
+    } else {
+        format!("{SITE_URL}{}/", path.trim_end_matches('/'))
+    }
+}
+
 #[derive(Clone, PartialEq)]
 struct SeoMetadata {
     title: String,
@@ -136,7 +144,7 @@ impl SeoMetadata {
         Self {
             title: title.into(),
             description: description.into(),
-            canonical: format!("{SITE_URL}{path}"),
+            canonical: canonical_url(path),
             robots: "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1",
         }
     }
@@ -145,7 +153,7 @@ impl SeoMetadata {
         Self {
             title: title.into(),
             description: description.into(),
-            canonical: format!("{SITE_URL}{path}"),
+            canonical: canonical_url(path),
             robots: "noindex,nofollow",
         }
     }
@@ -503,7 +511,7 @@ mod seo_tests {
             assert!(metadata.robots.starts_with("index,follow"));
             assert_eq!(
                 metadata.canonical,
-                format!("{SITE_URL}/rv/{}", listing.slug)
+                format!("{SITE_URL}/rv/{}/", listing.slug)
             );
             assert!(metadata.title.contains(listing.title));
         }
@@ -515,7 +523,7 @@ mod seo_tests {
         let metadata = seo_metadata(&Route::RvDetail { slug: slug.into() });
 
         assert!(metadata.robots.starts_with("index,follow"));
-        assert_eq!(metadata.canonical, format!("{SITE_URL}/rv/{slug}"));
+        assert_eq!(metadata.canonical, format!("{SITE_URL}/rv/{slug}/"));
         assert!(metadata.title.contains("RV Rental"));
     }
 

@@ -5,7 +5,7 @@ import unittest
 import html
 from pathlib import Path
 
-from scripts.prepare_pages_artifact import LEGACY_REDIRECTS, PUBLIC_ROUTES, prepare_artifact
+from scripts.prepare_pages_artifact import LEGACY_REDIRECTS, PUBLIC_ROUTES, page_url, prepare_artifact
 
 
 SHELL = """<!doctype html>
@@ -49,7 +49,9 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn(f"<title>{html.escape(route.title)}</title>", document)
             self.assertIn('<article hidden class="seo-prerender"', document)
             self.assertIn(f'data-seo-route="{route.path}"', document)
-            self.assertIn(f"https://example.test{route.path}", document)
+            canonical = page_url("https://example.test", route.path)
+            self.assertIn(f'rel="canonical" href="{canonical}"', document)
+            self.assertIn(f'property="og:url" content="{canonical}"', document)
             self.assertIn('name="google-site-verification" content="verification-test-token"', document)
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
@@ -84,7 +86,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
         sitemap = (root / "sitemap.xml").read_text(encoding="utf-8")
 
         for route in PUBLIC_ROUTES:
-            self.assertIn(f"<loc>https://example.test{route.path}</loc>", sitemap)
+            self.assertIn(f"<loc>{page_url('https://example.test', route.path)}</loc>", sitemap)
         self.assertNotIn("/checkout", sitemap)
         self.assertNotIn("/admin", sitemap)
 
@@ -109,7 +111,8 @@ class PreparePagesArtifactTests(unittest.TestCase):
         for path in park_paths:
             document = (root / path.strip("/") / "index.html").read_text(encoding="utf-8")
             self.assertIn('name="robots" content="index,follow', document)
-            self.assertIn(f'rel="canonical" href="https://example.test{path}"', document)
+            canonical = page_url("https://example.test", path)
+            self.assertIn(f'rel="canonical" href="{canonical}"', document)
 
     def test_legacy_routes_redirect_to_current_canonical_pages(self) -> None:
         root = self.make_artifact()
@@ -117,13 +120,15 @@ class PreparePagesArtifactTests(unittest.TestCase):
 
         for old_path, target_path in LEGACY_REDIRECTS:
             document = (root / old_path.strip("/") / "index.html").read_text(encoding="utf-8")
-            target_url = f"https://example.test{target_path}"
+            target_url = page_url("https://example.test", target_path)
             self.assertIn('name="robots" content="noindex,follow"', document)
             self.assertIn(f'rel="canonical" href="{target_url}"', document)
             self.assertIn(f'http-equiv="refresh" content="0; url={target_url}"', document)
             self.assertIn(f'window.location.replace("{target_url}")', document)
             self.assertIn(f'<a href="{target_url}">Continue to the current page</a>', document)
 
+        self.assertIn(("/portfolio/jayco26", "/rv/jayco26"), LEGACY_REDIRECTS)
+        self.assertIn(("/portfolio/2025openrange1", "/rv/2025-open-range-1"), LEGACY_REDIRECTS)
 
 if __name__ == "__main__":
     unittest.main()

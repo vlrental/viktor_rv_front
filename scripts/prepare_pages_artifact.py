@@ -247,7 +247,14 @@ LEGACY_REDIRECTS = (
     ("/trailertnc", "/terms"),
     ("/attractions", "/parks-in-our-range"),
     ("/restaurants", "/parks-in-our-range"),
-    ("/cooler-trailers", "/parks-in-our-range"),
+    ("/home", "/"),
+    ("/portfolio/jayco26", "/rv/jayco26"),
+    ("/portfolio/2015KeystoneBullet", "/rv/2015-keystone-bullet"),
+    ("/portfolio/2017KeystoneOutbackUltra", "/rv/2017-keystone-outback-ultra"),
+    ("/portfolio/2025HighlandRidge2", "/rv/2025-highland-ridge-2"),
+    ("/portfolio/2025openrange1", "/rv/2025-open-range-1"),
+    ("/rv/forest-river-rockwood-19-ft", "/rv/2014-forest-river-rockwood"),
+    ("/rv/brand-new-open-range-conventional-26-bhs-bunk-bed-1", "/rv/2025-open-range-1"),
 )
 
 
@@ -263,8 +270,12 @@ def absolute_url(site_url: str, path: str) -> str:
     return f"{site_url.rstrip('/')}{path}"
 
 
+def page_url(site_url: str, path: str) -> str:
+    return absolute_url(site_url, path if path == "/" else f"{path.rstrip('/')}/")
+
+
 def schema_for(route: SeoRoute, site_url: str) -> str:
-    canonical = absolute_url(site_url, route.path)
+    canonical = page_url(site_url, route.path)
     graph: list[dict[str, object]] = [
         {
             "@type": "Organization",
@@ -315,7 +326,7 @@ def schema_for(route: SeoRoute, site_url: str) -> str:
 
 
 def render_route(shell: str, route: SeoRoute, site_url: str) -> str:
-    canonical = absolute_url(site_url, route.path)
+    canonical = page_url(site_url, route.path)
     image = absolute_url(site_url, route.image)
     document = re.sub(r"<title>.*?</title>", f"<title>{html.escape(route.title)}</title>", shell, count=1)
     document = replace_meta(document, 'name="description"', route.description)
@@ -373,7 +384,7 @@ def render_redirect(shell: str, old_path: str, target_path: str, site_url: str) 
         robots="noindex,follow",
     )
     document = render_route(shell, redirect_route, site_url)
-    target_url = absolute_url(site_url, target_path)
+    target_url = page_url(site_url, target_path)
     document = document.replace(
         "</head>",
         f'        <meta http-equiv="refresh" content="0; url={html.escape(target_url, quote=True)}">\n    </head>',
@@ -429,7 +440,7 @@ def prepare_artifact(root: Path, site_url: str) -> None:
         )
 
     sitemap_urls = "\n".join(
-        f"    <url><loc>{html.escape(absolute_url(site_url, route.path))}</loc></url>"
+        f"    <url><loc>{html.escape(page_url(site_url, route.path))}</loc></url>"
         for route in PUBLIC_ROUTES
     )
     (root / "sitemap.xml").write_text(
