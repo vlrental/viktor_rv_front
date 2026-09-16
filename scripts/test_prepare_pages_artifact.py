@@ -3,6 +3,8 @@ from __future__ import annotations
 import tempfile
 import unittest
 import html
+import json
+import re
 from pathlib import Path
 
 from scripts.prepare_pages_artifact import LEGACY_REDIRECTS, PUBLIC_ROUTES, page_url, prepare_artifact
@@ -70,6 +72,28 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('"@type": "Service"', document)
         self.assertIn('"@type": "BreadcrumbList"', document)
         self.assertIn("RV Rental Delivery &amp; Setup in Kelowna", document)
+
+    def test_rv_routes_use_rental_service_schema_without_product_claims(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+
+        for route in (route for route in PUBLIC_ROUTES if route.path.startswith("/rv/")):
+            document = (root / route.path.strip("/") / "index.html").read_text(encoding="utf-8")
+            match = re.search(r'<script type="application/ld\+json">(.*?)</script>', document, re.DOTALL)
+            self.assertIsNotNone(match, route.path)
+            graph = json.loads(match.group(1))["@graph"]
+            canonical = page_url("https://example.test", route.path)
+            service = next(node for node in graph if node.get("@id") == f"{canonical}#page")
+            breadcrumb = next(node for node in graph if node.get("@type") == "BreadcrumbList")
+
+            self.assertEqual(service["@type"], "Service", route.path)
+            self.assertEqual(service["provider"], {"@id": "https://example.test/#organization"})
+            self.assertEqual(service["url"], canonical)
+            self.assertEqual(breadcrumb["itemListElement"][-1]["item"], canonical)
+            self.assertNotIn('"@type": "Product"', document)
+            for node in graph:
+                for unverified_field in ("offers", "review", "aggregateRating", "priceRange"):
+                    self.assertNotIn(unverified_field, node, route.path)
 
     def test_home_targets_real_kelowna_rv_queries(self) -> None:
         root = self.make_artifact()

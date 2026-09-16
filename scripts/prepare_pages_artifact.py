@@ -189,7 +189,7 @@ PUBLIC_ROUTES = (
         "Rent the Jayco 26′ fifth wheel in Kelowna with delivery and setup at approved Okanagan destinations. Sleeps four with a full kitchen.",
         "Jayco 26′ Fifth Wheel Rental",
         "A fully equipped RV for couples and small families, delivered and set up at your approved Okanagan destination.",
-        kind="Product",
+        kind="Service",
     ),
     SeoRoute(
         "/rv/2015-keystone-bullet",
@@ -197,7 +197,7 @@ PUBLIC_ROUTES = (
         "Rent the 2015 Keystone Bullet family travel trailer in Kelowna. Sleeps up to ten with delivery and setup in the Okanagan.",
         "2015 Keystone Bullet Family RV Rental",
         "A spacious family travel trailer that sleeps up to ten, delivered and set up at your approved Okanagan destination.",
-        kind="Product",
+        kind="Service",
     ),
     SeoRoute(
         "/rv/2014-forest-river-rockwood",
@@ -205,7 +205,7 @@ PUBLIC_ROUTES = (
         "Rent the 2014 Forest River Rockwood travel trailer in Kelowna with delivery and setup at approved Okanagan destinations.",
         "2014 Forest River Rockwood RV Rental",
         "A comfortable travel trailer for couples or small families, delivered and set up at your approved destination.",
-        kind="Product",
+        kind="Service",
     ),
     SeoRoute(
         "/rv/2025-open-range-1",
@@ -213,7 +213,7 @@ PUBLIC_ROUTES = (
         "Rent a 2025 Open Range family travel trailer in Kelowna with delivery and setup across approved Okanagan destinations.",
         "2025 Open Range Family RV Rental",
         "A modern family bunkhouse delivered, levelled and set up at your approved Okanagan campsite.",
-        kind="Product",
+        kind="Service",
     ),
     SeoRoute(
         "/rv/2017-keystone-outback-ultra",
@@ -221,7 +221,7 @@ PUBLIC_ROUTES = (
         "Rent the 2017 Keystone Outback Ultra travel trailer in Kelowna. Sleeps up to eight with Okanagan delivery and setup.",
         "2017 Keystone Outback Ultra RV Rental",
         "A family travel trailer that sleeps up to eight, delivered and set up at your approved Okanagan destination.",
-        kind="Product",
+        kind="Service",
     ),
     SeoRoute(
         "/rv/2025-highland-ridge-2",
@@ -229,7 +229,7 @@ PUBLIC_ROUTES = (
         "Rent a 2025 Highland Ridge family travel trailer in Kelowna with delivery and setup at approved Okanagan destinations.",
         "2025 Highland Ridge Family RV Rental",
         "A modern family bunkhouse delivered, levelled and set up at your approved Okanagan campsite.",
-        kind="Product",
+        kind="Service",
     ),
 )
 
@@ -287,7 +287,6 @@ def schema_for(route: SeoRoute, site_url: str) -> str:
             "logo": f"{site_url}/logo-512.png",
             "telephone": "+1-250-878-5874",
             "areaServed": ["Kelowna", "Okanagan, British Columbia"],
-            "priceRange": "$$",
         },
         {
             "@type": "WebSite",
@@ -309,8 +308,6 @@ def schema_for(route: SeoRoute, site_url: str) -> str:
     }
     if route.kind == "Service":
         page["provider"] = {"@id": f"{site_url}/#organization"}
-    elif route.kind == "Product":
-        page["brand"] = {"@id": f"{site_url}/#organization"}
     graph.append(page)
     if route.path != "/":
         graph.append(
