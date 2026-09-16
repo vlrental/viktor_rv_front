@@ -80,9 +80,9 @@ pub enum Route {
         #[route("/about")]
         About {},
         #[redirect("/aboutus", || Route::About {})]
-        #[route("/parks-in-our-range")]
+        #[route("/parks-in-our-range/")]
         ParksInOurRange {},
-        #[route("/parks/:slug")]
+        #[route("/parks/:slug/")]
         ParkDetail { slug: String },
         #[redirect("/attractions", || Route::ParksInOurRange {})]
         #[redirect("/restaurants", || Route::ParksInOurRange {})]
@@ -500,6 +500,32 @@ fn AuthSessionBridge() -> Element {
 #[cfg(test)]
 mod seo_tests {
     use super::*;
+
+    #[test]
+    fn park_links_use_the_canonical_trailing_slash_path() {
+        let hub = Route::ParksInOurRange {};
+        assert_eq!(hub.to_string(), "/parks-in-our-range/");
+        assert_eq!(seo_metadata(&hub).canonical, format!("{SITE_URL}{hub}"));
+        assert!("/parks-in-our-range".parse::<Route>().unwrap() == hub);
+
+        for slug in [
+            "bear-creek",
+            "fintry",
+            "ellison",
+            "kekuli-bay",
+            "okanagan-lake",
+            "okanagan-falls",
+            "vaseux-lake",
+            "swiws",
+            "shuswap-lake",
+            "herald",
+        ] {
+            let route = Route::ParkDetail { slug: slug.into() };
+            assert_eq!(route.to_string(), format!("/parks/{slug}/"));
+            assert_eq!(seo_metadata(&route).canonical, format!("{SITE_URL}{route}"));
+            assert!(format!("/parks/{slug}").parse::<Route>().unwrap() == route);
+        }
+    }
 
     #[test]
     fn public_rv_pages_have_unique_indexable_metadata() {
