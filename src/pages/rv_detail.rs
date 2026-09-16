@@ -51,7 +51,7 @@ pub fn RvDetail(slug: String) -> Element {
     let ends_on = use_signal(|| initial_end);
     let fallback_listing = static_rv_listing(&slug);
     let details = use_resource(use_reactive((&slug,), move |(value,)| async move {
-        api::rental_with_status(&value).await
+        api::rental_with_status(api_rental_slug(&value)).await
     }));
     rsx! {
         div { class: "rvd-body",
@@ -75,15 +75,9 @@ pub fn RvDetail(slug: String) -> Element {
                             }
                         }
                     },
+                    Err(_) if fallback_listing.is_some() => rsx! { StaticRvFallback { listing: fallback_listing.unwrap() } },
                     Err(error) if is_missing_rental(error) => rsx! { h1 { class: "rvd-min-pill", "This RV could not be found or is no longer available." } a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" } },
-                    Err(_) => rsx! {
-                        if let Some(listing) = fallback_listing {
-                            StaticRvFallback { listing }
-                        } else {
-                            h1 { class: "rvd-min-pill", "RV details are temporarily unavailable." }
-                            a { class: "rvd-reserve", href: missing_rv_href, "Browse RVs" }
-                        }
-                    },
+                    Err(_) => rsx! { h1 { class: "rvd-min-pill", "RV details are temporarily unavailable." } a { class: "rvd-reserve", href: missing_rv_href, "Browse RVs" } },
                 }
             } else if let Some(listing) = fallback_listing {
                 StaticRvFallback { listing }
@@ -95,9 +89,34 @@ pub fn RvDetail(slug: String) -> Element {
 }
 
 fn static_rv_listing(slug: &str) -> Option<Listing> {
+    let legacy_slug = match slug {
+        "brand-new-jayco-26ft-5th-wheel-3" => "jayco26",
+        "2015-keystone-bullet-272bhs-bunk-bed" => "2015-keystone-bullet",
+        "forest-river-rockwood-19-ft" => "2014-forest-river-rockwood",
+        "brand-new-open-range-conventional-26-bhs-bunk-bed-1" => "2025-open-range-1",
+        "keystone-outback-ultra-lite-family-trailer-with-kids-room" => {
+            "2017-keystone-outback-ultra"
+        }
+        "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2" => "2025-highland-ridge-2",
+        _ => slug,
+    };
     crate::data::rv_listings()
         .into_iter()
-        .find(|listing| listing.slug == slug)
+        .find(|listing| listing.slug == legacy_slug)
+}
+
+fn api_rental_slug(slug: &str) -> &str {
+    match slug {
+        "jayco26" => "brand-new-jayco-26ft-5th-wheel-3",
+        "2015-keystone-bullet" => "2015-keystone-bullet-272bhs-bunk-bed",
+        "2014-forest-river-rockwood" => "forest-river-rockwood-19-ft",
+        "2025-open-range-1" => "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
+        "2017-keystone-outback-ultra" => {
+            "keystone-outback-ultra-lite-family-trailer-with-kids-room"
+        }
+        "2025-highland-ridge-2" => "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+        _ => slug,
+    }
 }
 
 fn is_missing_rental(error: &api::ApiError) -> bool {
@@ -1324,17 +1343,44 @@ mod availability_tests {
 
     #[test]
     fn static_fallback_covers_every_known_rv_but_no_unknown_slug() {
-        for listing in crate::data::rv_listings() {
+        let aliases = [
+            ("jayco26", "brand-new-jayco-26ft-5th-wheel-3"),
+            (
+                "2015-keystone-bullet",
+                "2015-keystone-bullet-272bhs-bunk-bed",
+            ),
+            ("2014-forest-river-rockwood", "forest-river-rockwood-19-ft"),
+            (
+                "2025-open-range-1",
+                "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
+            ),
+            (
+                "2017-keystone-outback-ultra",
+                "keystone-outback-ultra-lite-family-trailer-with-kids-room",
+            ),
+            (
+                "2025-highland-ridge-2",
+                "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+            ),
+        ];
+        for (legacy_slug, current_slug) in aliases {
             assert_eq!(
-                static_rv_listing(listing.slug).map(|value| value.slug),
-                Some(listing.slug)
+                static_rv_listing(legacy_slug).map(|value| value.slug),
+                Some(legacy_slug)
+            );
+            assert_eq!(api_rental_slug(legacy_slug), current_slug);
+            assert_eq!(api_rental_slug(current_slug), current_slug);
+            assert_eq!(
+                static_rv_listing(current_slug).map(|value| value.slug),
+                Some(legacy_slug)
             );
         }
         assert!(static_rv_listing("not-a-listed-rv").is_none());
+        assert_eq!(api_rental_slug("not-a-listed-rv"), "not-a-listed-rv");
     }
 
     #[test]
-    fn only_explicit_missing_statuses_hide_known_rv_fallback() {
+    fn only_explicit_missing_statuses_mark_unknown_rvs_missing() {
         for (status, expected) in [(0, false), (503, false), (404, true), (410, true)] {
             let error = api::ApiError {
                 status,
