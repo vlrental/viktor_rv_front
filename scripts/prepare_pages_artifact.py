@@ -258,6 +258,105 @@ LEGACY_REDIRECTS = (
     ("/rv/brand-new-open-range-conventional-26-bhs-bunk-bed-1", "/rv/2025-open-range-1"),
 )
 
+FEATURED_RVS = (
+    "/rv/2025-open-range-1",
+    "/rv/jayco26",
+    "/rv/2014-forest-river-rockwood",
+)
+FEATURED_PARKS = (
+    "/parks/bear-creek",
+    "/parks/fintry",
+    "/parks/ellison",
+)
+PARK_PLANNING_NOTES = {
+    "/parks/bear-creek": "Confirm the campsite number and the maximum trailer length before requesting delivery.",
+    "/parks/fintry": "Share your campground loop and site number so we can check the Westside Road approach.",
+    "/parks/ellison": "Choose a site that accepts the length of your selected RV, then send us the site number.",
+    "/parks/kekuli-bay": "Provide your campground loop and site number for final delivery approval.",
+    "/parks/okanagan-lake": "Tell us whether your reservation is in the North or South campground, including loop and site.",
+    "/parks/okanagan-falls": "Share the exact site before delivery; check current access and seasonal park notices.",
+    "/parks/vaseux-lake": "Confirm your reserved site's RV length limit and access before requesting a trailer.",
+    "/parks/swiws": "This outer-range destination needs a road-distance and campsite check before delivery is confirmed.",
+    "/parks/shuswap-lake": "Send the campground loop and site number so we can confirm your RV fits the site.",
+    "/parks/herald": "Delivery depends on the actual route and reserved site's access and RV length allowance.",
+}
+
+
+def route_link(site_url: str, route: SeoRoute) -> str:
+    return (
+        f'<a href="{html.escape(page_url(site_url, route.path), quote=True)}">'
+        f"{html.escape(route.heading)}</a>"
+    )
+
+
+def render_snapshot(route: SeoRoute, site_url: str) -> str:
+    by_path = {item.path: item for item in PUBLIC_ROUTES}
+    is_park = route.path.startswith("/parks/")
+    is_rv = route.path.startswith("/rv/")
+    if route.path == "/parks-in-our-range":
+        related_paths = tuple(item.path for item in PUBLIC_ROUTES if item.path.startswith("/parks/"))
+        related_title = "Explore our park guides"
+    elif route.path == "/":
+        related_paths = FEATURED_RVS + FEATURED_PARKS + ("/delivery", "/parks-in-our-range")
+        related_title = "Plan your Okanagan RV stay"
+    elif is_park:
+        related_paths = ("/parks-in-our-range", "/delivery") + FEATURED_RVS
+        related_title = "Choose an RV for your campsite"
+    elif is_rv:
+        related_paths = ("/delivery", "/parks-in-our-range") + tuple(
+            path for path in FEATURED_RVS if path != route.path
+        )
+        related_title = "Plan delivery and compare RVs"
+    elif route.path == "/delivery":
+        related_paths = FEATURED_RVS + ("/parks-in-our-range",)
+        related_title = "Explore RVs and destinations"
+    else:
+        related_paths = ("/", "/delivery", "/parks-in-our-range")
+        related_title = "Continue planning your stay"
+
+    related = "".join(
+        f"<li>{route_link(site_url, by_path[path])}</li>" for path in related_paths
+    )
+    note = PARK_PLANNING_NOTES.get(route.path)
+    planning = (
+        f'<p class="seo-prerender-note"><strong>Before you book:</strong> {html.escape(note)}</p>'
+        if note else ""
+    )
+    description = f"<p>{html.escape(route.copy)}</p>" if route.copy else ""
+    if route.heading == "This page has moved":
+        description = (
+            '<p>Continue to the current VL Rental page.</p>'
+            f'<p><a href="{html.escape(page_url(site_url, route.path), quote=True)}">'
+            'Continue to the current page</a></p>'
+        )
+        related = ""
+    nav = (
+        f'<a href="{html.escape(page_url(site_url, "/"), quote=True)}">Home</a>'
+        f'<a href="{html.escape(page_url(site_url, "/delivery"), quote=True)}">Delivery &amp; setup</a>'
+        f'<a href="{html.escape(page_url(site_url, "/parks-in-our-range"), quote=True)}">Park guides</a>'
+    )
+    related_section = (
+        f'<section class="seo-prerender-related" aria-labelledby="seo-related-title">'
+        f'<h2 id="seo-related-title">{html.escape(related_title)}</h2><ul>{related}</ul></section>'
+        if related else ""
+    )
+    return (
+        f'<div class="seo-prerender" data-seo-route="{html.escape(route.path, quote=True)}">'
+        '<header class="seo-prerender-header">'
+        f'<a class="seo-prerender-brand" href="{html.escape(page_url(site_url, "/"), quote=True)}">'
+        '<img src="/logo-512.png" width="36" height="36" alt="">VL Rental</a>'
+        f'<nav aria-label="Main navigation">{nav}</nav></header>'
+        '<main class="seo-prerender-main">'
+        '<section class="seo-prerender-hero">'
+        '<p class="seo-prerender-kicker">KELOWNA · OKANAGAN RV RENTALS</p>'
+        f'<h1>{html.escape(route.heading)}</h1>{description}{planning}'
+        '</section>'
+        f'{related_section}</main>'
+        '<footer class="seo-prerender-footer">'
+        'Delivery-only RV rentals · Kelowna, British Columbia · '
+        '<a href="tel:+12508785874">+1 (250) 878-5874</a></footer></div>'
+    )
+
 
 def replace_meta(document: str, selector: str, value: str) -> str:
     pattern = rf'(<meta\s+{selector}\s+content=")[^"]*("\s*/?>)'
@@ -349,17 +448,7 @@ def render_route(shell: str, route: SeoRoute, site_url: str) -> str:
         count=1,
         flags=re.DOTALL,
     )
-    snapshot = (
-        '<article hidden class="seo-prerender" data-seo-route="'
-        + html.escape(route.path, quote=True)
-        + '"><h1>'
-        + html.escape(route.heading)
-        + "</h1><p>"
-        + html.escape(route.copy)
-        + '</p><p><a href="'
-        + html.escape(f"{site_url}/", quote=True)
-        + '">Browse delivered RV rentals</a></p></article>'
-    )
+    snapshot = render_snapshot(route, site_url)
     document, count = re.subn(r'(<div id="main">)(</div>)', rf"\1{snapshot}\2", document, count=1)
     if count != 1:
         raise ValueError("missing Dioxus mount element")
@@ -393,11 +482,6 @@ def render_redirect(shell: str, old_path: str, target_path: str, site_url: str) 
         "        <script>window.location.replace("
         + json.dumps(target_url)
         + ");</script>\n    </body>",
-        1,
-    )
-    document = document.replace(
-        f'<a href="{html.escape(f"{site_url}/", quote=True)}">Browse delivered RV rentals</a>',
-        f'<a href="{html.escape(target_url, quote=True)}">Continue to the current page</a>',
         1,
     )
     return document.replace(

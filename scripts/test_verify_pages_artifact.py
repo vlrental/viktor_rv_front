@@ -89,6 +89,31 @@ class VerifyPagesArtifactTests(unittest.TestCase):
         failures = verify_html(root, html_path)
         self.assertTrue(any("fallback or recovery" in failure for failure in failures))
 
+    def test_indexable_route_requires_visible_snapshot(self) -> None:
+        root, _ = self.make_artifact()
+        route = root / "delivery" / "index.html"
+        route.parent.mkdir()
+        route.write_text(
+            HTML.replace(
+                "</head>", '<meta name="robots" content="index,follow">\n</head>'
+            ).replace(
+                "<body>",
+                '<body><div class="seo-prerender" data-seo-route="/delivery"><main>'
+                '<h1>RV delivery</h1><a href="/">Home</a><a href="/rv/a/">RV</a>'
+                '<a href="/parks/">Parks</a></main></div>',
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(verify_html(root, route), [])
+
+        missing = route.read_text(encoding="utf-8").replace('class="seo-prerender"', 'class="removed"')
+        route.write_text(missing, encoding="utf-8")
+        self.assertTrue(any("missing its visible" in failure for failure in verify_html(root, route)))
+
+        hidden = missing.replace('class="removed"', 'class="seo-prerender" hidden')
+        route.write_text(hidden, encoding="utf-8")
+        self.assertTrue(any("must not hide" in failure for failure in verify_html(root, route)))
+
     def test_more_than_two_asset_generations_fails(self) -> None:
         root, html_path = self.make_artifact()
         (root / "404.html").write_text(html_path.read_text(encoding="utf-8"), encoding="utf-8")

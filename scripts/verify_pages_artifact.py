@@ -19,6 +19,8 @@ class AssetCollector(HTMLParser):
         values = dict(attrs)
         if tag == "link" and values.get("href"):
             self.urls.add(values["href"] or "")
+        elif tag == "img" and values.get("src"):
+            self.urls.add(values["src"] or "")
         elif tag == "script" and values.get("src"):
             self.urls.add(values["src"] or "")
         elif tag == "meta" and (
@@ -54,6 +56,20 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
     html = html_path.read_text(encoding="utf-8")
     collector = AssetCollector()
     collector.feed(html)
+
+    if html_path.name == "index.html" and 'name="robots" content="index,follow' in html:
+        relative = html_path.parent.relative_to(root).as_posix()
+        route = "/" if relative == "." else f"/{relative}"
+        marker = f'<div class="seo-prerender" data-seo-route="{route}">'
+        if marker not in html:
+            failures.append(f"{route} is missing its visible route-specific snapshot")
+        if len(re.findall(r"<h1(?:\s[^>]*)?>", html)) != 1:
+            failures.append(f"{route} must have exactly one initial HTML h1")
+        snapshot = html.split(marker, 1)[-1].split("</main>", 1)[0]
+        if len(re.findall(r'<a\s+[^>]*href="[^"]+"', snapshot)) < 3:
+            failures.append(f"{route} needs crawlable internal links")
+        if re.search(r'<(?:div|article)\b(?=[^>]*\bseo-prerender\b)(?=[^>]*\bhidden(?:\s|=|>))[^>]*>', html):
+            failures.append(f"{route} must not hide the initial HTML content")
 
     if any("@latest" in url for url in collector.urls):
         failures.append(f"{html_path.name} must pin external asset versions")

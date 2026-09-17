@@ -49,8 +49,10 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertTrue(path.is_file(), route.path)
             document = path.read_text(encoding="utf-8")
             self.assertIn(f"<title>{html.escape(route.title)}</title>", document)
-            self.assertIn('<article hidden class="seo-prerender"', document)
+            self.assertIn('<div class="seo-prerender"', document)
             self.assertIn(f'data-seo-route="{route.path}"', document)
+            self.assertIn(f'<h1>{html.escape(route.heading)}</h1>', document)
+            self.assertNotIn(' hidden class="seo-prerender"', document)
             canonical = page_url("https://example.test", route.path)
             self.assertIn(f'rel="canonical" href="{canonical}"', document)
             self.assertIn(f'property="og:url" content="{canonical}"', document)
@@ -103,6 +105,22 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn("RV Rental Kelowna", document)
         self.assertIn("camper rental in Kelowna", document)
         self.assertNotIn("boat", document.lower())
+        self.assertIn('href="https://example.test/rv/2025-open-range-1/"', document)
+        self.assertIn('href="https://example.test/parks/bear-creek/"', document)
+        self.assertIn('href="https://example.test/delivery/"', document)
+
+    def test_park_and_rv_documents_have_relevant_crawlable_links(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        park = (root / "parks/bear-creek/index.html").read_text(encoding="utf-8")
+        rv = (root / "rv/jayco26/index.html").read_text(encoding="utf-8")
+        hub = (root / "parks-in-our-range/index.html").read_text(encoding="utf-8")
+
+        self.assertIn("Confirm the campsite number", park)
+        self.assertIn('href="https://example.test/rv/2025-open-range-1/"', park)
+        self.assertIn('href="https://example.test/parks-in-our-range/"', rv)
+        self.assertIn('href="https://example.test/parks/herald/"', hub)
+        self.assertEqual(park.count("<h1>"), 1)
 
     def test_sitemap_is_generated_from_public_routes_only(self) -> None:
         root = self.make_artifact()

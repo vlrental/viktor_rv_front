@@ -122,10 +122,28 @@
             img { display: block; max-width: 100%; }
             .site-shell { min-height: 100vh; display: flex; flex-direction: column; }
             .site-main { flex: 1; }
-            .seo-prerender { max-width: 760px; margin: 0 auto; padding: 72px 24px; }
-            .seo-prerender h1 { margin: 0 0 18px; color: var(--vl-forest-2); font: 600 48px/1.08 var(--font-heading); }
-            .seo-prerender p { margin: 0 0 16px; color: var(--vl-muted); font-size: 17px; line-height: 1.7; }
-            .seo-prerender a { color: var(--vl-forest); font-weight: 700; text-decoration: underline; }
+            .seo-prerender { min-height: 100vh; background: var(--vl-white); }
+            .seo-prerender-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px max(24px, calc((100vw - 1140px) / 2)); border-bottom: 1px solid var(--vl-hair); }
+            .seo-prerender-brand { display: inline-flex; align-items: center; gap: 8px; font: 600 21px var(--font-heading); white-space: nowrap; }
+            .seo-prerender-header nav { display: flex; flex-wrap: wrap; gap: 24px; font-size: 14px; }
+            .seo-prerender-header nav a { color: var(--vl-muted); }
+            .seo-prerender-main { max-width: 1140px; margin: 0 auto; padding: 64px 24px 80px; }
+            .seo-prerender-hero { max-width: 790px; }
+            .seo-prerender-kicker { color: var(--vl-accent) !important; font: 700 11px/1.4 var(--font-body) !important; letter-spacing: .14em; }
+            .seo-prerender h1 { margin: 12px 0 18px; color: var(--vl-forest-2); font: 600 clamp(36px, 5vw, 64px)/1.08 var(--font-heading); }
+            .seo-prerender p { margin: 0 0 18px; color: var(--vl-muted); font-size: 17px; line-height: 1.7; }
+            .seo-prerender-note { max-width: 700px; }
+            .seo-prerender-related { margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--vl-hair); }
+            .seo-prerender-related h2 { margin: 0 0 20px; color: var(--vl-forest-2); font: 600 30px/1.2 var(--font-heading); }
+            .seo-prerender-related ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 28px; margin: 0; padding: 0; list-style: none; }
+            .seo-prerender-related li { border-bottom: 1px solid var(--vl-hair); }
+            .seo-prerender-related a { display: block; padding: 14px 0; color: var(--vl-forest); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+            .seo-prerender-footer { padding: 32px 24px; background: var(--vl-forest-2); color: var(--vl-white); text-align: center; font-size: 13px; }
+            .seo-prerender-footer a { color: inherit; text-decoration: underline; }
+            .seo-prerender[data-seo-route="/"] .seo-prerender-main { max-width: none; padding: 0 0 80px; }
+            .seo-prerender[data-seo-route="/"] .seo-prerender-hero { max-width: none; padding: 104px max(24px, calc((100vw - 1140px) / 2)); background: var(--vl-forest-2); }
+            .seo-prerender[data-seo-route="/"] h1, .seo-prerender[data-seo-route="/"] .seo-prerender-hero p { max-width: 720px; color: var(--vl-white); }
+            .seo-prerender[data-seo-route="/"] .seo-prerender-related { max-width: 1140px; margin: 56px auto 0; padding: 32px 24px 0; }
             .site-header { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 72px; border-bottom: 1px solid var(--vl-hair); background: var(--vl-white); }
             .brand, .nav-menu, .nav-right, .nav-phone, .nav-cta { display: flex; align-items: center; }
             .brand { gap: 10px; }
@@ -144,8 +162,13 @@
                 .nav-menu { display: none; }
                 .nav-menu.is-open { position: absolute; top: 72px; right: 12px; left: 12px; display: flex; align-items: stretch; flex-direction: column; gap: 8px; padding: 18px; border-radius: 18px; background: var(--vl-white); box-shadow: 0 20px 60px #1023172b; }
                 .nav-phone, .nav-right > .nav-link { display: none; }
-                .seo-prerender { padding: 48px 18px; }
-                .seo-prerender h1 { font-size: 36px; }
+                .seo-prerender-header { align-items: flex-start; flex-direction: column; gap: 14px; padding: 16px 18px; }
+                .seo-prerender-header nav { gap: 12px 18px; }
+                .seo-prerender-main { padding: 48px 18px 64px; }
+                .seo-prerender h1 { font-size: 38px; }
+                .seo-prerender p { font-size: 16px; }
+                .seo-prerender[data-seo-route="/"] .seo-prerender-hero { padding: 64px 18px; }
+                .seo-prerender[data-seo-route="/"] .seo-prerender-related { padding: 0 18px; }
                 .nav-burger { display: flex; width: 42px; height: 42px; align-items: center; justify-content: center; flex-direction: column; gap: 4px; border: 1px solid var(--vl-hair); border-radius: 13px; }
                 .nav-burger-line { display: block; width: 18px; height: 2px; border-radius: 2px; background: currentColor; }
                 .site-footer { padding: 36px 18px; }
@@ -279,11 +302,30 @@
     </head>
     <body>
         <div id="main"></div>
+        <script>
+            (() => {
+                const mount = document.getElementById("main");
+                const snapshot = mount?.querySelector(":scope > .seo-prerender");
+                if (!snapshot) return;
+
+                const observer = new MutationObserver((records) => {
+                    const appMounted = records.some((record) =>
+                        Array.from(record.addedNodes).some(
+                            (node) => node.nodeType === Node.ELEMENT_NODE && node !== snapshot,
+                        ),
+                    );
+                    if (appMounted) {
+                        observer.disconnect();
+                        snapshot.remove();
+                    }
+                });
+                observer.observe(mount, { childList: true });
+            })();
+        </script>
         <script type="module" src="/{base_path}/push.js"></script>
         <noscript>
             <main>
-                <h1>VL Rental — RV rentals in Kelowna and the Okanagan</h1>
-                <p>JavaScript is required to browse available RVs and complete a booking.</p>
+                <p>JavaScript is required to check availability and complete a booking.</p>
                 <p>
                     Call <a href="tel:+12508785874">+1 (250) 878 5874</a> or visit the
                     <a href="/{base_path}/contact">contact page</a> for help.
