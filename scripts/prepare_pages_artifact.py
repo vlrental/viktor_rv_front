@@ -506,6 +506,23 @@ def prepare_artifact(root: Path, site_url: str) -> None:
     # Dioxus fingerprints and converts images used by the app. SEO metadata uses
     # stable source URLs, so publish those files alongside the transformed assets.
     source_root = Path(__file__).resolve().parents[1]
+    # Dioxus re-encodes WebP assets losslessly, making these already compressed
+    # previews much larger. Restore their exact source bytes after the build.
+    preview_source = source_root / "public" / "rv-previews"
+    preview_target = root / "rv-previews"
+    manifest = json.loads((source_root / "scripts" / "rv_preview_sources.json").read_text(encoding="utf-8"))
+    expected_previews = {
+        f"{Path(entry['url']).stem}-{suffix}.webp"
+        for entry in manifest
+        for suffix in (("thumb", "preview") if entry["kind"] == "cover" else ("thumb",))
+    }
+    actual_previews = {source.name for source in preview_source.glob("*.webp")}
+    if actual_previews != expected_previews:
+        raise ValueError("RV preview files do not match the source manifest")
+    preview_target.mkdir(parents=True, exist_ok=True)
+    for name in expected_previews:
+        shutil.copyfile(preview_source / name, preview_target / name)
+
     for image in {route.image for route in PUBLIC_ROUTES if route.image.startswith("/assets/")}:
         relative = image.lstrip("/")
         source = source_root / relative

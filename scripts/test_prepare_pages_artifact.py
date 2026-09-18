@@ -40,6 +40,16 @@ class PreparePagesArtifactTests(unittest.TestCase):
         (root / "index.html").write_text(SHELL, encoding="utf-8")
         return root
 
+    def test_preserves_exact_precompressed_rv_previews(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+
+        source = Path(__file__).resolve().parents[1] / "public" / "rv-previews"
+        previews = list(source.glob("*.webp"))
+        self.assertEqual(len(previews), 48)
+        for preview in previews:
+            self.assertEqual((root / "rv-previews" / preview.name).read_bytes(), preview.read_bytes())
+
     def test_creates_unique_public_route_documents(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

@@ -4,6 +4,7 @@ mod data;
 mod pages;
 mod pricing;
 mod push_notifications;
+mod rv_media_previews;
 mod timezone;
 
 use components::{saved_cookie_consent, CookieConsentBanner, CookieConsentContext, Footer, Header};

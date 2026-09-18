@@ -1228,7 +1228,7 @@ pub(crate) fn rental_image(rental: &api::Rental) -> String {
         .as_ref()
         .filter(|value| !value.trim().is_empty())
     {
-        return image.clone();
+        return crate::rv_media_previews::cover_preview_for(image).unwrap_or_else(|| image.clone());
     }
     rental_fallback_image(&rental.slug)
 }
