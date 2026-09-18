@@ -7,7 +7,14 @@ import json
 import re
 from pathlib import Path
 
-from scripts.prepare_pages_artifact import LEGACY_REDIRECTS, PUBLIC_ROUTES, page_url, prepare_artifact
+from scripts.prepare_pages_artifact import (
+    EXPECTED_STYLES,
+    LEGACY_REDIRECTS,
+    PUBLIC_ROUTES,
+    bundle_route_stylesheets,
+    page_url,
+    prepare_artifact,
+)
 
 
 SHELL = """<!doctype html>
@@ -39,6 +46,36 @@ class PreparePagesArtifactTests(unittest.TestCase):
         root = Path(temporary.name)
         (root / "index.html").write_text(SHELL, encoding="utf-8")
         return root
+
+    def test_bundles_all_route_css_in_original_order_for_pages_base(self) -> None:
+        root = self.make_artifact()
+        assets = root / "assets"
+        assets.mkdir()
+        ordered = sorted(EXPECTED_STYLES - {"main"}) + ["main"]
+        links = []
+        for name in ordered:
+            (assets / f"{name}-dxhtest.css").write_text(
+                f".style-{name} {{ color: green; }}\n" + (":root { --vl-css-ready: 1; }" if name == "main" else ""),
+                encoding="utf-8",
+            )
+            links.append(f'<link rel="stylesheet" href="/viktor_rv_front/assets/{name}-dxhtest.css" type="text/css">')
+
+        bundled = bundle_route_stylesheets("<head>" + "".join(links) + "</head>", root)
+        self.assertEqual(bundled.count('rel="stylesheet"'), 1)
+        match = re.search(r'href="/viktor_rv_front/assets/(main-dxh[^"]+\.css)"', bundled)
+        self.assertIsNotNone(match)
+        css = (assets / match.group(1)).read_text(encoding="utf-8")
+        self.assertEqual([css.index(f".style-{name}") for name in ordered], sorted(css.index(f".style-{name}") for name in ordered))
+        self.assertIn("--vl-css-ready: 1", css)
+
+    def test_bundling_fails_if_any_route_css_is_missing(self) -> None:
+        root = self.make_artifact()
+        links = "".join(
+            f'<link rel="stylesheet" href="/assets/{name}-dxhtest.css" type="text/css">'
+            for name in sorted(EXPECTED_STYLES)
+        )
+        with self.assertRaises(FileNotFoundError):
+            bundle_route_stylesheets(links, root)
 
     def test_preserves_exact_precompressed_rv_previews(self) -> None:
         root = self.make_artifact()

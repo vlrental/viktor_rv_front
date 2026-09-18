@@ -79,7 +79,14 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
         if path is not None and not path.is_file():
             failures.append(f"{html_path.name} references missing asset: {url}")
 
-    main_links = [url for url in collector.urls if re.search(r"/main-dxh[^/]*\.css(?:$|[?#])", url)]
+    local_css_links = [
+        url for url in collector.urls
+        if re.search(r"/assets/[^/]+\.css(?:$|[?#])", url)
+        and urlparse(url).netloc in {"", "vlrental.ca", "vlrental.github.io"}
+    ]
+    if len(local_css_links) != 1:
+        failures.append(f"{html_path.name} must reference exactly one bundled local stylesheet")
+    main_links = [url for url in local_css_links if re.search(r"/main-dxh[^/]*\.css(?:$|[?#])", url)]
     if len(main_links) != 1:
         failures.append(f"{html_path.name} must reference exactly one hashed main stylesheet")
     else:

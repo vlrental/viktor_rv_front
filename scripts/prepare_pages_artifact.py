@@ -4,18 +4,65 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import re
 import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 SITE_NAME = "VL Rental"
 PRODUCTION_URL = "https://vlrental.ca"
 INDEX_ROBOTS = "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
 NOINDEX_ROBOTS = "noindex,nofollow"
+LOCAL_STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]*/assets/[^"/]+\.css)" type="text/css">')
+EXPECTED_STYLES = {
+    "about", "checkout", "confirmed", "contact", "delivery", "main",
+    "parks", "rv_detail", "rv_sales", "terms",
+}
+
+
+def bundle_route_stylesheets(shell: str, root: Path) -> str:
+    """Keep every route's CSS available while reducing ten blocking requests to one."""
+    matches = list(LOCAL_STYLESHEET.finditer(shell))
+    if not matches:
+        # Small unit-test shells do not contain Dioxus-generated asset links.
+        return shell
+
+    urls = [match.group(1) for match in matches]
+    names = [Path(urlparse(url).path).name.split("-dxh", 1)[0] for url in urls]
+    if len(names) != len(EXPECTED_STYLES) or set(names) != EXPECTED_STYLES:
+        raise ValueError(f"unexpected Dioxus stylesheet set: {names}")
+
+    styles = []
+    for name, url in zip(names, urls):
+        relative = urlparse(url).path.split("/assets/", 1)[1]
+        source = root / "assets" / relative
+        if not source.is_file():
+            raise FileNotFoundError(f"missing route stylesheet: {source}")
+        contents = source.read_text(encoding="utf-8")
+        if "url(" in contents or "@import" in contents:
+            raise ValueError(f"route stylesheet needs URL rewriting before bundling: {name}")
+        styles.append(f"/* VL route CSS: {name} */\n{contents}")
+
+    combined = "\n".join(styles) + "\n"
+    digest = hashlib.sha256(combined.encode("utf-8")).hexdigest()[:16]
+    filename = f"main-dxh{digest}.css"
+    (root / "assets" / filename).write_text(combined, encoding="utf-8")
+    first_url = urls[0]
+    base = first_url.split("/assets/", 1)[0]
+    replacement = f'<link rel="stylesheet" href="{base}/assets/{filename}" type="text/css">'
+    count = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal count
+        count += 1
+        return replacement if count == 1 else ""
+
+    return LOCAL_STYLESHEET.sub(replace, shell)
 
 
 @dataclass(frozen=True)
@@ -501,7 +548,7 @@ def prepare_artifact(root: Path, site_url: str) -> None:
     index = root / "index.html"
     if not index.is_file():
         raise FileNotFoundError(f"missing built shell: {index}")
-    shell = index.read_text(encoding="utf-8")
+    shell = bundle_route_stylesheets(index.read_text(encoding="utf-8"), root)
 
     # Dioxus fingerprints and converts images used by the app. SEO metadata uses
     # stable source URLs, so publish those files alongside the transformed assets.

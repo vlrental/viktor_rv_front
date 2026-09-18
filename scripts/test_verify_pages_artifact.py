@@ -68,6 +68,19 @@ class VerifyPagesArtifactTests(unittest.TestCase):
         failures = verify_html(root, html_path)
         self.assertTrue(any("readiness marker" in failure for failure in failures))
 
+    def test_extra_blocking_route_stylesheet_fails(self) -> None:
+        root, html_path = self.make_artifact()
+        html_path.write_text(
+            HTML.replace(
+                "</head>",
+                '<link rel="stylesheet" href="/viktor_rv_front/assets/about-dxhtest.css">\n</head>',
+            ),
+            encoding="utf-8",
+        )
+        (root / "assets" / "about-dxhtest.css").write_text(".about{}", encoding="utf-8")
+        failures = verify_html(root, html_path)
+        self.assertTrue(any("bundled local stylesheet" in failure for failure in failures))
+
     def test_unpinned_external_asset_fails(self) -> None:
         root, html_path = self.make_artifact()
         html_path.write_text(
