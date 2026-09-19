@@ -62,7 +62,14 @@ def bundle_route_stylesheets(shell: str, root: Path) -> str:
         count += 1
         return replacement if count == 1 else ""
 
-    return LOCAL_STYLESHEET.sub(replace, shell)
+    bundled_shell = LOCAL_STYLESHEET.sub(replace, shell)
+    # Dioxus's original main stylesheet and the combined stylesheet share the
+    # main-dxh name pattern. The previous Pages assets are copied in before this
+    # step, so remove only unreferenced originals and retain both CSS bundles.
+    for source in (root / "assets").glob("main-dxh*.css"):
+        if source.name != filename and not source.read_text(encoding="utf-8").startswith("/* VL route CSS:"):
+            source.unlink()
+    return bundled_shell
 
 
 @dataclass(frozen=True)

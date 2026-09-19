@@ -68,6 +68,30 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertEqual([css.index(f".style-{name}") for name in ordered], sorted(css.index(f".style-{name}") for name in ordered))
         self.assertIn("--vl-css-ready: 1", css)
 
+    def test_bundling_removes_unreferenced_main_css_but_keeps_previous_bundle(self) -> None:
+        root = self.make_artifact()
+        assets = root / "assets"
+        assets.mkdir()
+        links = []
+        for name in sorted(EXPECTED_STYLES):
+            (assets / f"{name}-dxh1111.css").write_text(
+                f".style-{name} {{ color: green; }}\n"
+                + (":root { --vl-css-ready: 1; }" if name == "main" else ""),
+                encoding="utf-8",
+            )
+            links.append(f'<link rel="stylesheet" href="/assets/{name}-dxh1111.css" type="text/css">')
+        (assets / "main-dxh2222.css").write_text("old unreferenced main source", encoding="utf-8")
+        previous = assets / "main-dxh3333.css"
+        previous.write_text("/* VL route CSS: about */\nprevious bundle", encoding="utf-8")
+
+        bundled = bundle_route_stylesheets("<head>" + "".join(links) + "</head>", root)
+        current = re.search(r"/assets/(main-dxh[0-9a-f]+\.css)", bundled)
+        self.assertIsNotNone(current)
+        self.assertEqual(
+            {path.name for path in assets.glob("main-dxh*.css")},
+            {current.group(1), previous.name},
+        )
+
     def test_bundling_fails_if_any_route_css_is_missing(self) -> None:
         root = self.make_artifact()
         links = "".join(
