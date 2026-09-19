@@ -12,6 +12,7 @@ pub use cookie_consent::{
 pub use footer::Footer;
 pub use header::Header;
 pub use icon::Icon;
+pub(crate) use rental_reviews::external_review_url;
 pub use rental_reviews::RentalReviewsSection;
 pub use review_form::ReviewForm;
 pub use sort_dropdown::SortDropdown;

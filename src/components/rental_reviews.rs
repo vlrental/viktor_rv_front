@@ -38,7 +38,7 @@ fn rounded_rating(rating: &str) -> i32 {
 fn is_public_review_rating(rating: &str) -> bool {
     rating
         .parse::<f64>()
-        .is_ok_and(|value| (4.0..=5.0).contains(&value))
+        .is_ok_and(|value| (1.0..=5.0).contains(&value))
 }
 
 fn display_rating(rating: &str) -> String {
@@ -56,6 +56,25 @@ fn review_source_label(source: &str) -> &'static str {
         "outdoorsy" => "Verified on Outdoorsy",
         _ => "Verified booking",
     }
+}
+
+pub(crate) fn external_review_url<'a>(source: &str, url: Option<&'a str>) -> Option<&'a str> {
+    let url = url?;
+    let prefixes: &[&str] = match source {
+        "rvezy" => &["https://www.rvezy.com/rv-rental/"],
+        "outdoorsy" => &[
+            "https://ca.outdoorsy.com/rv-rental/",
+            "https://www.outdoorsy.com/rv-rental/",
+        ],
+        _ => return None,
+    };
+    prefixes
+        .iter()
+        .any(|prefix| {
+            url.strip_prefix(prefix)
+                .is_some_and(|path| !path.is_empty())
+        })
+        .then_some(url)
 }
 
 fn refresh_reviews(
@@ -269,7 +288,14 @@ pub fn RentalReviewsSection(
                                 if !review.title.is_empty() { h3 { "{review.title}" } }
                                 if !review.body.is_empty() { p { class: "rvd-review-comment", "{review.body}" } }
                                 div { class: "rvd-review-foot",
-                                    small { "{review.reviewer_name} · {source_label}" }
+                                    small {
+                                        "{review.reviewer_name} · "
+                                        if let Some(url) = external_review_url(&review.source, review.source_url.as_deref()) {
+                                            a { href: "{url}", target: "_blank", rel: "noopener noreferrer", style: "color: inherit;", title: "View original reviews", "{source_label}" }
+                                        } else {
+                                            "{source_label}"
+                                        }
+                                    }
                                     if let Some(context) = review_context.read().as_ref() {
                                         if context.own_review_ids.contains(&review.rental_review_id) {
                                             span { class: "rvd-review-own", "Your review · {review.like_count} likes" }
@@ -375,7 +401,8 @@ fn ReviewStars(rating: i32) -> Element {
 #[cfg(test)]
 mod tests {
     use super::{
-        display_rating, is_public_review_rating, like_disabled, review_source_label, rounded_rating,
+        display_rating, external_review_url, is_public_review_rating, like_disabled,
+        review_source_label, rounded_rating,
     };
 
     #[test]
@@ -399,11 +426,11 @@ mod tests {
     }
 
     #[test]
-    fn only_four_and_five_star_reviews_are_public() {
-        for rating in ["1", "2.00", "3", "3.75", "5.01", "6", "inf"] {
+    fn all_valid_star_ratings_are_public() {
+        for rating in ["0", "0.99", "5.01", "6", "inf"] {
             assert!(!is_public_review_rating(rating));
         }
-        for rating in ["4", "4.50", "5.00"] {
+        for rating in ["1", "2.00", "3", "3.75", "4", "4.50", "5.00"] {
             assert!(is_public_review_rating(rating));
         }
         assert!(!is_public_review_rating("invalid"));
@@ -415,5 +442,26 @@ mod tests {
         assert_eq!(review_source_label("rvezy"), "Verified on RVezy");
         assert_eq!(review_source_label("outdoorsy"), "Verified on Outdoorsy");
         assert_eq!(review_source_label("vl_rental"), "Verified booking");
+    }
+
+    #[test]
+    fn source_links_only_open_public_listings_on_the_matching_platform() {
+        let rvezy = "https://www.rvezy.com/rv-rental/example";
+        assert_eq!(external_review_url("rvezy", Some(rvezy)), Some(rvezy));
+        let outdoorsy = "https://ca.outdoorsy.com/rv-rental/example";
+        assert_eq!(
+            external_review_url("outdoorsy", Some(outdoorsy)),
+            Some(outdoorsy)
+        );
+        for url in [
+            "javascript:alert(1)",
+            "https://www.rvezy.com.evil.test/rv-rental/example",
+            "https://www.rvezy.com/rv-rental/",
+            outdoorsy,
+        ] {
+            assert_eq!(external_review_url("rvezy", Some(url)), None);
+        }
+        assert_eq!(external_review_url("outdoorsy", None), None);
+        assert_eq!(external_review_url("vl_rental", Some(rvezy)), None);
     }
 }

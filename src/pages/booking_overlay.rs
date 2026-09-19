@@ -3280,7 +3280,7 @@ fn rounded_review_rating(rating: &str) -> i32 {
 fn is_public_booking_review_rating(rating: &str) -> bool {
     rating
         .parse::<f64>()
-        .is_ok_and(|value| (4.0..=5.0).contains(&value))
+        .is_ok_and(|value| (1.0..=5.0).contains(&value))
 }
 
 fn displayed_review_rating(rating: &str) -> String {
@@ -3426,7 +3426,14 @@ fn RentalChoice(
                                         div { RatingStars { rating: rounded_review_rating(&review.rating) } b { "{rating_label}/5" } time { "{reviewed_at_label}" } }
                                         if !review.title.is_empty() { h4 { "{review.title}" } }
                                         if !review.body.is_empty() { p { "{review.body}" } }
-                                        div { class: "ub-review-foot", small { "{review.reviewer_name} · {source_label}" }
+                                        div { class: "ub-review-foot", small {
+                                            "{review.reviewer_name} · "
+                                            if let Some(url) = crate::components::external_review_url(&review.source, review.source_url.as_deref()) {
+                                                a { href: "{url}", target: "_blank", rel: "noopener noreferrer", style: "color: inherit;", title: "View original reviews", "{source_label}" }
+                                            } else {
+                                                "{source_label}"
+                                            }
+                                        }
                                             if let Some(context) = review_context.read().as_ref() {
                                                 if context.own_review_ids.contains(&review.rental_review_id) {
                                                     span { class: "ub-like-own", "Your review · {review.like_count} likes" }
@@ -4367,13 +4374,11 @@ mod saved_address_tests {
     }
 
     #[test]
-    fn booking_review_modal_only_accepts_four_to_five_star_reviews() {
-        for rating in [
-            "1", "2.00", "3", "3.75", "5.01", "6", "inf", "NaN", "invalid",
-        ] {
+    fn booking_review_modal_accepts_all_valid_star_ratings() {
+        for rating in ["0", "0.99", "5.01", "6", "inf", "NaN", "invalid"] {
             assert!(!is_public_booking_review_rating(rating));
         }
-        for rating in ["4", "4.00", "4.75", "5", "5.00"] {
+        for rating in ["1", "2.00", "3", "3.75", "4", "4.00", "4.75", "5", "5.00"] {
             assert!(is_public_booking_review_rating(rating));
         }
     }
