@@ -163,11 +163,20 @@ class PreparePagesArtifactTests(unittest.TestCase):
         rv = (root / "rv/jayco26/index.html").read_text(encoding="utf-8")
         hub = (root / "parks-in-our-range/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("Confirm the campsite number", park)
+        self.assertIn("Summer camping requires a reservation", park)
         self.assertIn('href="https://example.test/rv/2025-open-range-1/"', park)
         self.assertIn('href="https://example.test/parks-in-our-range/"', rv)
         self.assertIn('href="https://example.test/parks/herald/"', hub)
         self.assertEqual(park.count("<h1>"), 1)
+
+    def test_outer_range_park_snapshots_require_delivery_approval(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+
+        for slug in ("swiws", "shuswap-lake", "herald"):
+            document = (root / "parks" / slug / "index.html").read_text(encoding="utf-8")
+            self.assertIn("150 km" if slug != "herald" else "route and campsite access", document)
+            self.assertIn("Before you book:", document)
 
     def test_sitemap_is_generated_from_public_routes_only(self) -> None:
         root = self.make_artifact()

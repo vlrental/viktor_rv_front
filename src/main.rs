@@ -208,7 +208,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
         ),
         Route::ParksInOurRange {} => SeoMetadata::indexed(
             "Parks in Our Range | Okanagan RV Campgrounds | VL Rental",
-            "Find provincial parks, private RV parks and municipal campgrounds across the Okanagan and Shuswap within VL Rental's delivery area.",
+            "Explore Okanagan and Shuswap campgrounds. RV delivery depends on the actual road route, our 150 km limit and campsite approval.",
             "/parks-in-our-range",
         ),
         Route::ParkDetail { slug } => match slug.as_str() {
@@ -254,7 +254,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             ),
             "shuswap-lake" => SeoMetadata::indexed(
                 "RV Delivery to Shuswap Lake Provincial Park | VL Rental",
-                "Rent a delivered RV for Shuswap Lake Provincial Park in Scotch Creek, with setup at an approved reserved campsite.",
+                "Explore RV camping at Shuswap Lake Provincial Park in Scotch Creek. Delivery requires a road-distance and campsite check before booking.",
                 "/parks/shuswap-lake",
             ),
             "herald" => SeoMetadata::indexed(
