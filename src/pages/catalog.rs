@@ -1203,6 +1203,13 @@ mod catalog_search_tests {
 #[component]
 pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
     let image = rental_image(&rental);
+    let rating = rental
+        .review_rating
+        .as_deref()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && (1.0..=5.0).contains(value))
+        .filter(|_| rental.review_count > 0)
+        .map(|value| format!("{value:.1}"));
     let policy_summary = format!(
         "Sleeps {} · short stays use 3-night minimum pricing · Delivery only",
         rental.capacity
@@ -1215,7 +1222,19 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
             div { class: "lc-body",
                 div { class: "lc-title-row", div { class: "lc-title", "{rental.name}" } }
                 div { class: "lc-meta", "{policy_summary}" }
-                div { class: "lc-price-row", span { class: "lc-price", "${rental.base_rate}" } span { class: "lc-per", " / {rental.price_unit}" } }
+                div { class: "lc-price-row lc-price-with-rating",
+                    span { class: "lc-price-amount",
+                        span { class: "lc-price", "${rental.base_rate}" }
+                        span { class: "lc-per", " / {rental.price_unit}" }
+                    }
+                    if let Some(rating) = rating {
+                        span { class: "lc-rating lc-price-rating",
+                            aria_label: "{rating} out of 5 from {rental.review_count} guest reviews",
+                            span { class: "lc-rating-star", aria_hidden: "true", "★" }
+                            span { aria_hidden: "true", "{rating} ({rental.review_count})" }
+                        }
+                    }
+                }
                 div { class: "lc-price-note", "Plus mandatory fees · separate refundable CA$1,000 damage deposit" }
             }
         }

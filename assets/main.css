@@ -260,6 +260,10 @@ img { display: block; max-width: 100%; }
 .lc-price-row { display: flex; align-items: flex-end; gap: 5px; padding-top: 6px; }
 .lc-price { font-family: var(--font-heading); font-size: 22px; color: var(--vl-ink); }
 .lc-per { font-size: 14px; color: var(--vl-muted); }
+.lc-price-with-rating { flex-wrap: wrap; row-gap: 8px; }
+.lc-price-amount { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.lc-price-rating { margin-left: auto; align-self: center; flex-shrink: 0; white-space: nowrap; }
+.lc-rating-star { color: var(--vl-accent); font-size: 19px; line-height: 1; }
 .lc-price-note { color: var(--vl-muted); font-size: 10px; line-height: 14px; }
 
 /* Featured RV (широкая карточка) */

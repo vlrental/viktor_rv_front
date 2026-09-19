@@ -428,7 +428,7 @@ fn PopularRvs(
                     h2 { class: "sec-title", "RV rentals available near Kelowna" }
                 }
                 p { class: "home-rentals-intro",
-                    "Compare delivered RV and camper rentals for Kelowna, the Okanagan and approved campgrounds within 150 km."
+                    "Compare RVs, guest ratings and reviews for your delivered stay in Kelowna and approved Okanagan campgrounds within 150 km."
                 }
             }
             div { class: "home-catalog-toolbar",

@@ -81,9 +81,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/",
         "RV Rental Kelowna — Delivered & Set Up | VL Rental",
-        "Looking for an RV or camper rental in Kelowna? Choose a fully equipped travel trailer delivered, levelled and set up within 150 km.",
+        "Find your RV or camper rental in Kelowna. Compare guest ratings and reviews, with delivery and setup at approved destinations within 150 km.",
         "RV Rentals in Kelowna, Delivered & Set Up",
-        "Rent an RV in Kelowna without towing. Compare fully equipped RV and camper rentals, select your dates and approved destination, and arrive to a trailer that has already been delivered, levelled and set up.",
+        "Rent an RV in Kelowna without towing. Compare fully equipped RV and camper rentals and guest reviews, select your dates and approved destination, and arrive to a trailer that has already been delivered, levelled and set up.",
         kind="WebPage",
     ),
     SeoRoute(

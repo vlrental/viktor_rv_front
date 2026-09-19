@@ -164,7 +164,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
     match route {
         Route::Home {} => SeoMetadata::indexed(
             "RV Rental Kelowna — Delivered & Set Up | VL Rental",
-            "Looking for an RV or camper rental in Kelowna? Choose a fully equipped travel trailer delivered, levelled and set up within 150 km.",
+            "Find your RV or camper rental in Kelowna. Compare guest ratings and reviews, with delivery and setup at approved destinations within 150 km.",
             "/",
         ),
         Route::Catalog {} => {
