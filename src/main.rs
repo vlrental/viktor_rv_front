@@ -70,15 +70,15 @@ pub enum Route {
         Home {},
         #[route("/catalog")]
         Catalog {},
-        #[route("/rv/:slug")]
+        #[route("/rv/:slug/")]
         RvDetail { slug: String },
         #[route("/checkout")]
         Checkout {},
         #[route("/confirmed")]
         Confirmed {},
-        #[route("/contact")]
+        #[route("/contact/")]
         Contact {},
-        #[route("/about")]
+        #[route("/about/")]
         About {},
         #[redirect("/aboutus", || Route::About {})]
         #[route("/parks-in-our-range/")]
@@ -88,14 +88,14 @@ pub enum Route {
         #[redirect("/attractions", || Route::ParksInOurRange {})]
         #[redirect("/restaurants", || Route::ParksInOurRange {})]
         #[redirect("/cooler-trailers", || Route::ParksInOurRange {})]
-        #[route("/delivery")]
+        #[route("/delivery/")]
         Delivery {},
-        #[route("/rv-sales")]
+        #[route("/rv-sales/")]
         RvSales {},
-        #[route("/terms")]
+        #[route("/terms/")]
         Terms {},
         #[redirect("/trailertnc", || Route::Terms {})]
-        #[route("/privacy")]
+        #[route("/privacy/")]
         Privacy {},
         #[route("/login")]
         Login {},
@@ -542,6 +542,38 @@ mod seo_tests {
             );
             assert!(metadata.title.contains(listing.title));
         }
+    }
+
+    #[test]
+    fn public_routes_render_the_same_trailing_slash_urls_as_their_canonicals() {
+        let routes = vec![
+            Route::Contact {},
+            Route::About {},
+            Route::ParksInOurRange {},
+            Route::ParkDetail {
+                slug: "bear-creek".into(),
+            },
+            Route::RvDetail {
+                slug: "2025-open-range-1".into(),
+            },
+            Route::Delivery {},
+            Route::RvSales {},
+            Route::Terms {},
+            Route::Privacy {},
+        ];
+
+        for route in routes {
+            assert!(route.to_string().ends_with('/'));
+            assert_eq!(seo_metadata(&route).canonical, format!("{SITE_URL}{route}"));
+        }
+
+        assert!(
+            "/rv/2025-open-range-1".parse::<Route>().unwrap()
+                == Route::RvDetail {
+                    slug: "2025-open-range-1".into()
+                }
+        );
+        assert!("/contact".parse::<Route>().unwrap() == Route::Contact {});
     }
 
     #[test]
