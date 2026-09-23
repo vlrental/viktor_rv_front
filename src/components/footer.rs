@@ -53,6 +53,7 @@ pub fn Footer() -> Element {
                     div { class: "f-head", "COMPANY" }
                     Link { class: "f-link", to: Route::About {}, "About Us" }
                     Link { class: "f-link", to: Route::Contact {}, "Contact" }
+                    Link { class: "f-link", to: Route::Faq {}, "FAQs" }
                     Link { class: "f-link", to: Route::Terms {}, "Terms & Conditions" }
                     Link { class: "f-link", to: Route::Privacy {}, "Privacy & Cookies" }
                     button {

@@ -1,0 +1,296 @@
+{
+  "categories": [
+    {
+      "id": "rentals",
+      "title": "RV rentals in Kelowna",
+      "items": [
+        {
+          "id": "rent-an-rv-kelowna",
+          "question": "Where can I rent an RV in Kelowna?",
+          "answer": "VL Rental offers delivery-only RV rentals in Kelowna and approved destinations within 150 km by road of our Kelowna base. We deliver and set up the RV at your reserved campsite or approved location."
+        },
+        {
+          "id": "rental-price",
+          "question": "How much does an RV rental in Kelowna cost?",
+          "answer": "Your price depends on the RV, dates, delivery location and selected extras. Review the itemized booking quote for the rental charge, mandatory fees, delivery, applicable taxes and extras. A three-night minimum charge applies.",
+          "featured_home": 2
+        },
+        {
+          "id": "rental-inclusions",
+          "question": "What is included with an RV rental?",
+          "answer": "The RV includes basic kitchen equipment, standard dishes, cutlery, pots, pans and cooking utensils. Delivery and setup are provided by VL Rental and priced in your itemized quote. Bedding, a portable BBQ and propane are optional paid extras.",
+          "featured_home": 3
+        },
+        {
+          "id": "truck-required",
+          "question": "Can I rent an RV in Kelowna without a truck?",
+          "answer": "Yes. VL Rental delivers and sets up the RV, so you do not need a truck."
+        },
+        {
+          "id": "hitch-required",
+          "question": "Do I need a trailer hitch to rent an RV?",
+          "answer": "No. VL Rental handles transportation, positioning and setup."
+        },
+        {
+          "id": "minimum-rental",
+          "question": "What is the minimum RV rental period?",
+          "answer": "You may book for one or more nights. One- and two-night bookings keep your selected delivery and return dates but are charged at the three-night minimum.",
+          "featured_home": 4
+        },
+        {
+          "id": "family-size",
+          "question": "Which RV size is suitable for my family?",
+          "answer": "Choose an RV with enough sleeping capacity for everyone in your group. Check the individual RV listing for its sleeping arrangements, exterior length and guest capacity before booking."
+        },
+        {
+          "id": "sleeping-capacity",
+          "question": "How many people can sleep in the RVs?",
+          "answer": "Sleeping capacity varies by RV. Check the individual listing and choose a model that accommodates every guest included in your booking."
+        },
+        {
+          "id": "fully-equipped",
+          "question": "Are the RVs fully equipped?",
+          "answer": "The RVs include basic kitchen equipment, but not every extra is included. Bedding and a portable BBQ are paid extras, propane is an optional paid extra, and shower towels are not provided."
+        },
+        {
+          "id": "pets",
+          "question": "Are pets allowed in the rental RVs?",
+          "answer": "Pets are allowed only when the selected RV and booking expressly permit them. Pets must be declared when booking. A non-refundable CA$100 pet fee applies once per booking with a pet and is separate from the refundable damage deposit.",
+          "featured_home": 6
+        }
+      ]
+    },
+    {
+      "id": "delivery",
+      "title": "Delivery and setup",
+      "items": [
+        {
+          "id": "delivery-available",
+          "question": "Do you deliver and set up the RV?",
+          "answer": "Yes. Every VL Rental RV is delivered and set up at the approved destination. Customer pickup is not available.",
+          "featured_home": 1
+        },
+        {
+          "id": "delivery-included",
+          "question": "Is RV delivery and setup included?",
+          "answer": "Delivery and setup are part of our service. The delivery charge is shown separately in your itemized quote and depends on the destination."
+        },
+        {
+          "id": "delivery-cost",
+          "question": "How much does RV delivery cost?",
+          "answer": "Delivery costs CA$150 for destinations within 40 km one way of our Kelowna base. Beyond 40 km, each additional kilometre costs CA$2.50 in each direction, or CA$5 total for the round trip."
+        },
+        {
+          "id": "delivery-range",
+          "question": "How far from Kelowna can an RV be delivered?",
+          "answer": "We deliver to approved locations within 150 km one way, measured by the actual driving route."
+        },
+        {
+          "id": "setup-includes",
+          "question": "What does RV setup include?",
+          "answer": "The VL Rental team positions, levels and sets up the RV. We connect the available compatible electrical, water and sewer hookups at your site. Dry camping sites do not have these hookups."
+        },
+        {
+          "id": "delivery-time",
+          "question": "What time is the RV delivered?",
+          "answer": "The standard delivery and setup time is 2:00 PM."
+        },
+        {
+          "id": "collection-time",
+          "question": "What time is the RV collected?",
+          "answer": "The RV must be empty, cleaned and ready for collection at 11:00 AM on your return date."
+        },
+        {
+          "id": "campsite-delivery",
+          "question": "Can the RV be delivered directly to my campsite?",
+          "answer": "Yes, provided the campsite is reserved, suitable for the booked RV, accessible and within our approved delivery area."
+        },
+        {
+          "id": "private-property",
+          "question": "Can VL Rental deliver an RV to private property?",
+          "answer": "Delivery to private property is subject to approval. Provide the address and the available parking area's width and length so we can review the location before confirming delivery."
+        },
+        {
+          "id": "delivery-information",
+          "question": "What information is needed for RV delivery?",
+          "answer": "Provide the campground name and address or the destination address, together with the site number, site length and available hookups. For private property, also provide the available parking area's width and length."
+        }
+      ]
+    },
+    {
+      "id": "campgrounds",
+      "title": "Campgrounds and parks",
+      "items": [
+        {
+          "id": "campgrounds-in-range",
+          "question": "Which campgrounds are within the delivery area?",
+          "answer": "We deliver to approved campgrounds within 150 km by road of our Kelowna base. Check our campground guides and confirm your exact destination with VL Rental before booking."
+        },
+        {
+          "id": "bear-creek",
+          "question": "Can an RV be delivered to Bear Creek Provincial Park?",
+          "answer": "Delivery can be arranged subject to a suitable campsite reservation, access requirements and confirmation by VL Rental."
+        },
+        {
+          "id": "fintry",
+          "question": "Can an RV be delivered to Fintry Provincial Park?",
+          "answer": "Delivery can be arranged subject to a suitable campsite reservation, access requirements and confirmation by VL Rental."
+        },
+        {
+          "id": "ellison",
+          "question": "Can an RV be delivered to Ellison Provincial Park?",
+          "answer": "Delivery can be arranged subject to a suitable campsite reservation, access requirements and confirmation by VL Rental."
+        },
+        {
+          "id": "okanagan-lake",
+          "question": "Does VL Rental deliver to Okanagan Lake Provincial Park?",
+          "answer": "Delivery can be arranged subject to a suitable campsite reservation, access requirements and confirmation by VL Rental."
+        },
+        {
+          "id": "vernon-penticton",
+          "question": "Does VL Rental deliver RVs to Vernon or Penticton?",
+          "answer": "Approved destinations in these areas may be served when the actual driving distance is within our 150 km delivery limit. Confirm the exact address with us before booking."
+        },
+        {
+          "id": "reserve-campsite",
+          "question": "Do I need to reserve the campsite separately?",
+          "answer": "Yes. You are responsible for reserving and paying for your campsite directly with the campground."
+        },
+        {
+          "id": "campsite-size",
+          "question": "What campsite size do I need?",
+          "answer": "Choose a campsite that accommodates the booked trailer's full bumper-to-bumper length. Check the campground's stated RV length limit and provide your site length to VL Rental before delivery."
+        },
+        {
+          "id": "hookups-required",
+          "question": "Does the campsite need electrical, water or sewer hookups?",
+          "answer": "No. The RV can be used at a dry camping site without hookups. Tell us which hookups, if any, are available when arranging delivery."
+        },
+        {
+          "id": "site-access",
+          "question": "How can I confirm that my campsite is accessible?",
+          "answer": "Send us the campground name, address, site number and site length so we can review the delivery location. For private property, also provide the available parking area's width and length. Tell us about any known access restrictions."
+        }
+      ]
+    },
+    {
+      "id": "booking",
+      "title": "Booking, payments and cancellations",
+      "items": [
+        {
+          "id": "how-to-book",
+          "question": "How do I book an RV rental in Kelowna?",
+          "answer": "Choose your dates, guests and an available RV. Enter the delivery destination, select any extras, review the itemized quote and follow the booking instructions."
+        },
+        {
+          "id": "advance-booking",
+          "question": "How far in advance should I reserve an RV?",
+          "answer": "Book as early as possible to secure your preferred RV and dates. A next-day booking may be possible when an RV is available and delivery arrangements can be confirmed."
+        },
+        {
+          "id": "short-stay",
+          "question": "Can I book an RV for one or two nights?",
+          "answer": "Yes. Your selected delivery and return dates remain unchanged, but the trip is charged at the three-night minimum."
+        },
+        {
+          "id": "booking-payment",
+          "question": "How much is required when booking?",
+          "answer": "If delivery is more than 30 days away, 30% of the trip price is due when booking. If delivery is 30 days away or less, the full trip price is due when booking. The refundable damage deposit is separate."
+        },
+        {
+          "id": "balance-due",
+          "question": "When is the remaining balance due?",
+          "answer": "For bookings made more than 30 days before delivery, the remaining trip-price balance is due exactly 30 days before the delivery date."
+        },
+        {
+          "id": "damage-deposit",
+          "question": "Is a refundable damage deposit required?",
+          "answer": "Yes. A separate refundable CA$1,000 damage deposit is required for every booking, subject to the Terms and Conditions."
+        },
+        {
+          "id": "damage-deposit-payment",
+          "question": "How is the damage deposit paid?",
+          "answer": "Pay the damage deposit by Interac e-Transfer to protrailercare@gmail.com. It is due no later than 48 hours before delivery and is not included in your Stripe payment."
+        },
+        {
+          "id": "after-booking",
+          "question": "What happens after I submit a booking?",
+          "answer": "Follow the confirmation and payment instructions provided for your booking. Before delivery, all required trip payments and the damage deposit must be received and confirmed."
+        },
+        {
+          "id": "change-dates",
+          "question": "Can I change my dates after booking?",
+          "answer": "Contact VL Rental to request a change. Changes are subject to availability, written approval and a revised quote."
+        },
+        {
+          "id": "cancel-booking",
+          "question": "How do I cancel my booking?",
+          "answer": "Send a cancellation request to vlrental.ca@gmail.com and include the booking number. Unless a booking-specific policy or a mandatory legal right is more favourable, the following schedule applies to the trip price:",
+          "bullets": [
+            "No cancellation charge when the request is sent within five calendar days after booking and delivery was more than 30 days away when the booking was made.",
+            "CA$100 when the request is received 30 or more days before delivery and the free-cancellation rule above does not apply.",
+            "CA$500 when the request is received 15 to 29 days before delivery.",
+            "100% of the trip price when the request is received 14 days or less before delivery, or for a no-show."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stay",
+      "title": "Using the RV during your stay",
+      "items": [
+        {
+          "id": "electricity",
+          "question": "How does the RV electricity work at a campsite?",
+          "answer": "Tell us which electrical hookup your site provides so we can confirm compatibility with the booked RV. Air conditioning works only with a compatible 30-amp or 50-amp hookup and not from a standard household outlet."
+        },
+        {
+          "id": "dry-camping",
+          "question": "Can I use the RV without full hookups?",
+          "answer": "Yes, the RV can be used for dry camping under normal use.",
+          "featured_home": 5
+        },
+        {
+          "id": "propane",
+          "question": "Is propane included with the RV rental?",
+          "answer": "Two 20 lb propane tanks are supplied with the RV. Propane is not included in the rental price; it is an optional CA$50 extra per booking."
+        },
+        {
+          "id": "kitchen",
+          "question": "Does the RV include kitchen equipment?",
+          "answer": "Yes. The RV includes a toaster, coffee maker, kettle, stove, microwave, refrigerator and freezer, together with standard dishes, cutlery, pots, pans and basic cooking utensils."
+        },
+        {
+          "id": "bedding-towels",
+          "question": "Are bedding and towels included?",
+          "answer": "Bedding is available as a paid extra. Shower towels are not provided and are not available as an extra, so bring your own."
+        },
+        {
+          "id": "water-waste",
+          "question": "How do the water and waste tanks work?",
+          "answer": "For dry camping, the VL Rental team fills the fresh-water tank before your stay. Wastewater emptying costs CA$45. At a full-hookup site, the RV is connected to the site's city-water and sewer services and no separate wastewater-emptying charge applies."
+        },
+        {
+          "id": "support",
+          "question": "Who should I contact if I need help?",
+          "answer": "Call VL Rental at +1 (250) 878-5874. Normal phone support is available from 9:00 AM to 8:00 PM, and emergency support is available 24/7 on the same number. For an immediate threat to life or safety, contact emergency services first."
+        },
+        {
+          "id": "move-rv",
+          "question": "Can the delivered RV be moved during the stay?",
+          "answer": "No. Customers must not tow or move the RV. Only VL Rental or its authorized contractor may relocate it."
+        },
+        {
+          "id": "before-collection",
+          "question": "What should I do before the RV is collected?",
+          "answer": "Remove personal belongings, garbage and anything not supplied by VL Rental. Leave the RV broom-clean, wash and put away dishes and utensils, and clean the appliances, including the microwave, refrigerator and stove. Follow the complete cleaning requirements in the Terms and Conditions."
+        },
+        {
+          "id": "pickup-towing",
+          "question": "Is customer pickup or towing permitted?",
+          "answer": "No. VL Rental is delivery-only. Customers cannot collect or tow the RV."
+        }
+      ]
+    }
+  ]
+}

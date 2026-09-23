@@ -21,8 +21,18 @@ NOINDEX_ROBOTS = "noindex,nofollow"
 LOCAL_STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]*/assets/[^"/]+\.css)" type="text/css">')
 EXPECTED_STYLES = {
     "about", "checkout", "confirmed", "contact", "delivery", "main",
-    "parks", "rv_detail", "rv_sales", "terms",
+    "faq", "parks", "rv_detail", "rv_sales", "terms",
 }
+FAQ_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "faq.json"
+
+
+def load_faq_content() -> dict[str, object]:
+    document = json.loads(FAQ_CONTENT_PATH.read_text(encoding="utf-8"))
+    categories = document.get("categories", [])
+    items = [item for category in categories for item in category.get("items", [])]
+    if len(categories) != 5 or len(items) != 50:
+        raise ValueError("content/faq.json must contain five categories and 50 questions")
+    return document
 
 
 def bundle_route_stylesheets(shell: str, root: Path) -> str:
@@ -90,16 +100,23 @@ PUBLIC_ROUTES = (
         "RV Rental Kelowna — Delivered & Set Up | VL Rental",
         "Find your RV or camper rental in Kelowna. Compare guest ratings and reviews, with delivery and setup at approved destinations within 150 km.",
         "RV Rentals in Kelowna, Delivered & Set Up",
-        "Rent an RV in Kelowna without towing. Compare fully equipped RV and camper rentals and guest reviews, select your dates and approved destination, and arrive to a trailer that has already been delivered, levelled and set up. Read selected Google Reviews from VL Rental guests.",
+        "Rent an RV in Kelowna without towing. Compare prepared RV and camper rentals and guest reviews, select your dates and approved destination, and arrive to a trailer that has already been delivered, levelled and set up. Read selected Google Reviews from VL Rental guests.",
         kind="WebPage",
     ),
     SeoRoute(
         "/about",
         "About VL Rental | Delivered RV Rentals in Kelowna",
-        "Meet VL Rental, a Kelowna RV rental service delivering and setting up fully equipped travel trailers across approved Okanagan destinations.",
+        "Meet VL Rental, a Kelowna RV rental service delivering and setting up prepared travel trailers across approved Okanagan destinations.",
         "About VL Rental",
         "We help families enjoy the Okanagan without towing or setting up a trailer. Our team delivers each RV, positions it at the approved site and prepares it for the stay. Read selected Google Reviews and visit our Google profile for all reviews.",
         kind="AboutPage",
+    ),
+    SeoRoute(
+        "/faq",
+        "RV Rental FAQ | Kelowna Delivery, Booking & Setup | VL Rental",
+        "Answers about VL Rental RV delivery, campsite setup, booking, payments, paid extras and dry camping in Kelowna and the Okanagan.",
+        "RV Rental Questions, Answered",
+        "Clear answers about booking a delivered RV in Kelowna and the Okanagan, from campsite details and utility hookups to extras, payments and return-day responsibilities.",
     ),
     SeoRoute(
         "/contact",
@@ -242,7 +259,7 @@ PUBLIC_ROUTES = (
         "Jayco 26′ Fifth Wheel Rental in Kelowna | VL Rental",
         "Rent the Jayco 26′ fifth wheel in Kelowna with delivery and setup at approved Okanagan destinations. Sleeps four with a full kitchen.",
         "Jayco 26′ Fifth Wheel Rental",
-        "A fully equipped RV for couples and small families, delivered and set up at your approved Okanagan destination.",
+        "A prepared RV for couples and small families, delivered and set up at your approved Okanagan destination.",
         kind="Service",
     ),
     SeoRoute(
@@ -343,6 +360,43 @@ def route_link(site_url: str, route: SeoRoute) -> str:
     )
 
 
+def render_faq_items(*, featured_only: bool = False) -> str:
+    document = load_faq_content()
+    categories = document["categories"]
+    if featured_only:
+        items = sorted(
+            (
+                item
+                for category in categories
+                for item in category["items"]
+                if item.get("featured_home") is not None
+            ),
+            key=lambda item: item["featured_home"],
+        )
+        categories = [{"id": "featured", "title": "Frequently asked questions", "items": items}]
+
+    sections = []
+    for category in categories:
+        entries = []
+        for item in category["items"]:
+            bullets = ""
+            if item.get("bullets"):
+                bullets = "<ul>" + "".join(
+                    f"<li>{html.escape(bullet)}</li>" for bullet in item["bullets"]
+                ) + "</ul>"
+            entries.append(
+                f'<details id="faq-{html.escape(item["id"], quote=True)}">'
+                f'<summary>{html.escape(item["question"])}</summary>'
+                f'<p>{html.escape(item["answer"])}</p>{bullets}</details>'
+            )
+        sections.append(
+            f'<section class="seo-prerender-faq-group" aria-labelledby="faq-{html.escape(category["id"], quote=True)}-title">'
+            f'<h2 id="faq-{html.escape(category["id"], quote=True)}-title">{html.escape(category["title"])}</h2>'
+            f'{"".join(entries)}</section>'
+        )
+    return '<div class="seo-prerender-faq">' + "".join(sections) + "</div>"
+
+
 def render_snapshot(route: SeoRoute, site_url: str) -> str:
     by_path = {item.path: item for item in PUBLIC_ROUTES}
     is_park = route.path.startswith("/parks/")
@@ -351,7 +405,7 @@ def render_snapshot(route: SeoRoute, site_url: str) -> str:
         related_paths = tuple(item.path for item in PUBLIC_ROUTES if item.path.startswith("/parks/"))
         related_title = "Explore our park guides"
     elif route.path == "/":
-        related_paths = FEATURED_RVS + FEATURED_PARKS + ("/delivery", "/parks-in-our-range")
+        related_paths = FEATURED_RVS + FEATURED_PARKS + ("/delivery", "/parks-in-our-range", "/faq")
         related_title = "Plan your Okanagan RV stay"
     elif is_park:
         related_paths = ("/parks-in-our-range", "/delivery") + FEATURED_RVS
@@ -388,12 +442,25 @@ def render_snapshot(route: SeoRoute, site_url: str) -> str:
         f'<a href="{html.escape(page_url(site_url, "/"), quote=True)}">Home</a>'
         f'<a href="{html.escape(page_url(site_url, "/delivery"), quote=True)}">Delivery &amp; setup</a>'
         f'<a href="{html.escape(page_url(site_url, "/parks-in-our-range"), quote=True)}">Park guides</a>'
+        f'<a href="{html.escape(page_url(site_url, "/faq"), quote=True)}">FAQs</a>'
     )
     related_section = (
         f'<section class="seo-prerender-related" aria-labelledby="seo-related-title">'
         f'<h2 id="seo-related-title">{html.escape(related_title)}</h2><ul>{related}</ul></section>'
         if related else ""
     )
+    faq_content = ""
+    if route.path == "/faq":
+        faq_content = (
+            render_faq_items()
+            + '<p class="seo-prerender-faq-help">Still need help? '
+            + f'<a href="{html.escape(page_url(site_url, "/contact"), quote=True)}">Contact VL Rental</a> '
+            + "or review the "
+            + f'<a href="{html.escape(page_url(site_url, "/terms"), quote=True)}">rental terms</a>.</p>'
+        )
+    elif route.path == "/":
+        faq_content = render_faq_items(featured_only=True)
+
     return (
         f'<div class="seo-prerender" data-seo-route="{html.escape(route.path, quote=True)}">'
         '<header class="seo-prerender-header">'
@@ -405,7 +472,7 @@ def render_snapshot(route: SeoRoute, site_url: str) -> str:
         '<p class="seo-prerender-kicker">KELOWNA · OKANAGAN RV RENTALS</p>'
         f'<h1>{html.escape(route.heading)}</h1>{description}{planning}'
         '</section>'
-        f'{related_section}</main>'
+        f'{faq_content}{related_section}</main>'
         '<footer class="seo-prerender-footer">'
         'Delivery-only RV rentals · Kelowna, British Columbia · '
         '<a href="tel:+12508785874">+1 (250) 878-5874</a></footer></div>'

@@ -51,7 +51,7 @@ pub fn About() -> Element {
                 div { class: "eyebrow gold", "ABOUT VL RENTAL" }
                 h1 { class: "ab-hero-title", "Welcome to adventure, made simple" }
                 p { class: "ab-hero-sub",
-                    "Book directly with the owner and review your full trip quote before confirming. Fully-equipped RVs for Okanagan trips, delivered and set up from Kelowna."
+                    "Book directly with the owner and review your full trip quote before confirming. Prepared RVs for Okanagan trips, delivered and set up from Kelowna."
                 }
             }
         }

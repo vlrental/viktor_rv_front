@@ -137,7 +137,9 @@ const TERM_SECTIONS: &[TermSection] = &[
         id: "equipment",
         title: "14. Equipment, utilities, and awnings",
         paragraphs: &[
-            "The customer must review the supplied inventory and promptly report a missing, damaged, or malfunctioning item. On a site without services, fresh water and battery power are limited. Air conditioning, microwave ovens, coffee makers, toasters, and similar 120-volt equipment require an adequate approved electrical connection or generator. The customer is responsible for campground utility compatibility and ordinary conservation.",
+            "The customer must review the supplied inventory and promptly report a missing, damaged, or malfunctioning item. Basic kitchen equipment includes a toaster, coffee maker, kettle, stove, microwave, refrigerator, freezer, dishes, cutlery, pots, pans, and basic cooking utensils. Bedding and a portable BBQ are paid extras. Shower towels are not supplied.",
+            "Two 20 lb propane tanks are supplied with the RV, but propane is an optional CA$50 paid extra and is not included without that selection. At a dry-camping site, the VL Rental team fills the fresh-water tank and wastewater emptying costs CA$45. At a full-hookup site, city water and on-site sewer are used and there is no wastewater-emptying charge.",
+            "On a site without services, fresh water and battery power are limited. Air conditioning requires a compatible 30-amp or 50-amp hookup and does not operate from a standard household connection. Microwave ovens, coffee makers, toasters, and other 120-volt equipment require an adequate compatible electrical supply. The customer is responsible for campground utility compatibility and ordinary conservation.",
             "Awnings are vulnerable to weather. Retract the awning when it is unattended and whenever wind, rain, pooling water, or other conditions could cause damage. The customer is responsible for awning damage caused by misuse or failure to follow instructions, including any booking-specific deductible or uncovered amount disclosed before booking.",
         ],
         bullets: &[],

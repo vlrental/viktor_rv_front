@@ -1,6 +1,7 @@
 mod api;
 mod components;
 mod data;
+mod faq_content;
 mod pages;
 mod pricing;
 mod push_notifications;
@@ -55,6 +56,10 @@ const TERMS_CSS: Asset = asset!(
     "/assets/css/terms.css",
     AssetOptions::css().with_static_head(true)
 );
+const FAQ_CSS: Asset = asset!(
+    "/assets/css/faq.css",
+    AssetOptions::css().with_static_head(true)
+);
 const PARALLAX_JS: Asset = asset!("/assets/parallax.js");
 
 fn main() {
@@ -94,6 +99,8 @@ pub enum Route {
         RvSales {},
         #[route("/terms/")]
         Terms {},
+        #[route("/faq/")]
+        Faq {},
         #[redirect("/trailertnc", || Route::Terms {})]
         #[route("/privacy/")]
         Privacy {},
@@ -283,6 +290,11 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "Read VL Rental RV terms for mandatory trip charges, payments, delivery, cancellations and customer responsibilities.",
             "/terms",
         ),
+        Route::Faq {} => SeoMetadata::indexed(
+            "RV Rental FAQ | Kelowna Delivery, Booking & Setup | VL Rental",
+            "Answers about VL Rental RV delivery, campsite setup, booking, payments, paid extras and dry camping in Kelowna and the Okanagan.",
+            "/faq",
+        ),
         Route::Privacy {} => SeoMetadata::indexed(
             "Privacy & Cookie Policy | VL Rental",
             "Learn how VL Rental handles personal information, browser storage, cookies, service providers, and privacy choices in Canada.",
@@ -341,6 +353,7 @@ fn App() -> Element {
         RV_DETAIL_CSS,
         RV_SALES_CSS,
         TERMS_CSS,
+        FAQ_CSS,
     ];
     rsx! {
         document::Script { src: PARALLAX_JS }
@@ -559,6 +572,7 @@ mod seo_tests {
             Route::Delivery {},
             Route::RvSales {},
             Route::Terms {},
+            Route::Faq {},
             Route::Privacy {},
         ];
 
@@ -623,6 +637,7 @@ mod seo_tests {
             Route::Delivery {},
             Route::RvSales {},
             Route::Terms {},
+            Route::Faq {},
             Route::Privacy {},
             Route::Login {},
             Route::Register {},

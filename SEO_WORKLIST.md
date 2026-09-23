@@ -30,7 +30,7 @@ Updated: 2026-09-23. This is a working checklist, not a claim that Google has in
 
 - Existing ten park guides contain individual location and access notes. Add checked, practical details such as compatible RV lengths, campsite information required for approval, route limitations, and links to relevant RVs. Avoid unverified campground claims or mass-produced near-duplicates.
 - Strengthen RV detail pages with verified layouts, capacities, equipment, photos and booking expectations rather than generic copy.
-- The customer will supply and approve the FAQ later; do not publish answers before that review.
+- September 23: the owner-approved English FAQ is implemented as 50 crawlable answers in five groups on `/faq/`, with six matching questions on the homepage. Terms, metadata, the sitemap and prerendered search content use the same confirmed policies; unverified model capacities and placeholder prices were not published. A per-selected-bed bedding quantity control remains a separate booking-flow follow-up.
 
 ## 4. Accuracy and local trust — open
 

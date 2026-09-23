@@ -180,6 +180,36 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('href="https://example.test/parks/bear-creek/"', document)
         self.assertIn('href="https://example.test/delivery/"', document)
 
+    def test_home_prerenders_the_six_approved_faqs(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "index.html").read_text(encoding="utf-8")
+
+        expected = [
+            "Do you deliver and set up the RV?",
+            "How much does an RV rental in Kelowna cost?",
+            "What is included with an RV rental?",
+            "What is the minimum RV rental period?",
+            "Can I use the RV without full hookups?",
+            "Are pets allowed in the rental RVs?",
+        ]
+        self.assertEqual(document.count('<section class="seo-prerender-faq-group"'), 1)
+        for question in expected:
+            self.assertIn(f"<summary>{question}</summary>", document)
+
+    def test_faq_prerender_contains_all_fifty_crawlable_answers(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "faq/index.html").read_text(encoding="utf-8")
+
+        self.assertEqual(document.count('<section class="seo-prerender-faq-group"'), 5)
+        self.assertEqual(document.count("<details id=\"faq-"), 50)
+        self.assertIn("Two 20 lb propane tanks are supplied", document)
+        self.assertIn("non-refundable CA$100 pet fee", document)
+        self.assertIn('href="https://example.test/contact/"', document)
+        self.assertIn('href="https://example.test/terms/"', document)
+        self.assertNotIn("propane refill", document.lower())
+
     def test_park_and_rv_documents_have_relevant_crawlable_links(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

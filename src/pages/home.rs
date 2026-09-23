@@ -12,6 +12,7 @@ use super::catalog::{
 use crate::api;
 use crate::components::{CookieConsent, CookieConsentContext, Icon, SortDropdown};
 use crate::data::IMG_HERO_RV;
+use crate::faq_content::featured_faq_items;
 use crate::{BookingLaunchRequest, Route};
 
 const IMG_CTA_PARALLAX: Asset = asset!(
@@ -120,6 +121,7 @@ pub fn Home() -> Element {
             search_initial_step,
         }
         HowItWorks { search_open, search_initial_step }
+        HomeFaq {}
         MoreServices {}
         CtaBand { search_open, search_initial_step }
         crate::components::GoogleReviews {}
@@ -294,7 +296,7 @@ fn Hero(
                 }
                 h1 { class: "hero-title", "RV rentals in Kelowna, delivered & set up" }
                 p { class: "hero-sub",
-                    "Rent an RV in Kelowna without towing. Choose a fully equipped camper trailer and we deliver, level and set it up at your approved Okanagan destination."
+                    "Rent an RV in Kelowna without towing. Choose a prepared camper trailer and we deliver, level and set it up at your approved Okanagan destination."
                 }
             }
             div { class: "searchbar",
@@ -492,7 +494,7 @@ fn PopularRvs(
 #[component]
 fn HowItWorks(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>) -> Element {
     let steps = [
-        ("search", "01", "Search & compare", "Browse fully-equipped RVs with transparent, upfront pricing — no hidden fees."),
+        ("search", "01", "Search & compare", "Browse prepared RVs with transparent, itemized pricing before you book."),
         ("calendar-check", "02", "Book online", "Reserve in minutes with fair policies and helpful guidance from our local Okanagan team."),
         ("truck", "03", "Delivery only", "Choose 1 or more nights; 1–2 night stays use 3-night minimum pricing. We deliver, level and set up your RV."),
     ];
@@ -533,6 +535,47 @@ fn HowItWorks(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn HomeFaq() -> Element {
+    let items = featured_faq_items();
+
+    rsx! {
+        section { class: "home-faq",
+            div { class: "home-faq-head",
+                div {
+                    p { class: "eyebrow", "GOOD TO KNOW" }
+                    h2 { "Frequently asked questions" }
+                }
+                p { "Plan delivery, understand your quote and know what to expect at the campsite." }
+            }
+            div { class: "home-faq-list",
+                for item in items.iter() {
+                    details { key: "home-faq-{item.id}", class: "home-faq-item",
+                        summary {
+                            span { "{item.question}" }
+                            span { class: "home-faq-toggle", aria_hidden: "true" }
+                        }
+                        div { class: "home-faq-answer",
+                            p { "{item.answer}" }
+                            if !item.bullets.is_empty() {
+                                ul {
+                                    for bullet in item.bullets.iter() {
+                                        li { key: "home-{item.id}-{bullet}", "{bullet}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Link { class: "home-faq-all", to: Route::Faq {},
+                span { "View all FAQs" }
+                Icon { name: "arrow-right", size: 17, color: "currentColor" }
             }
         }
     }
