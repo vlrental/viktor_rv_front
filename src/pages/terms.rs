@@ -53,7 +53,7 @@ const TERM_SECTIONS: &[TermSection] = &[
         ],
         bullets: &[
             "RV Preparation Fee: CA$97 once per booking.",
-            "Stationary Plus Protection: CA$150 for the first three booked nights, plus CA$30 for each additional booked night.",
+            "Stationary Plus Protection: CA$150 fixed per trip, regardless of the number of nights.",
         ],
     },
     TermSection {
@@ -129,7 +129,7 @@ const TERM_SECTIONS: &[TermSection] = &[
         title: "13. Care, cleaning, smoking, pets, and prohibited conditions",
         paragraphs: &[
             "Keep the RV reasonably clean and secure. Before return, wash and put away dishes and utensils, wipe sinks, counters, tables, appliances, refrigerator, stove, microwave, and shower surfaces, sweep floors, remove personal property and garbage, and leave the exterior free from avoidable damage. A CA$100 cleaning charge applies when ordinary required cleaning is not completed; extreme soiling, biohazards, odours, stains, or remediation may be charged at the reasonable documented cost.",
-            "Smoking, vaping, and burning cannabis or tobacco inside the RV are prohibited. A CA$300 deodorizing charge applies when smoke odour is detected, plus documented remediation above that amount when reasonably necessary. Pets are allowed only when the listing and booking expressly allow them; disclosed pet fees and cleaning requirements apply. Never leave a pet unattended when doing so risks damage or distress.",
+            "Smoking, vaping, and burning cannabis or tobacco inside the RV are prohibited. A CA$300 deodorizing charge applies when smoke odour is detected, plus documented remediation above that amount when reasonably necessary. Pets are allowed only when the listing and booking expressly allow them and must be declared when booking. A non-refundable CA$100 pet fee applies once per booking with a pet; it is separate from the refundable damage deposit. Never leave a pet unattended when doing so risks damage or distress.",
         ],
         bullets: &[],
     },
@@ -231,7 +231,7 @@ pub fn Terms() -> Element {
             p { class: "tm-sub",
                 "These Terms govern delivery-only RV bookings with VL Rental in Kelowna and approved Okanagan destinations. Review them together with your itemized booking summary before accepting."
             }
-            div { class: "tm-updated", "Effective August 4, 2026" }
+            div { class: "tm-updated", "Effective September 23, 2026" }
         }
 
         section { class: "tm-body",

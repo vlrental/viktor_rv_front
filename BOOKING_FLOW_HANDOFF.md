@@ -117,7 +117,7 @@ This document records the current frontend booking architecture, the problems fi
 
 - A local preview can be shown from nightly rate, nights, selected extras, delivery fee, and the separate refundable damage deposit.
 - Every quote automatically includes the mandatory `RV Preparation Fee` of CA$97 once per booking.
-- Every quote automatically includes mandatory `Stationary Plus Protection` at a fixed CA$150 for the first three booked calendar nights, plus CA$30 for each additional night (3 nights = CA$150, 4 = CA$180, 5 = CA$210).
+- Every quote automatically includes mandatory `Stationary Plus Protection` at a fixed CA$150 per trip, regardless of the number of nights.
 - Both mandatory charges are separate server quote line items and cannot be removed as extras.
 - The customer-facing trip price excludes the separate refundable CA$1,000 damage deposit. The deposit remains a compatibility quote field and a separate line item for transparency, but it must never be included in the 30% booking-payment calculation.
 - The refundable CA$1,000 damage deposit is due by Interac e-Transfer to `protrailercare@gmail.com` exactly 48 hours before RV delivery. After return and inspection, an administrator records the full manual return or documented retained damage plus the returned remainder.

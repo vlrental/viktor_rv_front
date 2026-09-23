@@ -226,9 +226,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/terms",
         "RV Rental Terms | VL Rental",
-        "Read VL Rental terms for delivered RV bookings, payments, cancellations and customer responsibilities.",
+        "Read VL Rental RV terms for mandatory trip charges, payments, delivery, cancellations and customer responsibilities.",
         "RV Rental Terms and Conditions",
-        "Review the terms that apply to VL Rental bookings, delivery, payments, cancellations and the care of our RVs.",
+        "Review the terms for VL Rental bookings, delivery, payments and cancellations. Every trip includes a CA$97 RV Preparation Fee and Stationary Plus Protection at a fixed CA$150 per trip, regardless of the number of nights. Applicable taxes are shown in the itemized quote.",
     ),
     SeoRoute(
         "/privacy",

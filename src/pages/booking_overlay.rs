@@ -3929,7 +3929,7 @@ mod saved_address_tests {
             .lines
             .iter()
             .any(|line| line.label == "Portable BBQ"));
-        assert_eq!(without_addon.total, 913.64);
+        assert_eq!(without_addon.total, 882.14);
         assert!(without_addon
             .lines
             .iter()

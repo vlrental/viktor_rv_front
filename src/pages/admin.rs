@@ -1496,7 +1496,7 @@ fn RvEditorPanel(
                             label { "Catalog order" input { r#type:"number", value:"{sort_order}", disabled:busy(), oninput:move|e|{sort_order.set(e.value());dirty.set(true)} } }
                             label { class:"admin-check-field", input { r#type:"checkbox", checked:pet_friendly(), disabled:busy(), onchange:move|e|{pet_friendly.set(e.checked());dirty.set(true)} } "Pet friendly" }
                         }
-                        p { class:"admin-system-rules", "Fixed: RV · CAD · 1+ night stay with 3-night minimum pricing · CA$97 prep · protection CA$150 for 3 nights, then CA$30/extra night · CA$1,000 refundable deposit · delivery from Kelowna up to 150 km." }
+                        p { class:"admin-system-rules", "Fixed: RV · CAD · 1+ night stay with 3-night minimum pricing · CA$97 prep · protection CA$150 per trip · CA$1,000 refundable deposit · delivery from Kelowna up to 150 km." }
                     }
                     if is_new && !addon_templates.is_empty() {
                         section { class:"admin-drawer-section admin-addon-template-section",

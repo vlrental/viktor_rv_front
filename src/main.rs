@@ -280,7 +280,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
         ),
         Route::Terms {} => SeoMetadata::indexed(
             "Rental Terms | VL Rental",
-            "Read the terms and conditions for VL Rental RV bookings, delivery, payments, cancellations, and customer responsibilities.",
+            "Read VL Rental RV terms for mandatory trip charges, payments, delivery, cancellations and customer responsibilities.",
             "/terms",
         ),
         Route::Privacy {} => SeoMetadata::indexed(

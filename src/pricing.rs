@@ -1,9 +1,7 @@
 use crate::api;
 
 pub const RV_PREPARATION_FEE: f64 = 97.0;
-pub const STATIONARY_PLUS_BASE_NIGHTS: i64 = 3;
-pub const STATIONARY_PLUS_BASE_PRICE: f64 = 150.0;
-pub const STATIONARY_PLUS_EXTRA_NIGHT_RATE: f64 = 30.0;
+pub const STATIONARY_PLUS_TRIP_PRICE: f64 = 150.0;
 pub const DAMAGE_DEPOSIT: f64 = 1_000.0;
 pub const BOOKING_DEPOSIT_PERCENT: i32 = 30;
 pub const BALANCE_DUE_DAYS: i64 = 30;
@@ -52,29 +50,11 @@ pub fn stationary_plus_amount(nights: i64) -> f64 {
         return 0.0;
     }
 
-    STATIONARY_PLUS_BASE_PRICE
-        + (nights - STATIONARY_PLUS_BASE_NIGHTS).max(0) as f64 * STATIONARY_PLUS_EXTRA_NIGHT_RATE
+    STATIONARY_PLUS_TRIP_PRICE
 }
 
-pub fn stationary_plus_detail(nights: i64) -> String {
-    let extra_nights = (nights - STATIONARY_PLUS_BASE_NIGHTS).max(0);
-    if extra_nights == 0 {
-        return format!(
-            "{}-night base · {} fixed",
-            STATIONARY_PLUS_BASE_NIGHTS,
-            money(STATIONARY_PLUS_BASE_PRICE)
-        );
-    }
-
-    let night_label = if extra_nights == 1 { "night" } else { "nights" };
-    format!(
-        "{}-night base {} + {} extra {} × {}",
-        STATIONARY_PLUS_BASE_NIGHTS,
-        money(STATIONARY_PLUS_BASE_PRICE),
-        extra_nights,
-        night_label,
-        money(STATIONARY_PLUS_EXTRA_NIGHT_RATE)
-    )
+pub fn stationary_plus_detail(_nights: i64) -> String {
+    "Fixed per trip".to_string()
 }
 
 #[cfg(test)]
@@ -82,14 +62,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stationary_plus_uses_a_three_night_base_then_thirty_per_extra_night() {
+    fn stationary_plus_is_fixed_per_trip_regardless_of_duration() {
         assert_eq!(stationary_plus_amount(0), 0.0);
-        assert_eq!(stationary_plus_amount(3), 150.0);
-        assert_eq!(stationary_plus_amount(4), 180.0);
-        assert_eq!(stationary_plus_amount(5), 210.0);
-        assert_eq!(stationary_plus_amount(7), 270.0);
-        assert_eq!(mandatory_costs(3), 247.0);
-        assert_eq!(mandatory_costs(7), 367.0);
+        for nights in [1, 2, 3, 4, 5, 7, 30] {
+            assert_eq!(stationary_plus_amount(nights), 150.0);
+            assert_eq!(mandatory_costs(nights), 247.0);
+            assert_eq!(stationary_plus_detail(nights), "Fixed per trip");
+        }
     }
 
     #[test]
