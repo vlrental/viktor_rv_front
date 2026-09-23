@@ -1,5 +1,6 @@
 mod cookie_consent;
 mod footer;
+mod google_reviews;
 mod header;
 mod icon;
 mod rental_reviews;
@@ -10,6 +11,7 @@ pub use cookie_consent::{
     saved_cookie_consent, CookieConsent, CookieConsentBanner, CookieConsentContext,
 };
 pub use footer::Footer;
+pub use google_reviews::GoogleReviews;
 pub use header::Header;
 pub use icon::Icon;
 pub(crate) use rental_reviews::external_review_url;

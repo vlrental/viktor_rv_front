@@ -33,6 +33,10 @@
 - This standing authorization covers repository code, configuration, documentation, tests, and the non-destructive Supabase schema migrations required by requested Viktor RV implementation work. It does not by itself authorize a production application deployment or restart, DNS/domain changes, live-payment activation, secret changes, destructive database operations, production data deletion, or broad production-data rewrites; those actions still require a direct user request.
 - Execute in-scope work end to end with the available tools instead of handing the user terminal commands or routine manual steps. Ask the user to act only when authentication, permissions, a third-party approval, or a genuinely destructive/high-impact decision cannot be completed safely by the agent.
 
+## Website SEO and publishing
+
+- For every user-requested website change, review and update affected SEO metadata and crawlable content as needed, run the relevant checks, and publish the verified change through the documented release flow. The owner explicitly reaffirmed this standing publishing authorization on September 18, 2026. Preserve existing safeguards for DNS, secrets, payments and destructive operations.
+
 ## Project design
 
 - Viktor RV UI design must always be created, updated, and verified in Pencil. Do not use or suggest Figma for this project.

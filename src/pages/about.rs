@@ -31,25 +31,6 @@ const VALUES: [(&str, &str, &str); 4] = [
     ),
 ];
 
-/// Отзывы гостей.
-const REVIEWS: [(&str, &str, &str); 3] = [
-    (
-        "“Viktor's trailer was very clean and well maintained…”",
-        "Michael Coulter",
-        "August 2025",
-    ),
-    (
-        "“Excellent experience with Victor…”",
-        "Sabrina Polga",
-        "July 2025",
-    ),
-    (
-        "“Viktor is a gracious and considerate host…”",
-        "Karin Atkinson",
-        "July 2025",
-    ),
-];
-
 /// Цифры-факты (тёмная полоса Stats).
 const STATS: [(&str, &str); 4] = [
     ("6", "RVs in the fleet"),
@@ -132,40 +113,7 @@ pub fn About() -> Element {
             }
         }
 
-        // Reviews
-        section { class: "ab-reviews",
-            div { class: "ab-reviews-head",
-                div {
-                    div { class: "eyebrow", "REVIEWS" }
-                    h2 { class: "ab-reviews-title", "What guests say" }
-                }
-                div { class: "ab-host-chip",
-                    div { class: "ab-host-av", style: "background-image: url('{IMG_HOST}');" }
-                    div { class: "ab-host-chip-c",
-                        span { class: "ab-host-chip-n", "Viktor — your host" }
-                        span { class: "ab-host-chip-s", "Books every rental personally" }
-                    }
-                }
-            }
-            div { class: "card-row",
-                for (quote, name, date) in REVIEWS.iter() {
-                    div { key: "{name}", class: "ab-review",
-                        div { class: "ab-stars",
-                            for i in 0..5 {
-                                span { key: "star-{i}",
-                                    Icon { name: "star", size: 15, color: "var(--vl-accent)" }
-                                }
-                            }
-                        }
-                        p { class: "ab-quote", {*quote} }
-                        div { class: "ab-who",
-                            span { class: "ab-who-n", {*name} }
-                            span { class: "ab-who-d", {*date} }
-                        }
-                    }
-                }
-            }
-        }
+        crate::components::GoogleReviews {}
 
         // Stats
         section { class: "ab-stats",

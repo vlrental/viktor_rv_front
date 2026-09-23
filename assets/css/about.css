@@ -245,3 +245,17 @@
   }
   .ab-stat-n { font-size: 30px; }
 }
+
+/* Shared Google review snapshot on Home and About. */
+.google-reviews-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.google-reviews .ab-quote { margin: 0; }
+.google-reviews .ab-who { margin-top: auto; gap: 12px; }
+.google-reviews-rating { color: var(--vl-forest); font-size: 18px; font-weight: 600; }
+.google-reviews-note { margin: 0; color: var(--vl-muted); font-size: 13px; line-height: 1.6; }
+.google-reviews-links { display: flex; flex-wrap: wrap; gap: 16px 24px; }
+.google-reviews-links a { color: var(--vl-forest); font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 4px; }
+.google-reviews a:focus-visible { outline: 2px solid var(--vl-forest); outline-offset: 4px; border-radius: 2px; }
+@media (max-width: 900px) {
+  .google-reviews .ab-reviews-head { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .google-reviews-grid { grid-template-columns: 1fr; gap: 14px; }
+}

@@ -122,6 +122,7 @@ pub fn Home() -> Element {
         HowItWorks { search_open, search_initial_step }
         MoreServices {}
         CtaBand { search_open, search_initial_step }
+        crate::components::GoogleReviews {}
         if *search_open.read() {
             UnifiedBookingOverlay {
                 location: search_location,
