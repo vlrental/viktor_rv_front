@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     api,
-    components::{Icon, ReviewForm},
+    components::{Icon, PriceInfoKind, PriceInfoPopover, ReviewForm},
     data::rv_gallery,
     pricing, AuthSession, Route,
 };
@@ -1454,7 +1454,7 @@ pub(crate) fn UnifiedBookingOverlay(
     let mut quote = use_signal(move || initial_locked_quote);
     let mut quote_busy = use_signal(|| false);
     let mut quote_error = use_signal(String::new);
-    let mut stationary_plus_details_open = use_signal(|| false);
+    let mut price_info_open = use_signal(|| None::<PriceInfoKind>);
     let mut addon_notice = use_signal(String::new);
     let mut quote_version = use_signal(|| 0_u32);
     let mut quote_refresh_nonce = use_signal(|| 0_u32);
@@ -2450,7 +2450,7 @@ pub(crate) fn UnifiedBookingOverlay(
         });
     rsx! {
         div { class: if *closing.read() { "ub-backdrop is-closing" } else { "ub-backdrop" }, onclick: move |_| close_overlay(),
-            div { class: "ub-shell", role: "dialog", aria_modal: "true", aria_label: "Complete your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| { if event.key() == Key::Escape { event.stop_propagation(); spawn(async move { close_overlay().await; }); } },
+            div { class: "ub-shell", role: "dialog", aria_modal: "true", aria_label: "Complete your RV booking", tabindex: "-1", autofocus: true, onclick: move |event| event.stop_propagation(), onkeydown: move |event| { if event.key() == Key::Escape { event.stop_propagation(); if price_info_open.read().is_some() { price_info_open.set(None); } else { spawn(async move { close_overlay().await; }); } } },
                 header { class: "ub-head",
                     div { div { class: "ub-kicker", "ONE-PAGE RV BOOKING" } h2 { "Build your Okanagan stay" } p { "Choose everything here. Completed sections fold into a clear summary." } }
                     button { class: "ub-close", r#type: "button", disabled: booking_overlay_close_blocked(*closing.read(), *booking_busy.read(), *auth_busy.read(), *all_in_busy.read(), *edit_booking_busy.read()), aria_label: "Close booking", onclick: move |_| close_overlay(), Icon { name: "x", size: 22, color: "var(--vl-ink)" } }
@@ -2867,17 +2867,14 @@ pub(crate) fn UnifiedBookingOverlay(
                             div { span { "Booked RV" } b { if created.booking.rental_name.is_empty() { "{selected_name}" } else { "{created.booking.rental_name}" } } }
                             if let Some(value) = quote.read().as_ref().filter(|value| quote_matches_booking(value, &created.booking)) {
                                 for item in value.items.iter().filter(|item| item.item_type != "deposit") {
-                                    if item.item_key == "stationary_plus" {
-                                        StationaryPlusPriceLine {
+                                    if item.item_key == "stationary_plus" || item.item_key == "rv_preparation" {
+                                        MandatoryPriceLine {
                                             key: "locked-{item.item_key}-{item.amount}",
                                             label: item.label.clone(),
-                                            detail: pricing::stationary_plus_detail(i64::from(value.quote.units)),
+                                            detail: if item.item_key == "stationary_plus" { Some(pricing::stationary_plus_detail(i64::from(value.quote.units))) } else { None },
                                             amount: format!("CA${}", item.amount),
-                                            expanded: *stationary_plus_details_open.read(),
-                                            on_toggle: move |_| {
-                                                let next = !*stationary_plus_details_open.read();
-                                                stationary_plus_details_open.set(next);
-                                            },
+                                            kind: if item.item_key == "stationary_plus" { PriceInfoKind::StationaryPlus } else { PriceInfoKind::Preparation },
+                                            open: price_info_open,
                                         }
                                     } else {
                                         div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if is_bedding_addon(&item.item_key) { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } }
@@ -2889,8 +2886,8 @@ pub(crate) fn UnifiedBookingOverlay(
                             if let Some(remaining) = booking_remaining_balance(&created.booking) { div { class: "remaining-balance", span { "Remaining balance · 70%" if let Some(due_at) = created.booking.balance_due_at.as_deref() { small { "Due {display_booking_date(due_at)} — 30 days before delivery" } } } b { "{created.booking.currency} ${remaining}" } } }
                             small { "The Stripe Checkout amount is locked to this booking. Closing and reopening the window cannot create a second reservation." }
                         } } else if *quote_busy.read() {
-                            if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else if item.key == "stationary-plus" { StationaryPlusPriceLine { key: "optimistic-{item.key}-{item.amount}", label: item.label.clone(), detail: item.detail.clone().unwrap_or_default(), amount: pricing::money(item.amount), expanded: *stationary_plus_details_open.read(), on_toggle: move |_| { let next = !*stationary_plus_details_open.read(); stationary_plus_details_open.set(next); } } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
-                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else if item.item_key == "stationary_plus" { StationaryPlusPriceLine { key: "line-{item.item_key}-{item.amount}", label: item.label.clone(), detail: pricing::stationary_plus_detail(i64::from(value.quote.units)), amount: format!("CA${}", item.amount), expanded: *stationary_plus_details_open.read(), on_toggle: move |_| { let next = !*stationary_plus_details_open.read(); stationary_plus_details_open.set(next); } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if is_bedding_addon(&item.item_key) { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
+                            if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else if item.key == "stationary-plus" || item.key == "fee-rv-preparation" { MandatoryPriceLine { key: "optimistic-{item.key}-{item.amount}", label: item.label.clone(), detail: item.detail.clone(), amount: pricing::money(item.amount), kind: if item.key == "stationary-plus" { PriceInfoKind::StationaryPlus } else { PriceInfoKind::Preparation }, open: price_info_open } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
+                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else if item.item_key == "stationary_plus" || item.item_key == "rv_preparation" { MandatoryPriceLine { key: "line-{item.item_key}-{item.amount}", label: item.label.clone(), detail: if item.item_key == "stationary_plus" { Some(pricing::stationary_plus_detail(i64::from(value.quote.units))) } else { None }, amount: format!("CA${}", item.amount), kind: if item.item_key == "stationary_plus" { PriceInfoKind::StationaryPlus } else { PriceInfoKind::Preparation }, open: price_info_open } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if is_bedding_addon(&item.item_key) { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
                         div { class: "ub-deposit-card",
                             div { span { "REFUNDABLE DAMAGE DEPOSIT" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
                             p { "Send separately by Interac e-Transfer to {DAMAGE_DEPOSIT_ETRANSFER_EMAIL} no later than {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. It is refundable after return and inspection, less documented damage." }
@@ -3562,39 +3559,24 @@ fn RatingStars(rating: i32) -> Element {
 }
 
 #[component]
-fn StationaryPlusPriceLine(
+fn MandatoryPriceLine(
     label: String,
-    detail: String,
+    detail: Option<String>,
     amount: String,
-    expanded: bool,
-    on_toggle: EventHandler<()>,
+    kind: PriceInfoKind,
+    open: Signal<Option<PriceInfoKind>>,
 ) -> Element {
+    let info_id = match kind {
+        PriceInfoKind::Preparation => "ub-preparation-info",
+        PriceInfoKind::StationaryPlus => "ub-stationary-plus-info",
+    };
     rsx! {
-        div { class: if expanded { "ub-price-line ub-protection-line is-open" } else { "ub-price-line ub-protection-line" },
-            button {
-                class: "ub-protection-summary",
-                r#type: "button",
-                aria_expanded: expanded,
-                aria_controls: "ub-stationary-plus-details",
-                onclick: move |_| on_toggle.call(()),
-                span {
-                    "{label}"
-                    small { "{detail} · Coverage details" }
-                }
-                b { class: "ub-line-price", "{amount}" }
-                Icon { name: "chevron-down", size: 17, color: "currentColor" }
+        div { class: "ub-price-line ub-mandatory-price-line",
+            span { class: "price-info-label",
+                span { "{label}" if let Some(detail) = detail.as_ref() { small { "{detail}" } } }
+                PriceInfoPopover { id: info_id.to_string(), kind, open }
             }
-            if expanded {
-                div { id: "ub-stationary-plus-details", class: "ub-protection-details",
-                    h4 { "Coverage details" }
-                    ul {
-                        li { strong { "Delivered & parked: " } "For stationary rentals delivered to a campground or property; the guest does not drive or tow the RV." }
-                        li { strong { "Reduced rate: " } "Costs less than driving protection plans because public-road transit and collision exposure are excluded." }
-                        li { strong { "Site protection: " } "Covers eligible physical damage, comprehensive incidents, and site liability while the RV is parked and occupied or left stationary." }
-                    }
-                    p { "Coverage is subject to the rental agreement and applicable policy terms." }
-                }
-            }
+            b { class: "ub-line-price", "{amount}" }
         }
     }
 }

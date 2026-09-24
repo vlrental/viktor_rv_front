@@ -11,7 +11,7 @@ use super::booking_overlay::{
 use crate::data::{rv_gallery, Listing, PHONE};
 use crate::{
     api,
-    components::{Icon, RentalReviewsSection},
+    components::{Icon, PriceInfoKind, PriceInfoPopover, RentalReviewsSection},
     pricing, Route,
 };
 
@@ -392,6 +392,7 @@ fn DynamicBookingCard(
     let has_pending_payment = has_saved_pending_payment();
     let mut booking_open = use_signal(move || has_pending_payment);
     let mut booking_step = use_signal(move || if has_pending_payment { 5_u8 } else { 1_u8 });
+    let price_info_open = use_signal(|| None::<PriceInfoKind>);
     let mut planner_starts_on = use_signal(|| selected_date(&starts_on));
     let mut planner_ends_on = use_signal(|| selected_date(&ends_on));
     let planner_guests = use_signal(|| 1_i32);
@@ -427,7 +428,7 @@ fn DynamicBookingCard(
         div { class:"rvd-booking", div { class:"rvd-price-row", div { class:"rvd-price", span { class:"rvd-price-v", "CA${rental.base_rate}" } span { class:"rvd-price-u", " / night" } } a { class:"rvd-price-r", href:"#guest-reviews", aria_label:"Read {review_count} guest reviews", Icon{name:"star",size:14,color:"var(--vl-accent)"} b { "{rating}" } span { "({review_count})" } } }
             div { class:"rvd-min-pill", Icon{name:"info",size:14,color:"var(--vl-muted)"} span { "1–2 night stays welcome · 3-night minimum pricing · Delivery only" } }
             button { class:"rvd-summary-dates", r#type:"button", onclick:move |_|{booking_step.set(1);booking_open.set(true)}, span { "DATES" } strong { if nights>=1 { "{starts_on} → {ends_on}" } else { "Choose dates" } } Icon{name:"chevron-right",size:15,color:"var(--vl-forest)"} }
-            div { class:"rvd-price-breakdown", div { class:"rvd-price-breakdown-head", strong { "What makes up your trip price" } span { "Exact delivery, add-ons and taxes are calculated in booking" } } div { span { if nights > 0 && nights < 3 { "Base rental · 3-night minimum (your stay: {nights})" } else { "Base rental" } } b { if nights>=1 { "{pricing::money(base)}" } else { "CA${rental.base_rate} / night" } } } div { span { "RV Preparation Fee" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } } div { span { "Stationary Plus Protection" } b { if nights>=1 { "{pricing::money(pricing::stationary_plus_amount(billable_nights))}" } else { "CA$150 per trip" } } } if nights>=1 { div { class:"rvd-known-price", span { "Known trip costs before delivery, add-ons & tax" } b { "{pricing::money(known)}" } } } }
+            div { class:"rvd-price-breakdown", div { class:"rvd-price-breakdown-head", strong { "What makes up your trip price" } span { "Exact delivery, add-ons and taxes are calculated in booking" } } div { span { if nights > 0 && nights < 3 { "Base rental · 3-night minimum (your stay: {nights})" } else { "Base rental" } } b { if nights>=1 { "{pricing::money(base)}" } else { "CA${rental.base_rate} / night" } } } PriceBreakdownInfoLine { id: "rvd-dynamic-preparation-info".to_string(), label: "RV Preparation Fee".to_string(), amount: pricing::money(pricing::RV_PREPARATION_FEE), kind: PriceInfoKind::Preparation, open: price_info_open } PriceBreakdownInfoLine { id: "rvd-dynamic-protection-info".to_string(), label: "Stationary Plus Protection".to_string(), amount: if nights>=1 { pricing::money(pricing::stationary_plus_amount(billable_nights)) } else { "CA$150 per trip".to_string() }, kind: PriceInfoKind::StationaryPlus, open: price_info_open } if nights>=1 { div { class:"rvd-known-price", span { "Known trip costs before delivery, add-ons & tax" } b { "{pricing::money(known)}" } } } }
             div { class:"rvd-damage-deposit", div { Icon{name:"shield-check",size:17,color:"var(--vl-forest)"} strong { "Refundable CA$1,000 damage deposit" } } p { "Separate from the trip price. Due 48 hours before delivery." } }
             button { class:"rvd-reserve", r#type:"button", onclick:move |_|{booking_step.set(if nights>=1{3}else{1});booking_open.set(true)}, "Open booking" }
         }
@@ -765,6 +766,25 @@ fn GtkCard(icon: &'static str, title: &'static str, desc: &'static str) -> Eleme
 }
 
 #[component]
+fn PriceBreakdownInfoLine(
+    id: String,
+    label: String,
+    amount: String,
+    kind: PriceInfoKind,
+    open: Signal<Option<PriceInfoKind>>,
+) -> Element {
+    rsx! {
+        div { class: "rvd-price-info-line",
+            span { class: "price-info-label",
+                span { "{label}" }
+                PriceInfoPopover { id, kind, open }
+            }
+            b { "{amount}" }
+        }
+    }
+}
+
+#[component]
 fn BookingCard(
     listing: Listing,
     mut starts_on: Signal<String>,
@@ -795,6 +815,7 @@ fn BookingCard(
         .unwrap_or(150);
     let mut booking_open = use_signal(move || reopen_booking);
     let mut booking_initial_step = use_signal(move || if reopen_booking { 5_u8 } else { 1_u8 });
+    let price_info_open = use_signal(|| None::<PriceInfoKind>);
     let planner_starts_on = use_signal(move || resumed_start.or_else(|| selected_date(&starts_on)));
     let planner_ends_on = use_signal(move || resumed_end.or_else(|| selected_date(&ends_on)));
     let planner_guests = use_signal(move || resumed_guests);
@@ -849,8 +870,8 @@ fn BookingCard(
                     span { "Exact delivery and taxes are calculated in booking" }
                 }
                 div { span { if selected_nights > 0 && selected_nights < 3 { "Base rental · 3-night minimum (your stay: {selected_nights})" } else if selected_nights >= 3 { "Base rental · {selected_nights} nights" } else { "Base rental" } } b { if selected_nights >= 1 { "{pricing::money(rental_total)}" } else { "{listing.price} / night" } } }
-                div { span { "RV Preparation Fee · one time" } b { "{pricing::money(pricing::RV_PREPARATION_FEE)}" } }
-                div { span { if selected_nights >= 1 { "Stationary Plus Protection · {pricing::stationary_plus_detail(billable_nights)}" } else { "Stationary Plus Protection" } } b { if selected_nights >= 1 { "{pricing::money(protection_total)}" } else { "CA$150 per trip" } } }
+                PriceBreakdownInfoLine { id: "rvd-preparation-info".to_string(), label: "RV Preparation Fee · one time".to_string(), amount: pricing::money(pricing::RV_PREPARATION_FEE), kind: PriceInfoKind::Preparation, open: price_info_open }
+                PriceBreakdownInfoLine { id: "rvd-protection-info".to_string(), label: if selected_nights >= 1 { format!("Stationary Plus Protection · {}", pricing::stationary_plus_detail(billable_nights)) } else { "Stationary Plus Protection".to_string() }, amount: if selected_nights >= 1 { pricing::money(protection_total) } else { "CA$150 per trip".to_string() }, kind: PriceInfoKind::StationaryPlus, open: price_info_open }
                 div { span { "Delivery & setup" } b { "From CA$150.00" } }
                 div { span { "Optional extras" } b { "Your choice" } }
                 div { span { "GST + PST" } b { "Calculated" } }
