@@ -1,10 +1,10 @@
 use dioxus::prelude::*;
 
-use super::Icon;
-
 const GOOGLE_PROFILE: &str =
     "https://www.google.com/maps/place/VL+Rental.ca/data=!4m2!3m1!1s0x0:0x1cbc237dc1c1577c";
 const WRITE_REVIEW: &str = "https://g.page/r/CXxXwcF9I7wcEBM/review";
+const REVIEW_STAR_PATH: &str =
+    "M12 2.75l2.84 5.75 6.35.92-4.59 4.48 1.08 6.32L12 18.23l-5.68 2.99 1.08-6.32-4.59-4.48 6.35-.92L12 2.75Z";
 
 // Public Google review excerpts, checked against VL Rental.ca on 2026-09-23.
 // This is a dated editorial snapshot, not an automatically refreshed feed.
@@ -33,7 +33,13 @@ pub fn GoogleReviews() -> Element {
                         div { class: "ab-stars", role: "img", aria_label: "5 out of 5 stars",
                             for i in 0..5 {
                                 span { key: "{i}", aria_hidden: "true",
-                                    Icon { name: "star", size: 15, color: "var(--vl-accent)" }
+                                    svg {
+                                        width: "15",
+                                        height: "15",
+                                        view_box: "0 0 24 24",
+                                        fill: "var(--vl-accent)",
+                                        path { d: REVIEW_STAR_PATH }
+                                    }
                                 }
                             }
                         }
@@ -54,5 +60,16 @@ pub fn GoogleReviews() -> Element {
                 a { href: WRITE_REVIEW, target: "_blank", rel: "noopener noreferrer", "Write a Google review" }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_star_is_a_closed_filled_shape() {
+        assert!(REVIEW_STAR_PATH.ends_with('Z'));
+        assert_eq!(REVIEWS.len(), 3);
     }
 }
