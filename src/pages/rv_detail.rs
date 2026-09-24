@@ -20,6 +20,46 @@ const IMG_HOST: Asset = asset!(
     AssetOptions::image().with_jpg()
 );
 
+#[derive(Clone, Copy)]
+struct GoodToKnowCopy {
+    icon: &'static str,
+    title: &'static str,
+    desc: &'static str,
+}
+
+const GOOD_TO_KNOW: [GoodToKnowCopy; 6] = [
+    GoodToKnowCopy {
+        icon: "truck",
+        title: "Delivery only · up to 150 km",
+        desc: "CA$150 through 40 km, then CA$2.50 per additional kilometre, each way — calculated automatically.",
+    },
+    GoodToKnowCopy {
+        icon: "shield-check",
+        title: "Stationary Plus Protection",
+        desc: "Mandatory CA$150 per trip. Coverage is subject to the rental agreement and applicable policy terms.",
+    },
+    GoodToKnowCopy {
+        icon: "triangle-alert",
+        title: "Delivery-only rental",
+        desc: "Customers cannot tow or move the RV. Only VL Rental or its authorized contractor may relocate it.",
+    },
+    GoodToKnowCopy {
+        icon: "clock",
+        title: "Phone support",
+        desc: "Normal phone support is available from 9:00 AM to 8:00 PM. Emergency phone support is available 24/7 on the same number.",
+    },
+    GoodToKnowCopy {
+        icon: "file-text",
+        title: "Refundable CA$1,000 damage deposit",
+        desc: "After return and inspection, any unused balance is returned as soon as practical. A retention decision is made no later than seven days after return.",
+    },
+    GoodToKnowCopy {
+        icon: "utensils",
+        title: "Dishes & coffeemaker included",
+        desc: "Return them washed and the RV clean — a $100 cleaning fee applies otherwise.",
+    },
+];
+
 #[component]
 pub fn RvDetail(slug: String) -> Element {
     let mut confirmed_booking = use_signal(|| None::<api::CreatedBooking>);
@@ -712,37 +752,23 @@ fn GoodToKnow() -> Element {
             h2 { class: "rvd-h", "Good to know" }
             div { class: "rvd-gtk",
                 div { class: "rvd-gtk-col",
-                    GtkCard {
-                        icon: "truck",
-                        title: "Delivery only · up to 150 km",
-                        desc: "CA$150 through 40 km, then CA$2.50 per additional kilometre, each way — calculated automatically.",
-                    }
-                    GtkCard {
-                        icon: "shield-check",
-                        title: "Insurance included",
-                        desc: "Every rental is covered — travel with peace of mind.",
-                    }
-                    GtkCard {
-                        icon: "triangle-alert",
-                        title: "No off-roading",
-                        desc: "Keep to maintained roads — a $200 fee applies if the trailer is taken off-road.",
+                    for (index, item) in GOOD_TO_KNOW[..3].iter().enumerate() {
+                        GtkCard {
+                            key: "gtk-left-{index}",
+                            icon: item.icon,
+                            title: item.title,
+                            desc: item.desc,
+                        }
                     }
                 }
                 div { class: "rvd-gtk-col",
-                    GtkCard {
-                        icon: "clock",
-                        title: "24/7 roadside assistance",
-                        desc: "Help is a call away, wherever you camp.",
-                    }
-                    GtkCard {
-                        icon: "file-text",
-                        title: "$1,000 deposit",
-                        desc: "Refundable security deposit — unused amount returned within a week.",
-                    }
-                    GtkCard {
-                        icon: "utensils",
-                        title: "Dishes & coffeemaker included",
-                        desc: "Return them washed and the RV clean — a $100 cleaning fee applies otherwise.",
+                    for (index, item) in GOOD_TO_KNOW[3..].iter().enumerate() {
+                        GtkCard {
+                            key: "gtk-right-{index}",
+                            icon: item.icon,
+                            title: item.title,
+                            desc: item.desc,
+                        }
                     }
                 }
             }
@@ -1400,6 +1426,55 @@ mod availability_tests {
         }
         assert!(static_rv_listing("not-a-listed-rv").is_none());
         assert_eq!(api_rental_slug("not-a-listed-rv"), "not-a-listed-rv");
+    }
+
+    #[test]
+    fn good_to_know_matches_approved_public_policies() {
+        let copy = GOOD_TO_KNOW
+            .iter()
+            .flat_map(|item| [item.title, item.desc])
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for required in [
+            "Stationary Plus Protection",
+            "Mandatory CA$150 per trip",
+            "Customers cannot tow or move the RV",
+            "9:00 AM to 8:00 PM",
+            "Emergency phone support is available 24/7",
+            "Refundable CA$1,000 damage deposit",
+            "no later than seven days after return",
+            "$100 cleaning fee",
+        ] {
+            assert!(
+                copy.contains(required),
+                "missing approved policy: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn good_to_know_excludes_unsupported_legacy_claims() {
+        let copy = GOOD_TO_KNOW
+            .iter()
+            .flat_map(|item| [item.title, item.desc])
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_ascii_lowercase();
+
+        for unsupported in [
+            "insurance included",
+            "every rental is covered",
+            "off-roading",
+            "$200 fee",
+            "roadside assistance",
+            "within a week",
+        ] {
+            assert!(
+                !copy.contains(unsupported),
+                "unsupported legacy claim remains: {unsupported}"
+            );
+        }
     }
 
     #[test]
