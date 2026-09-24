@@ -4,10 +4,7 @@ use crate::components::Icon;
 use crate::data::PHONE;
 use crate::{BookingLaunchRequest, Route};
 
-const IMG_DELIVERY_HERO: Asset = asset!(
-    "/assets/img/delivery-hero-v2.jpg",
-    AssetOptions::image().with_jpg()
-);
+const IMG_DELIVERY_HERO: &str = "/delivery-hero-realistic-20260924.WEBP";
 
 /// Шаг «как это работает» под hero.
 struct Step {
@@ -49,7 +46,7 @@ pub fn Delivery() -> Element {
                 img {
                     class: "dv-hero-img",
                     src: IMG_DELIVERY_HERO,
-                    alt: "Silver pickup delivering a Jayco fifth-wheel RV in the Okanagan",
+                    alt: "Silver Chevrolet pickup towing a Jayco fifth-wheel RV beside a forested mountain road",
                 }
             }
             div { class: "dv-hero-copy",
