@@ -18,7 +18,7 @@
         {
           "id": "rental-inclusions",
           "question": "What is included with an RV rental?",
-          "answer": "The RV includes basic kitchen equipment, standard dishes, cutlery, pots, pans and cooking utensils. Delivery and setup are provided by VL Rental and priced in your itemized quote. Bedding, a portable BBQ and propane are optional paid extras.",
+          "answer": "The RV includes basic kitchen equipment, standard dishes, cutlery, pots, pans and cooking utensils. Delivery and setup are provided by VL Rental and priced in your itemized quote. Bedding sets cost CA$40 per selected bed, with one to four sets available. A portable BBQ and propane are also optional paid extras.",
           "featured_home": 3
         },
         {
@@ -50,7 +50,7 @@
         {
           "id": "fully-equipped",
           "question": "Are the RVs fully equipped?",
-          "answer": "The RVs include basic kitchen equipment, but not every extra is included. Bedding and a portable BBQ are paid extras, propane is an optional paid extra, and shower towels are not provided."
+          "answer": "The RVs include basic kitchen equipment, but not every extra is included. Bedding sets cost CA$40 per selected bed, with one to four sets available. A portable BBQ and propane are optional paid extras, and shower towels are not provided."
         },
         {
           "id": "pets",
@@ -263,7 +263,7 @@
         {
           "id": "bedding-towels",
           "question": "Are bedding and towels included?",
-          "answer": "Bedding is available as a paid extra. Shower towels are not provided and are not available as an extra, so bring your own."
+          "answer": "Bedding sets are available for CA$40 per selected bed, with one to four sets available per booking. Shower towels are not provided and are not available as an extra, so bring your own."
         },
         {
           "id": "water-waste",

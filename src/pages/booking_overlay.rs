@@ -905,6 +905,7 @@ fn optimistic_price(
         for addon in details
             .addons
             .iter()
+            .filter(|addon| preferred_catalog_addon(&details.addons, &addon.addon_key))
             .filter(|addon| addon_quantity(selected_addons, &addon.addon_key) > 0)
         {
             let selected_quantity = addon_quantity(selected_addons, &addon.addon_key);
@@ -1123,21 +1124,35 @@ fn addon_description(key: &str) -> &'static str {
 }
 
 const BEDDING_ADDON_KEY: &str = "linens";
+const BEDDING_ADDON_LIVE_KEY: &str = "bedding-and-linens";
 const MAX_BEDDING_QUANTITY: usize = 4;
 
 fn is_bedding_addon(key: &str) -> bool {
-    key == BEDDING_ADDON_KEY
+    matches!(key, BEDDING_ADDON_KEY | BEDDING_ADDON_LIVE_KEY)
+}
+
+fn preferred_catalog_addon(addons: &[api::RentalAddon], key: &str) -> bool {
+    !is_bedding_addon(key)
+        || key == BEDDING_ADDON_LIVE_KEY
+        || !addons
+            .iter()
+            .any(|addon| addon.addon_key == BEDDING_ADDON_LIVE_KEY)
 }
 
 fn addon_quantity(addon_keys: &[String], key: &str) -> usize {
     addon_keys
         .iter()
-        .filter(|selected| selected.as_str() == key)
+        .filter(|selected| {
+            selected.as_str() == key
+                || (is_bedding_addon(key) && is_bedding_addon(selected.as_str()))
+        })
         .count()
 }
 
 fn remove_one_addon(addon_keys: &mut Vec<String>, key: &str) {
-    if let Some(index) = addon_keys.iter().rposition(|selected| selected == key) {
+    if let Some(index) = addon_keys.iter().rposition(|selected| {
+        selected == key || (is_bedding_addon(key) && is_bedding_addon(selected))
+    }) {
         addon_keys.remove(index);
     }
 }
@@ -1145,6 +1160,13 @@ fn remove_one_addon(addon_keys: &mut Vec<String>, key: &str) {
 fn selected_addon_count(addon_keys: &[String]) -> usize {
     addon_keys
         .iter()
+        .map(|key| {
+            if is_bedding_addon(key) {
+                BEDDING_ADDON_KEY
+            } else {
+                key.as_str()
+            }
+        })
         .collect::<std::collections::HashSet<_>>()
         .len()
 }
@@ -2662,7 +2684,7 @@ pub(crate) fn UnifiedBookingOverlay(
                             div { class: "ub-step-content",
                                 if let Some(details) = details.as_ref() {
                                     div { class: "ub-addon-grid",
-                                        for addon in details.addons.iter() {
+                                        for addon in details.addons.iter().filter(|addon| preferred_catalog_addon(&details.addons, &addon.addon_key)) {
                                             {
                                                 let key = addon.addon_key.clone();
                                                 let quantity = addon_quantity(&addon_keys.read(), &key);
@@ -2673,15 +2695,19 @@ pub(crate) fn UnifiedBookingOverlay(
                                                 } else {
                                                     format!("CA${}", addon.price)
                                                 };
+                                                let bedding_subtitle = format!(
+                                                    "CA${} per bed · Choose 1–4",
+                                                    addon.price
+                                                );
                                                 if is_bedding {
                                                     rsx! {
                                                     div { key: "addon-{key}", class: if selected { "ub-addon ub-addon-bedding active" } else { "ub-addon ub-addon-bedding" },
                                                         span { class: "ub-addon-icon", AddonApiIcon { name: addon.icon_name.clone() } }
-                                                        span { class: "ub-addon-copy", strong { "{addon.label}" } small { if addon.description.trim().is_empty() { "Fresh linens prepared for each selected bed before delivery." } else { "{addon.description}" } } if addon.is_recommended { em { "Recommended" } } }
+                                                        span { class: "ub-addon-copy", strong { "Bedding and Linens" } small { "{bedding_subtitle}" } if addon.is_recommended { em { "Recommended" } } }
                                                         span { class: "ub-addon-price", b { "{displayed_price}" } small { if quantity > 1 { "{quantity} × CA${addon.price}" } else { "per bed" } } }
                                                         span { class: "ub-addon-quantity", role: "group", aria_label: "Number of beds for bedding and linens",
                                                             button { r#type: "button", disabled: quantity == 0, aria_label: "Remove one bedding set", onclick: { let key = key.clone(); move |_| { let mut next = addon_keys.read().clone(); remove_one_addon(&mut next, &key); quote_busy.set(true); quote_error.set(String::new()); addon_notice.set(String::new()); addon_keys.set(next); } }, "−" }
-                                                            output { aria_live: "polite", aria_label: "{quantity} bedding sets selected", "{quantity}" }
+                                                            output { aria_live: "polite", aria_label: "{quantity} bedding sets selected", "{quantity} " if quantity == 1 { "bed" } else { "beds" } }
                                                             button { r#type: "button", disabled: quantity >= MAX_BEDDING_QUANTITY, aria_label: "Add one bedding set", onclick: { let key = key.clone(); move |_| { let mut next = addon_keys.read().clone(); if addon_quantity(&next, &key) < MAX_BEDDING_QUANTITY { next.push(key.clone()); quote_busy.set(true); quote_error.set(String::new()); addon_notice.set(String::new()); addon_keys.set(next); } } }, "+" }
                                                         }
                                                     }
@@ -2854,7 +2880,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                             },
                                         }
                                     } else {
-                                        div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == BEDDING_ADDON_KEY { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } }
+                                        div { key: "locked-{item.item_key}-{item.amount}", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if is_bedding_addon(&item.item_key) { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } }
                                     }
                                 }
                             }
@@ -2864,7 +2890,7 @@ pub(crate) fn UnifiedBookingOverlay(
                             small { "The Stripe Checkout amount is locked to this booking. Closing and reopening the window cannot create a second reservation." }
                         } } else if *quote_busy.read() {
                             if let Some(value) = optimistic_price.as_ref() { div { class: "ub-price-lines", for item in value.lines.iter() { if item.key.starts_with("rental-") { button { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } else if item.key == "stationary-plus" { StationaryPlusPriceLine { key: "optimistic-{item.key}-{item.amount}", label: item.label.clone(), detail: item.detail.clone().unwrap_or_default(), amount: pricing::money(item.amount), expanded: *stationary_plus_details_open.read(), on_toggle: move |_| { let next = !*stationary_plus_details_open.read(); stationary_plus_details_open.set(next); } } } else { div { key: "optimistic-{item.key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if let Some(detail) = item.detail.as_ref() { small { "{detail}" } } } b { class: "ub-line-price", "{pricing::money(item.amount)}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: value.total } } } } }
-                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else if item.item_key == "stationary_plus" { StationaryPlusPriceLine { key: "line-{item.item_key}-{item.amount}", label: item.label.clone(), detail: pricing::stationary_plus_detail(i64::from(value.quote.units)), amount: format!("CA${}", item.amount), expanded: *stationary_plus_details_open.read(), on_toggle: move |_| { let next = !*stationary_plus_details_open.read(); stationary_plus_details_open.set(next); } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if item.item_key == BEDDING_ADDON_KEY { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
+                        } else if let Some(value) = quote.read().as_ref() { div { class: "ub-price-lines", for item in value.items.iter().filter(|item| item.item_type != "deposit") { if item.item_type == "rental" { button { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line is-editable", r#type: "button", aria_label: "Edit dates for {item.label}", onclick: move |_| { open_step.set(1); spawn(async move { scroll_to_booking_step(1).await; }); }, span { "{item.label}" } b { class: "ub-line-price", "CA${item.amount}" } } } else if item.item_key == "stationary_plus" { StationaryPlusPriceLine { key: "line-{item.item_key}-{item.amount}", label: item.label.clone(), detail: pricing::stationary_plus_detail(i64::from(value.quote.units)), amount: format!("CA${}", item.amount), expanded: *stationary_plus_details_open.read(), on_toggle: move |_| { let next = !*stationary_plus_details_open.read(); stationary_plus_details_open.set(next); } } } else { div { key: "line-{item.item_key}-{item.amount}", class: "ub-price-line", span { "{item.label}" if item.item_type == "delivery" { if let Some(detail) = delivery_distance.as_ref() { small { "{detail}" } } } else if is_bedding_addon(&item.item_key) { small { "{item.quantity} beds × CA${item.unit_price}" } } } b { class: "ub-line-price", "CA${item.amount}" } } } } div { class: "total", span { "Trip price CAD" } b { AnimatedMoney { id: "ub-trip-price-total", amount: pricing::quote_trip_price(value) } } } } }
                         div { class: "ub-deposit-card",
                             div { span { "REFUNDABLE DAMAGE DEPOSIT" } b { "{pricing::money(pricing::DAMAGE_DEPOSIT)}" } }
                             p { "Send separately by Interac e-Transfer to {DAMAGE_DEPOSIT_ETRANSFER_EMAIL} no later than {pricing::DAMAGE_DEPOSIT_DUE_HOURS} hours before delivery. It is refundable after return and inspection, less documented damage." }
@@ -3092,7 +3118,7 @@ pub(crate) fn UnifiedBookingOverlay(
                                                         small { if let Some(detail) = delivery_distance.as_ref() { "{detail} · delivery and campsite setup" } else { "Delivery and campsite setup included" } }
                                                     } else if item.item_key == "rv_preparation" {
                                                         small { "One-time RV preparation service" }
-                                                    } else if item.item_key == BEDDING_ADDON_KEY {
+                                                    } else if is_bedding_addon(&item.item_key) {
                                                         small { "{item.quantity} beds × {created.booking.currency} ${item.unit_price}" }
                                                     } else if item.item_type == "addon" {
                                                         small { "{item.quantity} × {created.booking.currency} ${item.unit_price}" }
@@ -3818,6 +3844,18 @@ mod saved_address_tests {
                     is_active: true,
                     sort_order: 1,
                 },
+                api::RentalAddon {
+                    addon_id: "bedding-live-id".into(),
+                    addon_key: BEDDING_ADDON_LIVE_KEY.into(),
+                    label: "Bedding and linens".into(),
+                    description: "Fresh linens".into(),
+                    icon_name: "sparkles".into(),
+                    price: "40.00".into(),
+                    charge_type: "per_booking".into(),
+                    is_recommended: false,
+                    is_active: true,
+                    sort_order: 2,
+                },
             ],
         };
         let delivery = api::DeliveryEstimate {
@@ -3962,10 +4000,18 @@ mod saved_address_tests {
         let bedding = with_four_beds
             .lines
             .iter()
-            .find(|line| line.key == "addon-linens")
+            .find(|line| line.key == "addon-bedding-and-linens")
             .unwrap();
         assert_eq!(bedding.amount, 160.0);
         assert_eq!(bedding.detail.as_deref(), Some("4 beds × CA$40.00"));
+        assert_eq!(
+            with_four_beds
+                .lines
+                .iter()
+                .filter(|line| line.label == "Bedding and linens")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -3980,6 +4026,24 @@ mod saved_address_tests {
     fn choosing_an_rv_first_returns_to_its_calendar() {
         assert_eq!(step_after_rental_selection(false), 1);
         assert_eq!(step_after_rental_selection(true), 3);
+    }
+
+    #[test]
+    fn bedding_aliases_share_one_quantity_and_one_extra_count() {
+        let mut keys = vec![
+            BEDDING_ADDON_KEY.to_string(),
+            BEDDING_ADDON_LIVE_KEY.to_string(),
+            BEDDING_ADDON_LIVE_KEY.to_string(),
+            "portable_bbq".to_string(),
+        ];
+
+        assert!(is_bedding_addon(BEDDING_ADDON_KEY));
+        assert!(is_bedding_addon(BEDDING_ADDON_LIVE_KEY));
+        assert_eq!(addon_quantity(&keys, BEDDING_ADDON_LIVE_KEY), 3);
+        assert_eq!(selected_addon_count(&keys), 2);
+
+        remove_one_addon(&mut keys, BEDDING_ADDON_KEY);
+        assert_eq!(addon_quantity(&keys, BEDDING_ADDON_LIVE_KEY), 2);
     }
 
     #[test]

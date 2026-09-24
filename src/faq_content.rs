@@ -87,7 +87,7 @@ mod tests {
         for approved in [
             "non-refundable CA$100 pet fee",
             "optional CA$50 extra",
-            "Bedding is available as a paid extra",
+            "Bedding sets are available for CA$40 per selected bed",
             "Wastewater emptying costs CA$45",
             "30-amp or 50-amp hookup",
             "dry camping under normal use",

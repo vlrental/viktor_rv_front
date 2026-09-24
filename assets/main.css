@@ -881,13 +881,16 @@ body:has(.cat-planner-backdrop) {
 .ub-addon-price small { margin-top: 3px; color: var(--vl-muted); font-size: 8px; }
 .ub-addon-toggle { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--vl-line); border-radius: 8px; color: var(--vl-forest); font-size: 14px; font-weight: 800; }
 .ub-addon.active .ub-addon-toggle { border-color: var(--vl-forest); background: var(--vl-forest); color: var(--vl-white); }
-.ub-addon.ub-addon-bedding { grid-template-columns: 40px minmax(0,1fr) auto auto; }
-.ub-addon-quantity { display: grid; grid-template-columns: 26px 22px 26px; align-items: center; gap: 3px; }
-.ub-addon-quantity button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 1px solid var(--vl-line); border-radius: 8px; background: var(--vl-white); color: var(--vl-forest); font-size: 16px; font-weight: 800; line-height: 1; }
+.ub-addon.ub-addon-bedding { grid-template-columns: 40px minmax(0,1fr) auto; grid-template-areas: "bedding-icon bedding-copy bedding-copy" "bedding-quantity bedding-quantity bedding-price"; row-gap: 12px; }
+.ub-addon-bedding .ub-addon-icon { grid-area: bedding-icon; }
+.ub-addon-bedding .ub-addon-copy { grid-area: bedding-copy; }
+.ub-addon-bedding .ub-addon-price { grid-area: bedding-price; align-self: center; }
+.ub-addon-quantity { grid-area: bedding-quantity; display: grid; grid-template-columns: 40px minmax(58px,auto) 40px; align-items: center; justify-content: start; gap: 6px; }
+.ub-addon-quantity button { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--vl-line); border-radius: 10px; background: var(--vl-white); color: var(--vl-forest); font-size: 19px; font-weight: 800; line-height: 1; }
 .ub-addon-quantity button:hover:not(:disabled) { border-color: var(--vl-forest); background: var(--vl-mint); }
 .ub-addon-quantity button:focus-visible { outline: 2px solid var(--vl-forest); outline-offset: 2px; }
 .ub-addon-quantity button:disabled { opacity: .38; cursor: not-allowed; }
-.ub-addon-quantity output { color: var(--vl-ink); font-size: 12px; font-weight: 800; text-align: center; }
+.ub-addon-quantity output { color: var(--vl-ink); font-size: 12px; font-weight: 800; text-align: center; white-space: nowrap; }
 .ub-binary-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 10px; padding: 12px; border: 1px solid var(--vl-hair); border-radius: 12px; background: var(--vl-white); }
 .ub-binary-copy { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ub-binary-copy > div { min-width: 0; }
