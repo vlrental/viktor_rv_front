@@ -112,7 +112,7 @@ fn SaleDetails(
     let mut index = use_signal(|| 0_usize);
     let count = item.photos.len();
     rsx! {div {class:"sale-dialog-backdrop",onclick:move|_|on_close.call(()),
-        section {class:"sale-dialog",role:"dialog",aria_modal:"true",aria_label:"{item.title}",tabindex:"-1",autofocus:true,onclick:move|e|e.stop_propagation(),onkeydown:move|e|{if e.key()==Key::Escape {e.stop_propagation();on_close.call(());}else if count>1&&e.key()==Key::ArrowRight {index.set((index()+1)%count);}else if count>1&&e.key()==Key::ArrowLeft {index.set((index()+count-1)%count);}},
+        section {class:"sale-dialog",role:"dialog",aria_modal:"true",aria_label:"{item.title}",tabindex:"-1",autofocus:true,onmounted:move|event|async move {let _=event.set_focus(true).await;},onclick:move|e|e.stop_propagation(),onkeydown:move|e|{if e.key()==Key::Escape {e.stop_propagation();on_close.call(());}else if count>1&&e.key()==Key::ArrowRight {index.set((index()+1)%count);}else if count>1&&e.key()==Key::ArrowLeft {index.set((index()+count-1)%count);}},
             button {class:"sale-dialog-close",r#type:"button",aria_label:"Close sale listing",onclick:move|_|on_close.call(()),"×"}
             if let Some(photo)=item.photos.get(index()){img {class:"sale-detail-photo",src:"{photo.source_url}",alt:"{photo.alt_text}"}}
             if count>1{div {class:"sale-gallery-controls",button {r#type:"button",aria_label:"Previous photo",onclick:move|_|index.set((index()+count-1)%count),"←"}span {"Photo {index()+1} of {count}"}button {r#type:"button",aria_label:"Next photo",onclick:move|_|index.set((index()+1)%count),"→"}}}

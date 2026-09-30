@@ -124,7 +124,7 @@ fn SaleEditor(
     let save_id = id.clone();
     let upload_id = id.clone();
     rsx! {
-        section {class:"admin-panel admin-rv-editor-panel",role:"region",aria_label:"Sale listing editor",tabindex:"-1",autofocus:true,onkeydown:move|e|if e.key()==Key::Escape {e.stop_propagation();on_close.call(());},
+        section {class:"admin-panel admin-rv-editor-panel",role:"region",aria_label:"Sale listing editor",tabindex:"-1",autofocus:true,onmounted:move|event|async move {let _=event.set_focus(true).await;},onkeydown:move|e|if e.key()==Key::Escape {e.stop_propagation();on_close.call(());},
             div {class:"admin-panel-head",div {h2 {if saved {"Edit sale listing"}else{"Add sale listing"}} p {"Vehicle details, sale price and photos."}} button {r#type:"button",aria_label:"Close sale listing editor",disabled:busy,onclick:move|_|on_close.call(()),"×"} }
             if !message().is_empty(){p {class:"admin-error",role:"status","{message}"}}
             form {onsubmit:move|e|{
