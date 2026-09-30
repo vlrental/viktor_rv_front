@@ -1929,6 +1929,16 @@ body:has(.admin-overlay) { overflow: hidden; }
 .admin-rv-card-copy dl div { display: grid; gap: 3px; }
 .admin-rv-card-copy dt { color: var(--vl-muted); font: 650 8px var(--font-mono); text-transform: uppercase; }
 .admin-rv-card-copy dd { color: var(--vl-forest); font-size: 10px; font-weight: 750; }
+.admin-sale-card { grid-template-rows: 1fr auto; }
+.admin-sale-card-open { display: grid; grid-template-rows: 154px 1fr; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.admin-sale-card-open > img { width: 100%; height: 154px; object-fit: cover; }
+.admin-sale-card-open:focus-visible { outline: 3px solid var(--vl-accent); outline-offset: -3px; }
+.admin-sale-card-actions { padding: 0 15px 15px; }
+.admin-sale-deactivate { min-height: 40px; padding: 9px 14px; border: 1px solid #D8AAA0; border-radius: 8px; background: #FFF8F6; color: #8D261C; font: 650 12px var(--font-body); }
+.admin-sale-deactivate:disabled { opacity: .45; cursor: not-allowed; }
+.admin-sale-deactivate:focus-visible { outline: 3px solid var(--vl-accent); outline-offset: 2px; }
+.admin-sale-publication { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 16px 20px; padding: 12px; border: 1px solid var(--vl-hair); border-radius: 9px; background: var(--vl-surface); color: var(--vl-forest); font-size: 12px; }
+.admin-sale-publication small { flex-basis: 100%; }
 .admin-rv-editor-panel { overflow: hidden; }
 .admin-rv-editor-panel > .admin-drawer-head > button { width: auto; padding: 0 13px; gap: 7px; }
 .admin-rv-editor-panel > .admin-drawer-head > button span { font-size: 10px; font-weight: 750; }

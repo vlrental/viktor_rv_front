@@ -171,6 +171,12 @@ pub async fn save(id: &str, payload: &Payload) -> Result<Listing, ApiError> {
     .await
 }
 
+pub async fn deactivate(listing: &Listing) -> Result<Listing, ApiError> {
+    let mut payload = Payload::from(listing);
+    payload.status = "archived".into();
+    save(&listing.sale_id, &payload).await
+}
+
 pub async fn edit_photo(id: &str, photo: &Photo, make_cover: bool) -> Result<Listing, ApiError> {
     mutate(
         &format!("/{id}/photos/{}", photo.photo_id),
