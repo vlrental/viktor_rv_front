@@ -282,7 +282,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
         ),
         Route::RvSales {} => SeoMetadata::indexed(
             "RVs for Sale in Kelowna | VL Rental",
-            "View RV sales information from VL Rental in Kelowna, British Columbia.",
+            "Browse RVs for sale in Kelowna, British Columbia. View asking prices, vehicle details and photos, and contact VL Rental to arrange a viewing.",
             "/rv-sales",
         ),
         Route::Terms {} => SeoMetadata::indexed(

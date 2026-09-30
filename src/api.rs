@@ -1,4 +1,5 @@
 use dioxus::prelude::document;
+pub mod sales;
 use gloo_net::http::{Request, Response};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, future::Future};
@@ -1012,6 +1013,8 @@ pub struct TripDraft {
     pub attending_event: bool,
     #[serde(default)]
     pub towing_after_delivery: bool,
+    #[serde(default)]
+    pub coupon_code: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -1284,6 +1287,7 @@ struct CreateQuotePayload<'a> {
     guests: i32,
     addon_keys: &'a [String],
     delivery_address: Option<&'a str>,
+    coupon_code: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -2386,6 +2390,7 @@ pub async fn create_quote(draft: &TripDraft) -> Result<QuoteResponse, ApiError> 
             guests: draft.guests,
             addon_keys: &draft.addon_keys,
             delivery_address: api_delivery_address.as_deref(),
+            coupon_code: draft.coupon_code.as_deref(),
         })
         .map_err(|error| ApiError::client(error.to_string()))?
         .send()
@@ -4290,6 +4295,7 @@ mod delivery_draft_tests {
             delivery_address: address.map(str::to_string),
             attending_event: false,
             towing_after_delivery: false,
+            coupon_code: None,
         }
     }
 
@@ -4823,6 +4829,7 @@ mod delivery_draft_tests {
                 delivery_address: Some("Bear Creek Provincial Park".into()),
                 attending_event: false,
                 towing_after_delivery: false,
+                coupon_code: None,
             },
             location: "Kelowna, BC".into(),
             radius_km: 150,
@@ -4848,4 +4855,87 @@ mod delivery_draft_tests {
         assert_eq!(restored, continuation);
         assert!(!serialized.contains("password"));
     }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct Coupon {
+    pub coupon_id: String,
+    pub code: String,
+    pub percent_off: String,
+    pub is_active: bool,
+}
+
+#[derive(Deserialize)]
+struct CouponsResponse {
+    coupons: Vec<Coupon>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CouponPayload {
+    pub code: String,
+    pub percent_off: String,
+    pub is_active: bool,
+}
+
+pub async fn admin_coupons() -> Result<Vec<Coupon>, ApiError> {
+    let response = admin_authorized_response(|token| async move {
+        Request::get(&format!("{API_BASE}/api/v1/admin/coupons"))
+            .header("Authorization", &format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|error| ApiError::client(error.to_string()))
+    })
+    .await?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json::<CouponsResponse>()
+        .await
+        .map(|body| body.coupons)
+        .map_err(|error| ApiError::client(error.to_string()))
+}
+
+pub async fn save_admin_coupon(
+    id: Option<&str>,
+    payload: CouponPayload,
+) -> Result<Coupon, ApiError> {
+    let url = match id {
+        Some(id) => format!(
+            "{API_BASE}/api/v1/admin/coupons/{}",
+            urlencoding::encode(id)
+        ),
+        None => format!("{API_BASE}/api/v1/admin/coupons"),
+    };
+    let updating = id.is_some();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = admin_authorized_response(move |token| {
+        let url = url.clone();
+        let payload = payload.clone();
+        let request_id = request_id.clone();
+        async move {
+            let request = if updating {
+                Request::patch(&url)
+            } else {
+                Request::post(&url)
+            };
+            request
+                .header("Content-Type", "application/json")
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("x-request-id", &request_id)
+                .json(&payload)
+                .map_err(|error| ApiError::client(error.to_string()))?
+                .send()
+                .await
+                .map_err(|error| ApiError::client(error.to_string()))
+        }
+    })
+    .await?;
+    if !response.ok() {
+        return Err(response_error(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|error| ApiError::client(error.to_string()))
 }

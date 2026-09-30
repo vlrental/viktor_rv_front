@@ -1,11 +1,13 @@
 mod about;
 mod admin;
+mod admin_sales;
 mod auth;
 mod booking_overlay;
 mod catalog;
 mod checkout;
 mod confirmed;
 mod contact;
+mod coupons;
 mod delivery;
 mod faq;
 mod home;

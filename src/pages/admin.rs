@@ -498,6 +498,8 @@ pub fn Admin() -> Element {
     let mut rv_editor_aux_dirty = use_signal(|| false);
     let mut rv_editor_busy = use_signal(|| false);
     let mut calendar_editor_dirty = use_signal(|| false);
+    let mut sales_editor_dirty = use_signal(|| false);
+    let sales_editor_busy = use_signal(|| false);
     let calendar_editor_busy = use_signal(|| false);
     let mut selected_rental = use_signal(|| None::<api::AdminRentalDetail>);
 
@@ -762,6 +764,26 @@ pub fn Admin() -> Element {
         if next == active_tab() {
             return;
         }
+        if active_tab() == "rv-sales" {
+            if sales_editor_busy() {
+                notice.set(
+                    "Wait for the sale listing operation to finish before changing sections."
+                        .into(),
+                );
+                return;
+            }
+            if sales_editor_dirty()
+                && !web_sys::window()
+                    .and_then(|w| {
+                        w.confirm_with_message("Discard unsaved sale listing changes?")
+                            .ok()
+                    })
+                    .unwrap_or(false)
+            {
+                return;
+            }
+            sales_editor_dirty.set(false);
+        }
         if active_tab() == "rvs" && rv_editor_open() {
             if rv_editor_busy() {
                 notice.set("Wait for the RV operation to finish before changing sections.".into());
@@ -872,19 +894,23 @@ pub fn Admin() -> Element {
                             ("overview", "Overview", "layout-dashboard"),
                             ("bookings", "Bookings", "notebook-tabs"),
                             ("rvs", "RVs", "caravan"),
+                            ("rv-sales", "RV Sales", "tag"),
                             ("payments", "Payments", "credit-card"),
+                            ("coupons", "Coupons", "ticket"),
                             ("calendar", "Calendar", "calendar-days"),
                             ("reviews", "Reviews", "message-square-heart"),
                             ("audit", "Audit", "scroll-text"),
                         ] {
-                            button { key: "{tab}", class: match (active_tab() == tab, matches!(tab, "payments" | "calendar" | "reviews" | "audit")) { (true, true) => "active admin-tab-secondary", (false, true) => "admin-tab-secondary", (true, false) => "active", (false, false) => "" }, r#type: "button", role: "tab", aria_selected: active_tab() == tab, onclick: move |_| change_admin_tab(tab.into()),
+                            button { key: "{tab}", class: match (active_tab() == tab, matches!(tab, "payments" | "calendar" | "reviews" | "audit" | "coupons" | "rv-sales")) { (true, true) => "active admin-tab-secondary", (false, true) => "admin-tab-secondary", (true, false) => "active", (false, false) => "" }, r#type: "button", role: "tab", aria_selected: active_tab() == tab, onclick: move |_| change_admin_tab(tab.into()),
                                 Icon { name: icon, size: 16, color: "currentColor" }
                                 "{label}"
                             }
                         }
-                        select { class: "admin-mobile-more", aria_label: "More admin sections", value: if matches!(active_tab().as_str(), "payments" | "calendar" | "reviews" | "audit") { active_tab() } else { "more".into() }, onchange: move |event| { let value = event.value(); if matches!(value.as_str(), "payments" | "calendar" | "reviews" | "audit") { change_admin_tab(value); } },
+                        select { class: "admin-mobile-more", aria_label: "More admin sections", value: if matches!(active_tab().as_str(), "payments" | "calendar" | "reviews" | "audit" | "coupons" | "rv-sales") { active_tab() } else { "more".into() }, onchange: move |event| { let value = event.value(); if matches!(value.as_str(), "payments" | "calendar" | "reviews" | "audit" | "coupons" | "rv-sales") { change_admin_tab(value); } },
                             option { value: "more", disabled: true, "More" }
                             option { value: "payments", "Payments" }
+                            option { value: "rv-sales", "RV Sales" }
+                            option { value: "coupons", "Coupons" }
                             option { value: "calendar", "Calendar" }
                             option { value: "reviews", "Reviews" }
                             option { value: "audit", "Audit log" }
@@ -919,6 +945,8 @@ pub fn Admin() -> Element {
 
                     main { class: "admin-tab-content",
                         match active_tab().as_str() {
+                            "coupons" => rsx! { super::coupons::CouponsTab {} },
+                            "rv-sales" => rsx! { super::admin_sales::SalesTab { editor_dirty: sales_editor_dirty, editor_busy: sales_editor_busy } },
                             "overview" => rsx! { OverviewTab { dashboard: dashboard_value, bookings: bookings.read().clone(), loading: loading(), on_open_booking: open_booking } },
                             "bookings" => rsx! { BookingsTab { bookings: bookings.read().clone(), rentals: rentals.read().clone(), loading: loading(), on_open_booking: open_booking } },
                             "rvs" => if rv_editor_open() {

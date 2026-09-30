@@ -38,7 +38,8 @@
 
 /* Grid of sale cards */
 .sale-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
   padding: 48px 72px;
 }
@@ -53,11 +54,10 @@
   overflow: hidden;
 }
 .sale-img {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: block;
+  width: 100%;
+  object-fit: cover;
   height: 210px;
-  padding: 14px;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -92,13 +92,33 @@
   font-size: 16px;
   font-weight: 600;
   line-height: 20px;
-  height: 44px;
+  margin: 0;
   color: var(--vl-ink);
 }
 .sale-meta {
   font-size: 14px;
   color: var(--vl-muted);
+  margin: 0;
 }
+.sale-photo-open { padding: 0; width: 100%; border: 0; background: var(--vl-surface); cursor: pointer; }
+.sale-summary { font-size: 14px; line-height: 1.6; margin: 0; color: var(--vl-muted); }
+.sale-body { flex: 1; }
+.sale-body > .btn-forest { margin-top: auto; align-self: flex-start; }
+.sale-empty { grid-column: 1 / -1; text-align: center; padding: 48px 20px; color: var(--vl-muted); }
+.sale-empty h2 { font-family: var(--font-heading); color: var(--vl-ink); font-weight: 400; }
+.sale-inquiry-fields label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; color: var(--vl-white); font-size: 14px; }
+.sale-inquiry-fields input { width: 100%; box-sizing: border-box; }
+.sale-dialog-backdrop { position: fixed; inset: 0; z-index: 160; background: #13251be0; display: grid; place-items: center; padding: 24px; }
+.sale-dialog { position: relative; width: min(760px, 100%); max-height: 90dvh; overflow-y: auto; background: var(--vl-white); border-radius: 16px; }
+.sale-dialog-close { position: absolute; right: 12px; top: 12px; z-index: 1; width: 40px; height: 40px; border-radius: 50%; background: var(--vl-white); color: var(--vl-ink); font-size: 24px; cursor: pointer; }
+.sale-detail-photo { width: 100%; height: 360px; object-fit: contain; background: var(--vl-surface); display: block; }
+.sale-gallery-controls { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; color: var(--vl-muted); }
+.sale-gallery-controls button { padding: 8px 16px; background: var(--vl-surface); border-radius: 8px; }
+.sale-detail-copy { padding: 24px; }
+.sale-detail-copy h2 { font-family: var(--font-heading); margin-top: 0; font-weight: 400; font-size: 30px; }
+.sale-description { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.sale-card-title, .sale-summary, .sale-meta { overflow-wrap: anywhere; }
+.sale-dialog button:focus-visible, .sale-card button:focus-visible { outline: 3px solid var(--vl-accent); outline-offset: 3px; }
 .sale-price-row {
   display: flex;
   align-items: flex-end;
@@ -177,7 +197,7 @@
     width: 100%;
   }
   .sale-grid {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 18px;
     padding: 24px 20px;
   }
@@ -191,6 +211,7 @@
   }
   .sale-cta-title {
     font-size: 22px;
+    margin: 0;
   }
   .sale-cta-sub {
     font-size: 14px;
@@ -202,4 +223,7 @@
     gap: 8px;
     font-size: 15px;
   }
+  .sale-inquiry-fields { flex-direction: column; width: 100%; }
+  .sale-dialog-backdrop { padding: 12px; }
+  .sale-detail-photo { height: 240px; }
 }

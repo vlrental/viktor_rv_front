@@ -57,6 +57,7 @@ mod tests {
             delivery_address: Some("Kelowna, BC".into()),
             attending_event: false,
             towing_after_delivery: false,
+            coupon_code: None,
         }
     }
 
