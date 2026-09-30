@@ -235,9 +235,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv-sales",
         "RVs for Sale in Kelowna | VL Rental",
-        "View RV sales information from VL Rental in Kelowna, British Columbia.",
+        "Browse RVs for sale in Kelowna, British Columbia. View asking prices, vehicle details and photos, and contact VL Rental to arrange a viewing.",
         "RVs for Sale in Kelowna",
-        "See current RV sales information from VL Rental in Kelowna and contact us with questions.",
+        "Explore RVs for sale in Kelowna, British Columbia. Ask about a listing, arrange a viewing, or tell VL Rental what you are looking for.",
         kind="CollectionPage",
     ),
     SeoRoute(
