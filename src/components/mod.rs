@@ -1,6 +1,6 @@
 mod cookie_consent;
 mod footer;
-mod google_reviews;
+pub(crate) mod google_reviews;
 mod header;
 mod icon;
 mod price_info;

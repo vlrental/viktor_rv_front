@@ -146,6 +146,14 @@ fn booking_overlay_close_blocked(
     closing || booking_busy || auth_busy || all_in_busy || edit_booking_busy
 }
 
+fn quote_failure_message(error: &api::ApiError) -> String {
+    if error.is_conflict() && !error.message.to_ascii_lowercase().contains("coupon") {
+        "Server availability changed for this RV. Your selected-items estimate remains visible; choose another RV before confirmation.".into()
+    } else {
+        error.message.clone()
+    }
+}
+
 fn booking_creation_recovery_message(error: &api::ApiError) -> Option<&'static str> {
     if error.code == "service_unavailable" {
         Some(
@@ -2390,13 +2398,9 @@ pub(crate) fn UnifiedBookingOverlay(
         spawn(async move {
             match api::create_quote(&draft).await {
                 Ok(value) if *quote_version.peek() == version => quote.set(Some(value)),
-                Err(error) if *quote_version.peek() == version && error.is_conflict() => {
-                    quote.set(None);
-                    quote_error.set("Server availability changed for this RV. Your selected-items estimate remains visible; choose another RV before confirmation.".into());
-                }
                 Err(error) if *quote_version.peek() == version => {
                     quote.set(None);
-                    quote_error.set(error.message);
+                    quote_error.set(quote_failure_message(&error));
                 }
                 _ => {}
             }
@@ -3651,6 +3655,27 @@ fn BookingStep(
 #[cfg(test)]
 mod saved_address_tests {
     use super::*;
+
+    #[test]
+    fn coupon_conflicts_keep_the_actionable_server_message() {
+        for message in [
+            "This coupon has expired; remove it or apply a different code",
+            "This coupon has reached its usage limit; remove it or apply a different code",
+        ] {
+            let error = api::ApiError {
+                status: 409,
+                code: "conflict".into(),
+                message: message.into(),
+            };
+            assert_eq!(quote_failure_message(&error), message);
+        }
+        let unavailable = api::ApiError {
+            status: 409,
+            code: "conflict".into(),
+            message: "rental is no longer available".into(),
+        };
+        assert!(quote_failure_message(&unavailable).contains("choose another RV"));
+    }
 
     #[test]
     fn booking_close_is_blocked_during_irreversible_work() {

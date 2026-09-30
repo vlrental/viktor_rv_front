@@ -1,3 +1,4 @@
+use crate::api::reviews::{self, GoogleContent, GoogleReview};
 use dioxus::prelude::*;
 
 const GOOGLE_PROFILE: &str =
@@ -14,8 +15,42 @@ const REVIEWS: [(&str, &str, &str, &str); 3] = [
     ("Melanie", "Perfect service, would do it again!!", "en", "https://www.google.com/maps/contrib/111717682799025743173/reviews"),
 ];
 
+pub fn default_content() -> GoogleContent {
+    GoogleContent {
+        rating: "5.0".into(),
+        count: 7,
+        checked_on: "2026-09-23".into(),
+        profile_url: GOOGLE_PROFILE.into(),
+        write_url: WRITE_REVIEW.into(),
+        published: true,
+        reviews: REVIEWS
+            .iter()
+            .map(|(name, body, language, url)| GoogleReview {
+                name: (*name).into(),
+                body: (*body).into(),
+                language: (*language).into(),
+                url: (*url).into(),
+                rating: 5,
+                published: true,
+            })
+            .collect(),
+    }
+}
+
 #[component]
 pub fn GoogleReviews() -> Element {
+    let content = use_resource(|| async { reviews::public_google().await });
+    let data = match &*content.read() {
+        Some(Ok(Some(data))) => data.clone(),
+        Some(Ok(None)) => default_content(),
+        Some(Err(_)) => {
+            return rsx! { p { class: "google-reviews-note", a { href: GOOGLE_PROFILE, target: "_blank", rel: "noopener noreferrer", "Read our reviews on Google" } } }
+        }
+        None => return rsx! {},
+    };
+    if !data.published {
+        return rsx! {};
+    }
     rsx! {
         section { class: "ab-reviews google-reviews", aria_labelledby: "google-reviews-title",
             div { class: "ab-reviews-head",
@@ -23,15 +58,15 @@ pub fn GoogleReviews() -> Element {
                     div { class: "eyebrow", "FROM OUR GUESTS" }
                     h2 { id: "google-reviews-title", class: "ab-reviews-title", "Google Reviews" }
                 }
-                a { class: "google-reviews-rating", href: GOOGLE_PROFILE, target: "_blank", rel: "noopener noreferrer",
-                    "5.0 / 5 · 7 Google reviews"
+                a { class: "google-reviews-rating", href: data.profile_url.clone(), target: "_blank", rel: "noopener noreferrer",
+                    "{data.rating} / 5 · {data.count} Google reviews"
                 }
             }
             div { class: "google-reviews-grid",
-                for (name, quote, language, profile) in REVIEWS {
-                    article { key: "{name}", class: "ab-review",
-                        div { class: "ab-stars", role: "img", aria_label: "5 out of 5 stars",
-                            for i in 0..5 {
+                for (index, review) in data.reviews.iter().filter(|r| r.published).enumerate() {
+                    article { key: "{index}", class: "ab-review",
+                        div { class: "ab-stars", role: "img", aria_label: "{review.rating} out of 5 stars",
+                            for i in 0..review.rating {
                                 span { key: "{i}", aria_hidden: "true",
                                     svg {
                                         width: "15",
@@ -43,9 +78,9 @@ pub fn GoogleReviews() -> Element {
                                 }
                             }
                         }
-                        blockquote { class: "ab-quote", lang: language, "“{quote}”" }
+                        blockquote { class: "ab-quote", lang: review.language.clone(), "“{review.body}”" }
                         div { class: "ab-who",
-                            a { class: "ab-who-n", href: profile, target: "_blank", rel: "noopener noreferrer", "{name}" }
+                            a { class: "ab-who-n", href: review.url.clone(), target: "_blank", rel: "noopener noreferrer", "{review.name}" }
                             span { class: "ab-who-d", "Google" }
                         }
                     }
@@ -53,11 +88,11 @@ pub fn GoogleReviews() -> Element {
             }
             p { class: "google-reviews-note",
                 "Selected Google review excerpts · Rating checked "
-                time { datetime: "2026-09-23", "September 23, 2026" }
+                time { datetime: data.checked_on.clone(), "{data.checked_on}" }
             }
             div { class: "google-reviews-links",
-                a { href: GOOGLE_PROFILE, target: "_blank", rel: "noopener noreferrer", "Read all reviews on Google" }
-                a { href: WRITE_REVIEW, target: "_blank", rel: "noopener noreferrer", "Write a Google review" }
+                a { href: data.profile_url.clone(), target: "_blank", rel: "noopener noreferrer", "Read all reviews on Google" }
+                a { href: data.write_url.clone(), target: "_blank", rel: "noopener noreferrer", "Write a Google review" }
             }
         }
     }

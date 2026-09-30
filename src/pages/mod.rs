@@ -1,5 +1,6 @@
 mod about;
 mod admin;
+mod admin_reviews;
 mod admin_sales;
 mod auth;
 mod booking_overlay;

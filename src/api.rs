@@ -1,4 +1,5 @@
 use dioxus::prelude::document;
+pub mod reviews;
 pub mod sales;
 use gloo_net::http::{Request, Response};
 use serde::{Deserialize, Serialize};
@@ -804,6 +805,8 @@ pub struct AdminRentalReview {
     pub reviewed_at_label: String,
     pub like_count: i64,
     pub created_at: String,
+    #[serde(default)]
+    pub is_published: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -4863,6 +4866,10 @@ pub struct Coupon {
     pub code: String,
     pub percent_off: String,
     pub is_active: bool,
+    pub max_uses: Option<i32>,
+    pub expires_on: Option<String>,
+    #[serde(default)]
+    pub usage_count: i64,
 }
 
 #[derive(Deserialize)]
@@ -4875,6 +4882,8 @@ pub struct CouponPayload {
     pub code: String,
     pub percent_off: String,
     pub is_active: bool,
+    pub max_uses: Option<i32>,
+    pub expires_on: Option<String>,
 }
 
 pub async fn admin_coupons() -> Result<Vec<Coupon>, ApiError> {

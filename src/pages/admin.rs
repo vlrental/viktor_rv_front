@@ -500,6 +500,8 @@ pub fn Admin() -> Element {
     let mut calendar_editor_dirty = use_signal(|| false);
     let mut sales_editor_dirty = use_signal(|| false);
     let sales_editor_busy = use_signal(|| false);
+    let mut reviews_editor_dirty = use_signal(|| false);
+    let reviews_editor_busy = use_signal(|| false);
     let calendar_editor_busy = use_signal(|| false);
     let mut selected_rental = use_signal(|| None::<api::AdminRentalDetail>);
 
@@ -764,6 +766,16 @@ pub fn Admin() -> Element {
         if next == active_tab() {
             return;
         }
+        if active_tab() == "reviews" {
+            if reviews_editor_busy() {
+                notice.set("Wait for review changes to finish saving.".into());
+                return;
+            }
+            if reviews_editor_dirty() && !super::admin_reviews::confirm_discard() {
+                return;
+            }
+            reviews_editor_dirty.set(false);
+        }
         if active_tab() == "rv-sales" {
             if sales_editor_busy() {
                 notice.set(
@@ -999,7 +1011,7 @@ pub fn Admin() -> Element {
                             } else {
                                 rsx! { CalendarTab { bookings: bookings.read().clone(), blocks: blocks.read().clone(), rentals: rentals.read().clone(), editor_dirty: calendar_editor_dirty, busy: calendar_editor_busy, on_open_booking: open_booking, on_refresh: move |_| { spawn(async move { load_admin_data().await; }); } } }
                             },
-                            "reviews" => rsx! { ReviewsTab { rentals: admin_rentals.read().clone() } },
+                            "reviews" => rsx! { ReviewsTab { editor_dirty:reviews_editor_dirty, editor_busy:reviews_editor_busy, rentals: admin_rentals.read().clone() } },
                             "audit" => rsx! { AuditTab { events: audit.read().clone(), loading: loading() } },
                             _ => rsx! {},
                         }
@@ -2311,7 +2323,20 @@ fn CalendarTab(
 }
 
 #[component]
-fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
+fn ReviewsTab(
+    rentals: Vec<api::AdminRentalSummary>,
+    mut editor_dirty: Signal<bool>,
+    mut editor_busy: Signal<bool>,
+) -> Element {
+    let google_dirty = use_signal(|| false);
+    let google_busy = use_signal(|| false);
+    let mut external_dirty = use_signal(|| false);
+    let external_busy = use_signal(|| false);
+    let mut external = use_signal(|| None::<(String, Option<api::reviews::ExternalReview>)>);
+    let mut editor_loading = use_signal(|| false);
+    use_effect(move || editor_dirty.set(google_dirty() || external_dirty()));
+    use_effect(move || editor_busy.set(google_busy() || external_busy() || editor_loading()));
+
     let mut reviews = use_signal(Vec::<api::AdminRentalReview>::new);
     let mut search = use_signal(String::new);
     let mut rental_filter = use_signal(String::new);
@@ -2369,14 +2394,22 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
     });
 
     rsx! {
+        super::admin_reviews::GoogleEditor {dirty:google_dirty,busy:google_busy}
+        if let Some((id,initial))=external() {
+            super::admin_reviews::ExternalEditor {key:"{id}",id,initial,rentals:rentals.clone(),dirty:external_dirty,busy:external_busy,
+                on_saved:move |_|{external.set(None);message.set("Review saved.".into());reload_nonce.set(reload_nonce()+1);},
+                on_close:move |_|if !external_busy() && (!external_dirty() || super::admin_reviews::confirm_discard()) {external.set(None);external_dirty.set(false);}
+            }
+        }
         section { class: "admin-panel admin-full-panel admin-reviews-panel",
             div { class: "admin-panel-head admin-list-head",
-                div { h2 { "Reviews" } p { "VL Rental and trusted-platform guest comments. Deletion is permanent." } }
+                div { h2 { "RV reviews" } p { "Manage Outdoorsy and RVezy reviews per RV. Customer-written VL Rental reviews cannot be edited." } }
                 div { class: "admin-audit-tools",
                     label { class: "admin-search", Icon { name: "search", size: 16, color: "var(--vl-muted)" } input { r#type: "search", maxlength: "100", placeholder: "Guest, booking or comment", value: "{search}", oninput: move |event| { offset.set(0); search.set(event.value()); } } }
                     select { class: "admin-compact-filter", aria_label: "Filter reviews by RV", value: "{rental_filter}", onchange: move |event| { offset.set(0); rental_filter.set(event.value()); }, option { value: "", "All RVs" } for rental in rentals.iter() { option { value: "{rental.slug}", "{rental.name}" } } }
                 }
             }
+            div {class:"review-actions", button {class:"admin-primary-small",r#type:"button",disabled:external_busy() || editor_loading(),onclick:move |_|if !external_dirty() || super::admin_reviews::confirm_discard() {external_dirty.set(false);external.set(Some((uuid::Uuid::new_v4().to_string(),None)));}, "+ Add external review"} }
             if !message.read().is_empty() { p { class: "admin-inline-message", role: "alert", "{message}" } }
             if loading() { AdminLoading {} }
             else if !message.read().is_empty() {
@@ -2388,15 +2421,19 @@ fn ReviewsTab(rentals: Vec<api::AdminRentalSummary>) -> Element {
             else if reviews.read().is_empty() { div { class: "admin-empty", "No reviews match this search." } }
             else {
                 div { class: "admin-table-wrap admin-reviews-table-wrap", table { class: "admin-bookings-table admin-reviews-table",
-                    thead { tr { th { "Guest / booking" } th { "RV" } th { "Rating" } th { "Comment" } th { "Likes" } th { "Published" } th { "" } } }
+                    thead { tr { th { "Guest / booking" } th { "RV" } th { "Rating" } th { "Comment" } th { "Likes" } th { "Date / visibility" } th { "" } } }
                     tbody { for review in reviews.read().iter() { tr { key: "{review.rental_review_id}",
                         td { strong { "{review.reviewer_name}" } small { "{review.booking_number}" } }
                         td { "{review.rental_name}" }
                         td { span { class: "admin-review-rating", "★ {review.rating}/5" } }
                         td { if !review.title.is_empty() { strong { "{review.title}" } } p { class: "admin-review-body", "{review.body}" } }
                         td { "♥ {review.like_count}" }
-                        td { if review.reviewed_at_label.is_empty() { "{display_moment(&review.created_at)}" } else { "{review.reviewed_at_label}" } }
-                        td { button { class: "admin-review-delete", r#type: "button", aria_label: "Delete review by {review.reviewer_name}", onclick: { let review = review.clone(); move |_| { message.set(String::new()); delete_target.set(Some(review.clone())); } }, Icon { name: "trash-2", size: 15, color: "currentColor" } "Delete" } }
+                        td { small { if review.is_published {"Visible"} else {"Hidden"} } if review.reviewed_at_label.is_empty() { "{display_moment(&review.created_at)}" } else { "{review.reviewed_at_label}" } }
+                        td {
+                            if matches!(review.source.as_str(),"rvezy"|"outdoorsy") {
+                                button {r#type:"button",disabled:external_busy() || editor_loading(),onclick:{let id=review.rental_review_id.clone();move |_|{if external_dirty() && !super::admin_reviews::confirm_discard(){return;}let id=id.clone();editor_loading.set(true);message.set(String::new());spawn(async move{match api::reviews::admin_get::<api::reviews::ExternalReview>(&format!("external-reviews/{id}")).await {Ok(value)=>{external_dirty.set(false);external.set(Some((id,Some(value))));},Err(e)=>message.set(e.message)}editor_loading.set(false);});}}, "Edit"}
+                            }
+                            button { class: "admin-review-delete", r#type: "button", aria_label: "Delete review by {review.reviewer_name}", onclick: { let review = review.clone(); move |_| { message.set(String::new()); delete_target.set(Some(review.clone())); } }, Icon { name: "trash-2", size: 15, color: "currentColor" } "Delete" } }
                     } } }
                 } }
                 div { class: "admin-review-pagination",

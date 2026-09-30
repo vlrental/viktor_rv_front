@@ -2068,6 +2068,7 @@ body:has(.admin-overlay) { overflow: hidden; }
 .ub-coupon-status button { padding: 4px; color: inherit; text-decoration: underline; }
 .admin-coupon-editor { margin: 16px 0; padding: 18px; border: 1px solid var(--vl-line); border-radius: 12px; background: var(--vl-surface); }
 .admin-coupon-editor h3 { margin-bottom: 16px; color: var(--vl-forest); font: 500 28px/1 var(--font-heading); }
+.admin-coupon-help { margin-top: 10px; color: var(--vl-muted); font-size: 12px; line-height: 1.5; }
 .admin-coupon-active { display: flex; align-items: center; gap: 8px; margin: 16px 0; color: var(--vl-ink); font-size: 12px; }
 .admin-coupon-active input { width: 16px; height: 16px; accent-color: var(--vl-forest); }
 .admin-coupon-list { display: grid; gap: 10px; margin-top: 16px; }
@@ -2079,3 +2080,34 @@ body:has(.admin-overlay) { overflow: hidden; }
 .admin-coupon-badge.is-active { color: var(--vl-forest); background: #e5efe5; }
 .admin-coupon-actions { display: flex; gap: 8px; }
 .admin-coupon-actions button { min-height: 38px; padding: 0 12px; border: 1px solid var(--vl-line); border-radius: 8px; color: var(--vl-forest); font-size: 11px; font-weight: 700; }
+
+/* Manual review management */
+.review-manager { margin-bottom: 24px; }
+.review-editor-fields { border: 0; padding: 0; margin: 20px 0 0; min-width: 0; display: grid; gap: 20px; }
+.review-fields-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.review-field { display: grid; gap: 7px; font-size: 13px; color: var(--vl-ink); min-width: 0; }
+.review-field input, .review-field select, .review-field textarea { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--vl-hair); border-radius: 8px; background: var(--vl-white); font: inherit; color: var(--vl-ink); box-sizing: border-box; }
+.review-field textarea { resize: vertical; min-height: 100px; }
+.review-edit-card { padding: 20px; border: 1px solid var(--vl-hair); border-radius: 12px; display: grid; gap: 16px; }
+.review-edit-card h3 { margin: 0; }
+.review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0; }
+.review-actions button { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--vl-hair); cursor: pointer; }
+.review-toggle { display: flex; gap: 9px; align-items: center; font-size: 14px; }
+.review-toggle input { width: 18px; height: 18px; accent-color: var(--vl-forest); }
+.review-help { font-size: 13px; color: var(--vl-muted); line-height: 1.5; margin: 0; }
+.review-editor-fields:disabled { opacity: .65; }
+@media (max-width: 680px) { .review-fields-grid { grid-template-columns: 1fr; } .review-edit-card { padding: 14px; } .review-actions button { min-height: 44px; } }
+.review-manager > form { padding: 0 24px 24px; }
+.review-manager > h2, .review-manager > p { margin: 20px 24px; }
+@media (max-width: 680px) { .review-manager > form { padding: 0 14px 14px; } .review-manager > h2, .review-manager > p { margin: 16px 14px; } }
+@media (max-width: 760px) {
+  .admin-reviews-table-wrap { display: block; overflow: visible; }
+  .admin-reviews-table { display: block; min-width: 0; }
+  .admin-reviews-table thead { display: none; }
+  .admin-reviews-table tbody { display: grid; gap: 12px; padding: 14px; }
+  .admin-reviews-table tr { display: grid; gap: 8px; border: 1px solid var(--vl-hair); border-radius: 10px; padding: 14px; }
+  .admin-reviews-table td, .admin-reviews-table td:nth-child(4) { display: block; width: auto; padding: 0; border: 0; overflow-wrap: anywhere; }
+  .admin-reviews-table td:last-child { display: flex; gap: 12px; margin-top: 6px; }
+  .admin-reviews-table td:last-child button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--vl-hair); border-radius: 8px; }
+  .admin-reviews-table td:nth-child(5)::before { content: "Likes: "; color: var(--vl-muted); }
+}
