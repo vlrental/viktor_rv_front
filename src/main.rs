@@ -97,6 +97,8 @@ pub enum Route {
         Delivery {},
         #[route("/rv-sales/")]
         RvSales {},
+        #[route("/rv-sales/listing/?:sale_id")]
+        RvSaleDetail { sale_id: String },
         #[route("/terms/")]
         Terms {},
         #[route("/faq/")]
@@ -122,6 +124,9 @@ pub struct BookingLaunchRequest(pub Signal<bool>);
 #[derive(Clone, Copy)]
 pub struct AuthSession(pub Signal<Option<api::AuthUser>>);
 
+#[derive(Clone, Copy)]
+pub struct SaleSeoContext(pub Signal<Option<(String, api::sales::Listing)>>);
+
 pub fn booking_launch_requires_home(route: &Route) -> bool {
     !matches!(route, Route::Home {})
 }
@@ -145,6 +150,7 @@ struct SeoMetadata {
     description: String,
     canonical: String,
     robots: &'static str,
+    image: String,
 }
 
 impl SeoMetadata {
@@ -154,6 +160,7 @@ impl SeoMetadata {
             description: description.into(),
             canonical: canonical_url(path),
             robots: "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1",
+            image: format!("{SITE_URL}/og-image.webp"),
         }
     }
 
@@ -163,6 +170,7 @@ impl SeoMetadata {
             description: description.into(),
             canonical: canonical_url(path),
             robots: "noindex,nofollow",
+            image: format!("{SITE_URL}/og-image.webp"),
         }
     }
 }
@@ -285,6 +293,15 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             "Browse RVs for sale in Kelowna, British Columbia. View asking prices, vehicle details and photos, and contact VL Rental to arrange a viewing.",
             "/rv-sales",
         ),
+        Route::RvSaleDetail { sale_id } => {
+            let mut metadata = SeoMetadata::private(
+                "RV Sale Listing | VL Rental",
+                "View this RV's photos, asking price and description, and arrange a viewing with VL Rental.",
+                "/rv-sales/listing",
+            );
+            metadata.canonical = format!("{SITE_URL}{}", Route::RvSaleDetail { sale_id: sale_id.clone() });
+            metadata
+        }
         Route::Terms {} => SeoMetadata::indexed(
             "Rental Terms | VL Rental",
             "Read VL Rental RV terms for mandatory trip charges, payments, delivery, cancellations and customer responsibilities.",
@@ -366,9 +383,11 @@ fn SiteShell() -> Element {
     let booking_launch_request = use_signal(|| false);
     let auth_session = use_signal(api::current_user);
     let cookie_consent = use_signal(saved_cookie_consent);
+    let sale_seo = use_signal(|| None::<(String, api::sales::Listing)>);
     use_context_provider(|| BookingLaunchRequest(booking_launch_request));
     use_context_provider(|| AuthSession(auth_session));
     use_context_provider(|| CookieConsentContext(cookie_consent));
+    use_context_provider(|| SaleSeoContext(sale_seo));
 
     rsx! {
         SeoHead {}
@@ -385,7 +404,17 @@ fn SiteShell() -> Element {
 #[component]
 fn SeoHead() -> Element {
     let route = use_route::<Route>();
-    let metadata = seo_metadata(&route);
+    let sale_seo = use_context::<SaleSeoContext>().0;
+    let mut metadata = seo_metadata(&route);
+    if let Route::RvSaleDetail { sale_id } = &route {
+        if let Some((id, listing)) = sale_seo
+            .read()
+            .as_ref()
+            .filter(|(id, listing)| id == sale_id && listing.status == "published")
+        {
+            metadata = sale_detail_metadata(id, listing);
+        }
+    }
 
     use_effect(use_reactive((&metadata,), move |(metadata,)| {
         let Some(document) = web_sys::window().and_then(|window| window.document()) else {
@@ -441,6 +470,18 @@ fn SeoHead() -> Element {
             &metadata.canonical,
         );
         upsert_meta(
+            "meta[property='og:image']",
+            "property",
+            "og:image",
+            &metadata.image,
+        );
+        upsert_meta(
+            "meta[name='twitter:image']",
+            "name",
+            "twitter:image",
+            &metadata.image,
+        );
+        upsert_meta(
             "meta[name='twitter:title']",
             "name",
             "twitter:title",
@@ -470,6 +511,24 @@ fn SeoHead() -> Element {
     }));
 
     rsx! {}
+}
+
+fn sale_detail_metadata(sale_id: &str, listing: &api::sales::Listing) -> SeoMetadata {
+    let mut metadata = SeoMetadata::indexed(
+        format!("{} for Sale | VL Rental", listing.title),
+        listing.summary.chars().take(160).collect::<String>(),
+        "/rv-sales/listing",
+    );
+    metadata.canonical = format!(
+        "{SITE_URL}{}",
+        Route::RvSaleDetail {
+            sale_id: sale_id.into()
+        }
+    );
+    if let Some(photo) = listing.photos.first() {
+        metadata.image = photo.source_url.clone();
+    }
+    metadata
 }
 
 #[component]
@@ -598,6 +657,42 @@ mod seo_tests {
         assert!(metadata.robots.starts_with("index,follow"));
         assert_eq!(metadata.canonical, format!("{SITE_URL}/rv/{slug}/"));
         assert!(metadata.title.contains("RV Rental"));
+    }
+
+    #[test]
+    fn sale_permalinks_round_trip_and_unavailable_listings_are_not_indexed() {
+        let sale_id = "6df950db-7844-495e-870a-d438e3dcf801";
+        let route = Route::RvSaleDetail {
+            sale_id: sale_id.into(),
+        };
+        let permalink = format!("/rv-sales/listing/?sale_id={sale_id}");
+        assert_eq!(route.to_string(), permalink);
+        assert!(permalink.parse::<Route>().unwrap() == route);
+        let metadata = seo_metadata(&route);
+        assert_eq!(metadata.canonical, format!("{SITE_URL}{permalink}"));
+        assert_eq!(metadata.robots, "noindex,nofollow");
+        assert!(booking_launch_requires_home(&route));
+    }
+
+    #[test]
+    fn published_sale_metadata_uses_its_own_title_description_and_photo() {
+        let listing: api::sales::Listing = serde_json::from_value(serde_json::json!({
+            "sale_id":"6df950db-7844-495e-870a-d438e3dcf801", "title":"Travel trailer & family RV",
+            "model_year":2015,"manufacturer":"Test","model":"Family","rv_type":"travel_trailer",
+            "length_ft":"24.5","sleeps":4,"condition":"used","location":"Kelowna, BC","price":"20500.00",
+            "summary":"é".repeat(200),"description":"Full sale description","status":"published",
+            "sort_order":0,"updated_at":"2026-10-01T00:00:00Z",
+            "photos":[{"photo_id":"photo","source_url":"https://api.vlrental.ca/photo.webp","alt_text":"Exterior","sort_order":0}]
+        })).unwrap();
+        let metadata = sale_detail_metadata(&listing.sale_id, &listing);
+        assert_eq!(
+            metadata.title,
+            "Travel trailer & family RV for Sale | VL Rental"
+        );
+        assert_eq!(metadata.description.chars().count(), 160);
+        assert!(metadata.robots.starts_with("index,follow"));
+        assert_eq!(metadata.image, listing.photos[0].source_url);
+        assert!(metadata.canonical.ends_with(&listing.sale_id));
     }
 
     #[test]

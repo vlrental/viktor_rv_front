@@ -1,4 +1,4 @@
-/* RV Sales page (sale-) — Pencil: desktop j7H8cE / mobile updYS */
+/* RV Sales — Pencil: directory iKgTN/e8z6o4, listing IaceU/b9EOQ. */
 
 /* Header */
 .sale-header {
@@ -108,17 +108,38 @@
 .sale-empty h2 { font-family: var(--font-heading); color: var(--vl-ink); font-weight: 400; }
 .sale-inquiry-fields label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; color: var(--vl-white); font-size: 14px; }
 .sale-inquiry-fields input { width: 100%; box-sizing: border-box; }
-.sale-dialog-backdrop { position: fixed; inset: 0; z-index: 160; background: #13251be0; display: grid; place-items: center; padding: 24px; }
-.sale-dialog { position: relative; width: min(760px, 100%); max-height: 90dvh; overflow-y: auto; background: var(--vl-white); border-radius: 16px; }
-.sale-dialog-close { position: absolute; right: 12px; top: 12px; z-index: 1; width: 40px; height: 40px; border-radius: 50%; background: var(--vl-white); color: var(--vl-ink); font-size: 24px; cursor: pointer; }
-.sale-detail-photo { width: 100%; height: 360px; object-fit: contain; background: var(--vl-surface); display: block; }
 .sale-gallery-controls { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; color: var(--vl-muted); }
-.sale-gallery-controls button { padding: 8px 16px; background: var(--vl-surface); border-radius: 8px; }
-.sale-detail-copy { padding: 24px; }
-.sale-detail-copy h2 { font-family: var(--font-heading); margin-top: 0; font-weight: 400; font-size: 30px; }
+.sale-gallery-controls button { min-height: 44px; padding: 8px 16px; background: var(--vl-surface); border-radius: 8px; cursor: pointer; }
 .sale-description { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .sale-card-title, .sale-summary, .sale-meta { overflow-wrap: anywhere; }
-.sale-dialog button:focus-visible, .sale-card button:focus-visible { outline: 3px solid var(--vl-accent); outline-offset: 3px; }
+.sale-card a:focus-visible, .sale-page-content button:focus-visible, .sale-page-gallery:focus-visible, .sale-back:focus-visible { outline: 3px solid var(--vl-accent); outline-offset: 3px; }
+.sale-card-title a { color: inherit; text-decoration: none; }
+.sale-back { color: var(--vl-forest); font-size: 14px; text-decoration: underline; text-underline-offset: 4px; }
+.sale-page-header .sale-title { overflow-wrap: anywhere; max-width: 1100px; }
+.sale-page-price { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; color: var(--vl-muted); font-size: 14px; }
+.sale-page-price strong { font-family: var(--font-heading); color: var(--vl-ink); font-size: 34px; font-weight: 400; }
+.sale-page-content { max-width: 1440px; margin: 0 auto; padding: 36px 72px 56px; }
+.sale-page-photo { margin: 0; }
+.sale-page-photo > img { display: block; width: 100%; height: clamp(360px, 60vh, 680px); object-fit: contain; background: var(--vl-surface); border-radius: 16px; }
+.sale-page-photo figcaption { padding-top: 12px; color: var(--vl-muted); font-size: 14px; overflow-wrap: anywhere; }
+.sale-page-thumbnails { display: flex; gap: 12px; overflow-x: auto; padding: 6px 3px 12px; margin: 0; list-style: none; }
+.sale-page-thumbnails li { flex: 0 0 128px; }
+.sale-page-thumbnails button { display: block; width: 100%; padding: 3px; border: 2px solid transparent; border-radius: 10px; background: transparent; cursor: pointer; }
+.sale-page-thumbnails button[aria-pressed="true"] { border-color: var(--vl-forest); }
+.sale-page-thumbnails img { display: block; width: 100%; height: 86px; object-fit: cover; border-radius: 6px; }
+.sale-page-specs { margin: 32px 0; padding-bottom: 28px; border-bottom: 1px solid var(--vl-hair); }
+.sale-page-content h2 { margin: 0 0 20px; font: 400 30px var(--font-heading); color: var(--vl-ink); }
+.sale-page-specs dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 0; }
+.sale-page-specs dt { font-size: 13px; color: var(--vl-muted); margin-bottom: 6px; }
+.sale-page-specs dd { margin: 0; color: var(--vl-ink); font-size: 16px; overflow-wrap: anywhere; }
+.sale-page-description { max-width: 900px; }
+.sale-page-description .sale-description { margin: 0; font-size: 18px; line-height: 1.85; color: var(--vl-ink); }
+.sale-page-enquire { margin-top: 28px; }
+.sale-page-state { padding: 72px; min-height: 40vh; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+.sale-page-state h1 { font: 400 36px var(--font-heading); }
+.sale-inquiry-message { display: flex; flex-direction: column; gap: 6px; color: var(--vl-white); font-size: 14px; margin-top: 14px; }
+.sale-inquiry-message textarea { width: 100%; resize: vertical; line-height: 1.6; box-sizing: border-box; }
+#sales-inquiry { scroll-margin-top: 100px; }
 .sale-price-row {
   display: flex;
   align-items: flex-end;
@@ -224,6 +245,15 @@
     font-size: 15px;
   }
   .sale-inquiry-fields { flex-direction: column; width: 100%; }
-  .sale-dialog-backdrop { padding: 12px; }
-  .sale-detail-photo { height: 240px; }
+  .sale-page-content { padding: 24px 20px 36px; }
+  .sale-page-photo > img { height: clamp(260px, 45vh, 420px); border-radius: 12px; }
+  .sale-gallery-controls { gap: 8px; padding: 12px 0; font-size: 12px; }
+  .sale-gallery-controls button { padding: 8px 12px; }
+  .sale-page-thumbnails { gap: 8px; }
+  .sale-page-thumbnails li { flex-basis: 90px; }
+  .sale-page-thumbnails img { height: 64px; }
+  .sale-page-specs dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
+  .sale-page-description .sale-description { font-size: 16px; line-height: 1.85; }
+  .sale-page-state { padding: 40px 20px; }
+  .sale-page-state h1 { font-size: 28px; }
 }

@@ -16,6 +16,7 @@ mod park_detail;
 mod parks;
 mod privacy;
 mod rv_detail;
+mod rv_sale_detail;
 mod rv_sales;
 mod terms;
 
@@ -33,5 +34,6 @@ pub use park_detail::ParkDetail;
 pub use parks::ParksInOurRange;
 pub use privacy::Privacy;
 pub use rv_detail::RvDetail;
+pub use rv_sale_detail::RvSaleDetail;
 pub use rv_sales::RvSales;
 pub use terms::Terms;

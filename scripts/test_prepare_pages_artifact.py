@@ -137,6 +137,16 @@ class PreparePagesArtifactTests(unittest.TestCase):
             document = (root / relative).read_text(encoding="utf-8")
             self.assertIn('name="robots" content="noindex,nofollow"', document)
 
+    def test_sale_permalink_has_a_static_entry_document_and_sales_links(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "rv-sales" / "listing" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<title>RV Sale Listing | VL Rental</title>', document)
+        self.assertIn('"@type": "ItemPage"', document)
+        self.assertIn('href="https://example.test/rv-sales/"', document)
+        self.assertIn('full photo gallery', document)
+        self.assertNotIn('Continue planning your stay', document)
+
     def test_delivery_contains_service_schema_and_search_copy(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

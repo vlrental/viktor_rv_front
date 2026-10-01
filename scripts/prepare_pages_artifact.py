@@ -143,6 +143,14 @@ PUBLIC_ROUTES = (
         kind="CollectionPage",
     ),
     SeoRoute(
+        "/rv-sales/listing",
+        "RV Sale Listing | VL Rental",
+        "View RV photos, asking price and the full vehicle description. Contact VL Rental to ask about the RV or arrange a viewing in Kelowna.",
+        "RV Sale Listing",
+        "Open a listing from RV Sales to view its full photo gallery, vehicle details and sale description, and enquire directly about that RV.",
+        kind="ItemPage",
+    ),
+    SeoRoute(
         "/parks/bear-creek",
         "RV Delivery to Bear Creek Provincial Park | VL Rental",
         "Rent an RV for Bear Creek Provincial Park near Kelowna. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
@@ -401,7 +409,10 @@ def render_snapshot(route: SeoRoute, site_url: str) -> str:
     by_path = {item.path: item for item in PUBLIC_ROUTES}
     is_park = route.path.startswith("/parks/")
     is_rv = route.path.startswith("/rv/")
-    if route.path == "/parks-in-our-range":
+    if route.path.startswith("/rv-sales"):
+        related_paths = ("/rv-sales", "/contact", "/")
+        related_title = "Explore RV sales"
+    elif route.path == "/parks-in-our-range":
         related_paths = tuple(item.path for item in PUBLIC_ROUTES if item.path.startswith("/parks/"))
         related_title = "Explore our park guides"
     elif route.path == "/":
