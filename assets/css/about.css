@@ -259,3 +259,9 @@
   .google-reviews .ab-reviews-head { flex-direction: column; align-items: flex-start; gap: 16px; }
   .google-reviews-grid { grid-template-columns: 1fr; gap: 14px; }
 }
+
+.google-reviews-pagination { display: flex; align-items: center; justify-content: center; gap: 20px; color: var(--vl-muted); font-size: 14px; }
+.google-reviews-pagination button { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--vl-hair); border-radius: 50%; background: var(--vl-white); color: var(--vl-forest); font-size: 24px; cursor: pointer; }
+.google-reviews-pagination button:hover:not(:disabled) { background: var(--vl-forest); color: var(--vl-white); }
+.google-reviews-pagination button:disabled { opacity: .35; cursor: default; }
+.google-reviews-pagination button:focus-visible { outline: 2px solid var(--vl-forest); outline-offset: 4px; }

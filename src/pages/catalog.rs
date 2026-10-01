@@ -1335,7 +1335,7 @@ pub(crate) fn Filters(mut filters: Signal<CatalogFilters>) -> Element {
                 div { class: "filter-group",
                     div { class: "filter-head", "Sleeping capacity" }
                     div { class: "sleep-chips",
-                        for (label, value) in [("Any", 0), ("4+", 4), ("8+", 8), ("10", 10)] {
+                        for (label, value) in [("Any", 0), ("4+", 4), ("6+", 6), ("8+", 8)] {
                             button { key: "sleeps-{label}", r#type: "button", class: if state.minimum_capacity == value { "sleep-chip active" } else { "sleep-chip" }, onclick: move |_| {
                                 let mut next = filters.read().clone(); next.minimum_capacity = value; filters.set(next);
                             }, "{label}" }

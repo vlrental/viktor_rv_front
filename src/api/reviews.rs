@@ -21,6 +21,15 @@ pub struct GoogleContent {
     pub published: bool,
     pub reviews: Vec<GoogleReview>,
 }
+impl GoogleContent {
+    pub fn published_count(&self) -> usize {
+        self.reviews
+            .iter()
+            .filter(|review| review.published)
+            .count()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GoogleDocument {
     pub content: GoogleContent,

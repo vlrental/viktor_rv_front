@@ -59,19 +59,19 @@ pub(super) fn GoogleEditor(mut dirty: Signal<bool>, mut busy: Signal<bool>) -> E
             div { class:"admin-panel-head", div { h2 { "Google · Home & About" } p { "Update the rating and selected Google review excerpts shown on both pages." } } }
             if !message().is_empty() { p { class:"admin-inline-message", role:"status", "{message}" } }
             if !ready() { p { "Loading Google reviews…" } button { r#type:"button", onclick:move |_|retry.set(retry()+1), "Retry" } }
-            else { form { onsubmit:move |e| { e.prevent_default(); if busy() {return;} busy.set(true); message.set(String::new()); let value=draft(); spawn(async move {
+            else { form { onsubmit:move |e| { e.prevent_default(); if busy() {return;} busy.set(true); message.set(String::new()); let mut value=draft(); value.content.count=value.content.published_count() as i64; spawn(async move {
                 match reviews::admin_save::<_,GoogleDocument>("google-reviews", &value).await { Ok(saved)=>{draft.set(saved);dirty.set(false);message.set("Saved. Home and About now use these Google reviews.".into());},Err(e)=>message.set(e.message) } busy.set(false);
             }); },
             fieldset { disabled:busy(), class:"review-editor-fields", oninput:move |_|dirty.set(true), onchange:move |_|dirty.set(true),
                 label { class:"review-toggle", input { r#type:"checkbox", checked:draft.read().content.published, onchange:move |e|draft.write().content.published=e.checked() } "Show Google reviews on the website" }
                 div { class:"review-fields-grid",
     Field { label:"Overall rating (0–5)",value:draft.read().content.rating.to_string(),kind:"number",max:10,onchange:move |value: String|draft.write().content.rating=value }
-    Field { label:"Total Google reviews",value:draft.read().content.count.to_string(),kind:"number",max:10,onchange:move |value: String|draft.write().content.count=value.parse().unwrap_or(-1) }
+    label { class:"review-field", span { "Published Google reviews · automatic" } output { "{draft.read().content.published_count()}" } }
     Field { label:"Last checked",value:draft.read().content.checked_on.to_string(),kind:"date",max:10,onchange:move |value: String|draft.write().content.checked_on=value }
     Field { label:"Google business profile link",value:draft.read().content.profile_url.to_string(),kind:"url",max:2048,onchange:move |value: String|draft.write().content.profile_url=value }
     Field { label:"Write a review link",value:draft.read().content.write_url.to_string(),kind:"url",max:2048,onchange:move |value: String|draft.write().content.write_url=value }
     }
-                p { class:"review-help", "Copy the current rating and count from Google. Only publish real reviews, preserving the guest’s meaning and source link." }
+                p { class:"review-help", "Copy the current overall rating from Google. The website automatically counts the reviews marked Visible. Only publish real reviews, preserving the guest’s meaning and source link." }
                 for (index,review) in draft.read().content.reviews.iter().enumerate() { article { class:"review-edit-card", key:"{index}",
                     h3 { "Review {index + 1}" }
                     div { class:"review-fields-grid",
