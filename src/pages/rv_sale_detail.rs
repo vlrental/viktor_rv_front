@@ -3,6 +3,7 @@
 use super::rv_sales::SaleInquiry;
 use crate::{
     api::sales::{self, Listing},
+    components::Icon,
     Route, SaleSeoContext,
 };
 use dioxus::prelude::*;
@@ -65,8 +66,6 @@ pub fn RvSaleDetail(sale_id: String) -> Element {
 
 #[component]
 fn SalePage(item: Listing) -> Element {
-    let mut index = use_signal(|| 0_usize);
-    let count = item.photos.len();
     let specs = sale_specs(&item);
     rsx! {
         section {class:"sale-header sale-page-header",
@@ -77,30 +76,7 @@ fn SalePage(item: Listing) -> Element {
             p {class:"sale-page-price",span {"Asking price"}strong {"{sales::price_label(item.price.as_deref())}"}}
         }
         div {class:"sale-page-content",
-            section {class:"sale-page-gallery",role:"region",aria_label:"RV photo gallery",tabindex:"0",onkeydown:move|event|{
-                if count>1 && (event.key()==Key::ArrowRight || event.key()==Key::ArrowLeft) {
-                    event.prevent_default();
-                    index.set(if event.key()==Key::ArrowRight {(index()+1)%count}else{(index()+count-1)%count});
-                }
-            },
-                if let Some(photo)=item.photos.get(index()) {
-                    figure {class:"sale-page-photo",img {src:"{photo.source_url}",alt:"{photo.alt_text}",decoding:"async"}figcaption {"{photo.alt_text}"}}
-                }
-                if count>1 {
-                    div {class:"sale-gallery-controls",
-                        button {r#type:"button",aria_label:"Previous photo",onclick:move|_|index.set((index()+count-1)%count),"← Previous"}
-                        span {aria_live:"polite","Photo {index()+1} of {count}"}
-                        button {r#type:"button",aria_label:"Next photo",onclick:move|_|index.set((index()+1)%count),"Next →"}
-                    }
-                    ol {class:"sale-page-thumbnails",aria_label:"Choose an RV photo",
-                        for (photo_index,photo) in item.photos.iter().enumerate() {
-                            li {key:"{photo.photo_id}",button {r#type:"button",aria_label:"Show photo {photo_index+1}: {photo.alt_text}",aria_pressed:index()==photo_index,onclick:move|_|index.set(photo_index),
-                                img {src:"{photo.source_url}",alt:"",loading:"lazy",decoding:"async"}
-                            }}
-                        }
-                    }
-                }
-            }
+            SaleGallery {item:item.clone()}
             section {class:"sale-page-specs",aria_label:"Vehicle details",
                 h2 {"Vehicle details"}
                 dl {for (label,value) in specs {div {dt {"{label}"}dd {"{value}"}}}}
@@ -112,6 +88,125 @@ fn SalePage(item: Listing) -> Element {
             a {class:"btn-forest sale-page-enquire",href:"#sales-inquiry","Enquire about this RV"}
         }
         SaleInquiry {listing:Some(item)}
+    }
+}
+
+#[component]
+fn SaleGallery(item: Listing) -> Element {
+    let mut selected = use_signal(|| None::<usize>);
+    let mut opener = use_signal(|| 0_usize);
+    let count = item.photos.len();
+    let preview_count = count.saturating_sub(1).min(6);
+    rsx! {
+        section {class:"sale-page-gallery",aria_label:"RV photo gallery",
+            if let Some(photo)=item.photos.first() {
+                div {class:if count>1 {"sale-gallery-mosaic"}else{"sale-gallery-mosaic is-single"},
+                    button {id:"sale-gallery-photo-0",class:"sale-gallery-main",r#type:"button",aria_label:"Open photo 1 of {count}",onclick:move|_|{opener.set(0);selected.set(Some(0));},
+                        img {src:"{photo.source_url}",alt:"{photo.alt_text}",decoding:"async",draggable:"false"}
+                    }
+                    if preview_count>0 {
+                        div {class:"sale-gallery-previews","data-count":"{preview_count}",style:"--sale-preview-rows: {preview_count.div_ceil(2)}",
+                            for (photo_index,photo) in item.photos.iter().enumerate().skip(1).take(6) {
+                                button {key:"{photo.photo_id}",id:"sale-gallery-photo-{photo_index}",class:"sale-gallery-tile",r#type:"button",aria_label:if photo_index==preview_count {format!("Show all {count} photos")}else{format!("Open photo {} of {count}",photo_index+1)},onclick:move|_|{opener.set(photo_index);selected.set(Some(photo_index));},
+                                    img {src:"{photo.source_url}",alt:"{photo.alt_text}",loading:"lazy",decoding:"async",draggable:"false"}
+                                    if photo_index==preview_count {span {class:"sale-gallery-more","Show all {count} photos"}}
+                                }
+                            }
+                        }
+                    }
+                }
+                if count>1 {
+                    button {id:"sale-gallery-all",class:"sale-gallery-all",r#type:"button",onclick:move|_|{opener.set(usize::MAX);selected.set(Some(0));},Icon {name:"images",size:18,color:"var(--vl-forest)"}"Show all {count} photos"}
+                }
+            }else{
+                div {class:"sale-gallery-empty",Icon {name:"image",size:32,color:"var(--vl-muted)"}"Photos are being prepared"}
+            }
+        }
+        if let Some(index)=selected() {
+            SalePhotoViewer {item,index,selected,opener:opener()}
+        }
+    }
+}
+
+#[component]
+fn SalePhotoViewer(
+    item: Listing,
+    index: usize,
+    mut selected: Signal<Option<usize>>,
+    opener: usize,
+) -> Element {
+    let count = item.photos.len();
+    let opener_id = if opener == usize::MAX {
+        "sale-gallery-all".to_string()
+    } else {
+        format!("sale-gallery-photo-{opener}")
+    };
+    use_drop(|| {
+        document::eval("window.__vlSaleGalleryCleanup?.(); window.__vlSaleGalleryCleanup = null;");
+    });
+    rsx! {
+        div {id:"sale-photo-viewer",class:"sale-photo-viewer",role:"dialog",aria_modal:"true",aria_label:"{item.title} photo gallery",tabindex:"-1",onmounted:move|_|{
+            document::eval(&format!(r#"
+                const overlay = document.getElementById('sale-photo-viewer');
+                if (overlay) {{
+                    const opener = document.getElementById('{opener_id}');
+                    const previousOverflow = document.body.style.overflow;
+                    const trapFocus = (event) => {{
+                        if (event.key !== 'Tab') return;
+                        const buttons = [...overlay.querySelectorAll('button')];
+                        const first = buttons[0], last = buttons[buttons.length - 1];
+                        if (event.shiftKey && (document.activeElement === first || document.activeElement === overlay)) {{
+                            event.preventDefault(); last?.focus();
+                        }} else if (!event.shiftKey && document.activeElement === last) {{
+                            event.preventDefault(); first?.focus();
+                        }}
+                    }};
+                    let startX = null, startY = null;
+                    const touchStart = (event) => {{
+                        startX = event.touches[0]?.clientX ?? null;
+                        startY = event.touches[0]?.clientY ?? null;
+                    }};
+                    const touchEnd = (event) => {{
+                        if (startX === null || startY === null) return;
+                        const dx = (event.changedTouches[0]?.clientX ?? startX) - startX;
+                        const dy = (event.changedTouches[0]?.clientY ?? startY) - startY;
+                        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {{
+                            document.getElementById(dx > 0 ? 'sale-photo-prev' : 'sale-photo-next')?.click();
+                        }}
+                        startX = startY = null;
+                    }};
+                    document.body.style.overflow = 'hidden';
+                    overlay.addEventListener('keydown', trapFocus);
+                    overlay.addEventListener('touchstart', touchStart, {{passive:true}});
+                    overlay.addEventListener('touchend', touchEnd, {{passive:true}});
+                    overlay.focus({{preventScroll:true}});
+                    window.__vlSaleGalleryCleanup = () => {{
+                        document.body.style.overflow = previousOverflow;
+                        overlay.removeEventListener('keydown', trapFocus);
+                        overlay.removeEventListener('touchstart', touchStart);
+                        overlay.removeEventListener('touchend', touchEnd);
+                        if (opener?.isConnected) opener.focus({{preventScroll:true}});
+                    }};
+                }}
+            "#));
+        },onkeydown:move|event|{
+            match event.key() {
+                Key::Escape=>{event.prevent_default();event.stop_propagation();selected.set(None);},
+                Key::ArrowLeft if count>1=>{event.prevent_default();event.stop_propagation();selected.set(Some((index+count-1)%count));},
+                Key::ArrowRight if count>1=>{event.prevent_default();event.stop_propagation();selected.set(Some((index+1)%count));},
+                _=>{}
+            }
+        },onclick:move|_|selected.set(None),
+            div {class:"sale-photo-viewer-content",onclick:move|event|event.stop_propagation(),
+                img {class:"sale-photo-viewer-image",src:"{item.photos[index].source_url}",alt:"{item.photos[index].alt_text}",draggable:"false"}
+                button {class:"sale-photo-viewer-close",r#type:"button",aria_label:"Close gallery",onclick:move|_|selected.set(None),Icon {name:"x",size:24,color:"var(--vl-white)"}}
+                if count>1 {
+                    button {id:"sale-photo-prev",class:"sale-photo-viewer-nav prev",r#type:"button",aria_label:"Previous photo",onclick:move|_|selected.set(Some((index+count-1)%count)),Icon {name:"chevron-left",size:30,color:"var(--vl-white)"}}
+                    button {id:"sale-photo-next",class:"sale-photo-viewer-nav next",r#type:"button",aria_label:"Next photo",onclick:move|_|selected.set(Some((index+1)%count)),Icon {name:"chevron-right",size:30,color:"var(--vl-white)"}}
+                }
+                p {class:"sale-photo-viewer-caption",aria_live:"polite",span {"Photo {index+1} of {count}"}span {"{item.photos[index].alt_text}"}}
+            }
+        }
     }
 }
 
