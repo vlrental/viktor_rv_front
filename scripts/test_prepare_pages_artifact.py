@@ -15,6 +15,7 @@ from scripts.prepare_pages_artifact import (
     page_url,
     prepare_artifact,
 )
+from scripts.fetch_public_sales_snapshot import validate_snapshot
 
 
 SHELL = """<!doctype html>
@@ -46,6 +47,20 @@ class PreparePagesArtifactTests(unittest.TestCase):
         root = Path(temporary.name)
         (root / "index.html").write_text(SHELL, encoding="utf-8")
         return root
+
+    def make_sales_snapshot(self) -> Path:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = Path(temporary.name) / "sales.json"
+        path.write_text(json.dumps([{
+            "sale_id": "6df950db-7844-495e-870a-d438e3dcf801",
+            "title": "2015 Keystone Bullet 272BHS",
+            "summary": "Family travel trailer for sale in Kelowna.",
+            "description": "A well maintained RV with a large slide-out.",
+            "status": "published",
+            "photos": [{"source_url": "https://api.vlrental.ca/cover.webp"}],
+        }]), encoding="utf-8")
+        return path
 
     def test_bundles_all_route_css_in_original_order_for_pages_base(self) -> None:
         root = self.make_artifact()
@@ -137,15 +152,50 @@ class PreparePagesArtifactTests(unittest.TestCase):
             document = (root / relative).read_text(encoding="utf-8")
             self.assertIn('name="robots" content="noindex,nofollow"', document)
 
-    def test_sale_permalink_has_a_static_entry_document_and_sales_links(self) -> None:
+    def test_published_sale_has_unique_static_document_sitemap_and_hub_link(self) -> None:
         root = self.make_artifact()
-        prepare_artifact(root, "https://example.test")
-        document = (root / "rv-sales" / "listing" / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<title>RV Sale Listing | VL Rental</title>', document)
+        snapshot = self.make_sales_snapshot()
+        prepare_artifact(root, "https://example.test", snapshot)
+        sale_id = "6df950db-7844-495e-870a-d438e3dcf801"
+        document = (root / "rv-sales" / sale_id / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<title>2015 Keystone Bullet 272BHS for Sale | VL Rental</title>', document)
         self.assertIn('"@type": "ItemPage"', document)
         self.assertIn('href="https://example.test/rv-sales/"', document)
-        self.assertIn('full photo gallery', document)
-        self.assertNotIn('Continue planning your stay', document)
+        self.assertIn('Family travel trailer for sale in Kelowna.', document)
+        self.assertIn('property="og:image" content="https://api.vlrental.ca/cover.webp"', document)
+        canonical = f"https://example.test/rv-sales/{sale_id}/"
+        self.assertIn(f'rel="canonical" href="{canonical}"', document)
+        self.assertIn(canonical, (root / "sitemap.xml").read_text(encoding="utf-8"))
+        hub = (root / "rv-sales" / "index.html").read_text(encoding="utf-8")
+        self.assertIn(f'href="{canonical}"', hub)
+        legacy = (root / "rv-sales" / "listing" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('name="robots" content="noindex,nofollow"', legacy)
+        self.assertIn("URLSearchParams", legacy)
+        self.assertNotIn("/rv-sales/listing/</loc>", (root / "sitemap.xml").read_text(encoding="utf-8"))
+
+    def test_public_sales_snapshot_rejects_non_published_rows(self) -> None:
+        row = {
+            "sale_id": "6df950db-7844-495e-870a-d438e3dcf801",
+            "title": "RV", "summary": "Summary", "description": "Description",
+            "status": "archived", "photos": [],
+        }
+        with self.assertRaisesRegex(ValueError, "not published"):
+            validate_snapshot([row])
+
+    def test_deactivated_sale_disappears_from_generated_routes_and_sitemap(self) -> None:
+        root = self.make_artifact()
+        snapshot = self.make_sales_snapshot()
+        sale_id = "6df950db-7844-495e-870a-d438e3dcf801"
+        prepare_artifact(root, "https://example.test", snapshot)
+        sale_document = root / "rv-sales" / sale_id / "index.html"
+        self.assertTrue(sale_document.is_file())
+
+        empty = root / "empty-sales.json"
+        empty.write_text("[]\n", encoding="utf-8")
+        (root / "index.html").write_text(SHELL, encoding="utf-8")
+        prepare_artifact(root, "https://example.test", empty)
+        self.assertFalse(sale_document.exists())
+        self.assertNotIn(sale_id, (root / "sitemap.xml").read_text(encoding="utf-8"))
 
     def test_delivery_contains_service_schema_and_search_copy(self) -> None:
         root = self.make_artifact()

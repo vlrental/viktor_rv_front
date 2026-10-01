@@ -97,8 +97,10 @@ pub enum Route {
         Delivery {},
         #[route("/rv-sales/")]
         RvSales {},
-        #[route("/rv-sales/listing/?:sale_id")]
+        #[route("/rv-sales/:sale_id/")]
         RvSaleDetail { sale_id: String },
+        #[route("/rv-sales/listing/?:sale_id")]
+        LegacyRvSaleDetail { sale_id: String },
         #[route("/terms/")]
         Terms {},
         #[route("/faq/")]
@@ -302,6 +304,11 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             metadata.canonical = format!("{SITE_URL}{}", Route::RvSaleDetail { sale_id: sale_id.clone() });
             metadata
         }
+        Route::LegacyRvSaleDetail { sale_id } => SeoMetadata::private(
+            "RV Sale Listing Moved | VL Rental",
+            "Continue to the current RV sale listing.",
+            &format!("/rv-sales/{sale_id}"),
+        ),
         Route::Terms {} => SeoMetadata::indexed(
             "Rental Terms | VL Rental",
             "Read VL Rental RV terms for mandatory trip charges, payments, delivery, cancellations and customer responsibilities.",
@@ -532,6 +539,24 @@ fn sale_detail_metadata(sale_id: &str, listing: &api::sales::Listing) -> SeoMeta
 }
 
 #[component]
+fn LegacyRvSaleDetail(sale_id: String) -> Element {
+    use_effect(move || {
+        if let Some(window) = web_sys::window() {
+            let target = if uuid::Uuid::parse_str(&sale_id).is_ok() {
+                Route::RvSaleDetail {
+                    sale_id: sale_id.clone(),
+                }
+                .to_string()
+            } else {
+                Route::RvSales {}.to_string()
+            };
+            let _ = window.location().replace(&target);
+        }
+    });
+    rsx! {}
+}
+
+#[component]
 fn AuthSessionBridge() -> Element {
     let compatibility_callback = matches!(use_route::<Route>(), Route::AuthCallback {});
     use_effect(move || {
@@ -665,7 +690,7 @@ mod seo_tests {
         let route = Route::RvSaleDetail {
             sale_id: sale_id.into(),
         };
-        let permalink = format!("/rv-sales/listing/?sale_id={sale_id}");
+        let permalink = format!("/rv-sales/{sale_id}/");
         assert_eq!(route.to_string(), permalink);
         assert!(permalink.parse::<Route>().unwrap() == route);
         let metadata = seo_metadata(&route);
@@ -692,7 +717,10 @@ mod seo_tests {
         assert_eq!(metadata.description.chars().count(), 160);
         assert!(metadata.robots.starts_with("index,follow"));
         assert_eq!(metadata.image, listing.photos[0].source_url);
-        assert!(metadata.canonical.ends_with(&listing.sale_id));
+        assert_eq!(
+            metadata.canonical,
+            format!("{SITE_URL}/rv-sales/{}/", listing.sale_id)
+        );
     }
 
     #[test]

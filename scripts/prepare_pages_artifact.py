@@ -143,14 +143,6 @@ PUBLIC_ROUTES = (
         kind="CollectionPage",
     ),
     SeoRoute(
-        "/rv-sales/listing",
-        "RV Sale Listing | VL Rental",
-        "View RV photos, asking price and the full vehicle description. Contact VL Rental to ask about the RV or arrange a viewing in Kelowna.",
-        "RV Sale Listing",
-        "Open a listing from RV Sales to view its full photo gallery, vehicle details and sale description, and enquire directly about that RV.",
-        kind="ItemPage",
-    ),
-    SeoRoute(
         "/parks/bear-creek",
         "RV Delivery to Bear Creek Provincial Park | VL Rental",
         "Rent an RV for Bear Creek Provincial Park near Kelowna. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
@@ -368,6 +360,52 @@ def route_link(site_url: str, route: SeoRoute) -> str:
     )
 
 
+def load_sale_routes(snapshot_path: Path | None) -> tuple[SeoRoute, ...]:
+    if snapshot_path is None:
+        return ()
+    listings = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    if not isinstance(listings, list):
+        raise ValueError("RV sales snapshot must be a list")
+    routes = []
+    seen = set()
+    for listing in listings:
+        sale_id = str(listing.get("sale_id", ""))
+        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", sale_id):
+            raise ValueError(f"invalid RV sale id in snapshot: {sale_id}")
+        if sale_id in seen or listing.get("status") != "published":
+            raise ValueError(f"invalid published RV sale snapshot row: {sale_id}")
+        title = str(listing.get("title", "")).strip()
+        summary = str(listing.get("summary", "")).strip()
+        description = str(listing.get("description", "")).strip()
+        if not title or not summary or not description:
+            raise ValueError(f"RV sale snapshot row needs title, summary and description: {sale_id}")
+        photos = listing.get("photos")
+        if not isinstance(photos, list):
+            raise ValueError(f"RV sale snapshot row needs a photo list: {sale_id}")
+        image = "/og-image.webp"
+        if photos:
+            image = str(photos[0].get("source_url", "")).strip() or image
+        location = str(listing.get("location", "Kelowna, BC")).strip() or "Kelowna, BC"
+        condition = str(listing.get("condition", "used")).strip().replace("_", " ") or "used"
+        rv_type = str(listing.get("rv_type", "RV")).strip().replace("_", " ") or "RV"
+        seo_description = " ".join(
+            f"{title} for sale in {location}. {summary} View photos and contact VL Rental to arrange a viewing.".split()
+        )
+        if len(seo_description) > 160:
+            seo_description = seo_description[:157].rstrip() + "…"
+        routes.append(SeoRoute(
+            f"/rv-sales/{sale_id}",
+            f"{title} for Sale | VL Rental",
+            seo_description,
+            title,
+            f"{summary} This {condition} {rv_type} is listed in {location}. View the photos and contact VL Rental to ask about the vehicle or arrange a viewing.",
+            image=image,
+            kind="ItemPage",
+        ))
+        seen.add(sale_id)
+    return tuple(routes)
+
+
 def render_faq_items(*, featured_only: bool = False) -> str:
     document = load_faq_content()
     categories = document["categories"]
@@ -405,11 +443,14 @@ def render_faq_items(*, featured_only: bool = False) -> str:
     return '<div class="seo-prerender-faq">' + "".join(sections) + "</div>"
 
 
-def render_snapshot(route: SeoRoute, site_url: str) -> str:
-    by_path = {item.path: item for item in PUBLIC_ROUTES}
+def render_snapshot(route: SeoRoute, site_url: str, sale_routes: tuple[SeoRoute, ...] = ()) -> str:
+    by_path = {item.path: item for item in PUBLIC_ROUTES + sale_routes}
     is_park = route.path.startswith("/parks/")
     is_rv = route.path.startswith("/rv/")
-    if route.path.startswith("/rv-sales"):
+    if route.path == "/rv-sales":
+        related_paths = tuple(item.path for item in sale_routes) or ("/contact", "/")
+        related_title = "Current RVs for sale"
+    elif route.path.startswith("/rv-sales/"):
         related_paths = ("/rv-sales", "/contact", "/")
         related_title = "Explore RV sales"
     elif route.path == "/parks-in-our-range":
@@ -499,6 +540,8 @@ def replace_meta(document: str, selector: str, value: str) -> str:
 
 
 def absolute_url(site_url: str, path: str) -> str:
+    if urlparse(path).scheme in {"http", "https"}:
+        return path
     return f"{site_url.rstrip('/')}{path}"
 
 
@@ -554,7 +597,12 @@ def schema_for(route: SeoRoute, site_url: str) -> str:
     return json.dumps({"@context": "https://schema.org", "@graph": graph}, ensure_ascii=False, indent=2)
 
 
-def render_route(shell: str, route: SeoRoute, site_url: str) -> str:
+def render_route(
+    shell: str,
+    route: SeoRoute,
+    site_url: str,
+    sale_routes: tuple[SeoRoute, ...] = (),
+) -> str:
     canonical = page_url(site_url, route.path)
     image = absolute_url(site_url, route.image)
     document = re.sub(r"<title>.*?</title>", f"<title>{html.escape(route.title)}</title>", shell, count=1)
@@ -580,7 +628,7 @@ def render_route(shell: str, route: SeoRoute, site_url: str) -> str:
         count=1,
         flags=re.DOTALL,
     )
-    snapshot = render_snapshot(route, site_url)
+    snapshot = render_snapshot(route, site_url, sale_routes)
     document, count = re.subn(r'(<div id="main">)(</div>)', rf"\1{snapshot}\2", document, count=1)
     if count != 1:
         raise ValueError("missing Dioxus mount element")
@@ -623,13 +671,25 @@ def render_redirect(shell: str, old_path: str, target_path: str, site_url: str) 
     )
 
 
+def render_sale_legacy_redirect(shell: str, site_url: str) -> str:
+    document = render_private(shell, "/rv-sales/listing", "RV Sale Listing Moved | VL Rental", site_url)
+    sales_url = page_url(site_url, "/rv-sales")
+    script = (
+        "<script>(function(){var id=new URLSearchParams(window.location.search).get('sale_id')||'';"
+        "var valid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);"
+        f"window.location.replace(valid?{json.dumps(site_url + '/rv-sales/')}+id+'/'"
+        f":{json.dumps(sales_url)});}})();</script>"
+    )
+    return document.replace("</body>", script + "</body>", 1)
+
+
 def output_path(root: Path, path: str) -> Path:
     if path == "/":
         return root / "index.html"
     return root / path.strip("/") / "index.html"
 
 
-def prepare_artifact(root: Path, site_url: str) -> None:
+def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = None) -> None:
     index = root / "index.html"
     if not index.is_file():
         raise FileNotFoundError(f"missing built shell: {index}")
@@ -664,10 +724,22 @@ def prepare_artifact(root: Path, site_url: str) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
 
-    for route in PUBLIC_ROUTES:
+    sale_routes = load_sale_routes(sales_snapshot)
+    public_routes = PUBLIC_ROUTES + sale_routes
+
+    sales_root = root / "rv-sales"
+    if sales_root.is_dir():
+        for child in sales_root.iterdir():
+            if child.is_dir() and re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+                child.name,
+            ):
+                shutil.rmtree(child)
+
+    for route in public_routes:
         target = output_path(root, route.path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render_route(shell, route, site_url), encoding="utf-8")
+        target.write_text(render_route(shell, route, site_url, sale_routes), encoding="utf-8")
 
     for path, title in PRIVATE_ROUTES:
         target = output_path(root, path)
@@ -682,9 +754,13 @@ def prepare_artifact(root: Path, site_url: str) -> None:
             encoding="utf-8",
         )
 
+    legacy_sale = output_path(root, "/rv-sales/listing")
+    legacy_sale.parent.mkdir(parents=True, exist_ok=True)
+    legacy_sale.write_text(render_sale_legacy_redirect(shell, site_url), encoding="utf-8")
+
     sitemap_urls = "\n".join(
         f"    <url><loc>{html.escape(page_url(site_url, route.path))}</loc></url>"
-        for route in PUBLIC_ROUTES
+        for route in public_routes
     )
     (root / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -706,14 +782,15 @@ def prepare_artifact(root: Path, site_url: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) not in (2, 3):
-        print("usage: prepare_pages_artifact.py <artifact-root> [site-url]", file=sys.stderr)
+    if len(sys.argv) not in (2, 3, 4):
+        print("usage: prepare_pages_artifact.py <artifact-root> [site-url] [sales-json]", file=sys.stderr)
         return 2
     root = Path(sys.argv[1]).resolve()
-    site_url = (sys.argv[2] if len(sys.argv) == 3 else PRODUCTION_URL).rstrip("/")
-    prepare_artifact(root, site_url)
+    site_url = (sys.argv[2] if len(sys.argv) >= 3 else PRODUCTION_URL).rstrip("/")
+    sales_snapshot = Path(sys.argv[3]).resolve() if len(sys.argv) == 4 else None
+    prepare_artifact(root, site_url, sales_snapshot)
     print(
-        f"Prepared {len(PUBLIC_ROUTES)} public, {len(PRIVATE_ROUTES)} private "
+        f"Prepared {len(PUBLIC_ROUTES) + len(load_sale_routes(sales_snapshot))} public, {len(PRIVATE_ROUTES)} private "
         f"and {len(LEGACY_REDIRECTS)} legacy route documents."
     )
     return 0
