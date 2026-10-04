@@ -231,7 +231,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
         Route::ParkDetail { slug } => match slug.as_str() {
             "bear-creek" => SeoMetadata::indexed(
                 "RV Delivery to Bear Creek Provincial Park | VL Rental",
-                "Rent an RV for Bear Creek Provincial Park near Kelowna. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+                "Plan RV delivery to a reserved Bear Creek Provincial Park campsite, subject to site, trailer-fit and Westside Road access approval.",
                 "/parks/bear-creek",
             ),
             "fintry" => SeoMetadata::indexed(
@@ -251,7 +251,7 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             ),
             "okanagan-lake" => SeoMetadata::indexed(
                 "RV Delivery to Okanagan Lake Provincial Park | VL Rental",
-                "Rent an RV for Okanagan Lake Provincial Park near Summerland. We deliver and set up at approved North or South campground sites.",
+                "Plan RV delivery to an approved North or South campground site at Okanagan Lake Provincial Park, 11 km north of Summerland.",
                 "/parks/okanagan-lake",
             ),
             "okanagan-falls" => SeoMetadata::indexed(

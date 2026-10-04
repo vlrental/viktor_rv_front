@@ -145,9 +145,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/bear-creek",
         "RV Delivery to Bear Creek Provincial Park | VL Rental",
-        "Rent an RV for Bear Creek Provincial Park near Kelowna. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+        "Plan RV delivery to a reserved Bear Creek Provincial Park campsite, subject to site, trailer-fit and Westside Road access approval.",
         "RV Delivery to Bear Creek Provincial Park",
-        "Reserve your Bear Creek campsite, choose an available VL Rental trailer, and arrive to an RV that has been delivered, levelled and set up for your stay.",
+        "Bear Creek is on the west shore of Okanagan Lake via Westside Road. Summer camping and the RV are reserved separately, and delivery requires campsite and trailer-fit approval.",
         image="/assets/img/park-bear-creek.webp",
         kind="Service",
     ),
@@ -181,9 +181,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/okanagan-lake",
         "RV Delivery to Okanagan Lake Provincial Park | VL Rental",
-        "Rent an RV for Okanagan Lake Provincial Park near Summerland. We deliver and set up at approved North or South campground sites.",
+        "Plan RV delivery to an approved North or South campground site at Okanagan Lake Provincial Park, 11 km north of Summerland.",
         "RV Delivery to Okanagan Lake Provincial Park",
-        "Choose the North or South campground, reserve a suitable site and let VL Rental deliver and set up your RV beside Okanagan Lake.",
+        "Choose the distinct North or South campground at Okanagan Lake Provincial Park, then share the reserved loop, site, full bumper-to-bumper trailer length and hookups for delivery approval.",
         image="/assets/img/park-okanagan-lake.webp",
         kind="Service",
     ),
@@ -340,11 +340,11 @@ FEATURED_PARKS = (
     "/parks/ellison",
 )
 PARK_PLANNING_NOTES = {
-    "/parks/bear-creek": "Summer camping requires a reservation. Send us your site number and its maximum trailer length so we can check the Westside Road approach and RV fit.",
+    "/parks/bear-creek": "Send the site number, full bumper-to-bumper trailer length and hookups shown on your Bear Creek reservation. Confirm the services for your booked site. We will check Westside Road access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
     "/parks/fintry": "Share the campground loop, site number and permitted trailer length so we can check the Westside Road and Fintry Delta Road approach.",
     "/parks/ellison": "Send the site number and trailer-length limit; a reservation alone does not confirm that your selected RV fits or can be delivered safely.",
     "/parks/kekuli-bay": "Share the site number and trailer-length allowance so we can check the approach beyond the Highway 97 turn-off and setup space.",
-    "/parks/okanagan-lake": "Tell us whether you booked North or South, plus the loop, site number and trailer-length allowance.",
+    "/parks/okanagan-lake": "This guide covers the distinct North and South campgrounds, not every Okanagan Lake campground or Okanagan Mountain Provincial Park. Send North or South, the loop, site number, full bumper-to-bumper trailer length and reserved hookups.",
     "/parks/okanagan-falls": "The Green Lake Road approach has a narrow road and blind corner. Send the exact site and trailer-length limit before paying for the RV.",
     "/parks/vaseux-lake": "Check the specific site's trailer allowance and services, then send us its number and RV length limit before booking the RV.",
     "/parks/swiws": "Send the exact campsite and trailer-length allowance before committing; delivery requires a safe one-way road route within 150 km.",

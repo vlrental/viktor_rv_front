@@ -277,11 +277,32 @@ class PreparePagesArtifactTests(unittest.TestCase):
         rv = (root / "rv/jayco26/index.html").read_text(encoding="utf-8")
         hub = (root / "parks-in-our-range/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("Summer camping requires a reservation", park)
+        self.assertIn("full bumper-to-bumper trailer length", park)
+        self.assertIn("Confirm the services for your booked site", park)
+        self.assertIn("30-amp or 50-amp service", park)
         self.assertIn('href="https://example.test/rv/2025-open-range-1/"', park)
         self.assertIn('href="https://example.test/parks-in-our-range/"', rv)
         self.assertIn('href="https://example.test/parks/herald/"', hub)
         self.assertEqual(park.count("<h1>"), 1)
+
+    def test_bear_creek_snapshot_keeps_route_specific_planning_copy(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "parks/bear-creek/index.html").read_text(encoding="utf-8")
+
+        self.assertIn("Westside Road access approval", document)
+        self.assertIn("Summer camping and the RV are reserved separately", document)
+        self.assertNotIn("Okanagan Mountain Provincial Park", document)
+
+    def test_okanagan_lake_snapshot_identifies_the_two_park_campgrounds(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "parks/okanagan-lake/index.html").read_text(encoding="utf-8")
+
+        self.assertIn("11 km north of Summerland", document)
+        self.assertIn("distinct North or South campground", document)
+        self.assertIn("full bumper-to-bumper trailer length and hookups", document)
+        self.assertIn("Okanagan Mountain Provincial Park", document)
 
     def test_outer_range_park_snapshots_require_delivery_approval(self) -> None:
         root = self.make_artifact()
