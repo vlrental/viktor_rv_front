@@ -11,7 +11,7 @@ use super::catalog::{
 };
 use crate::api;
 use crate::components::{CookieConsent, CookieConsentContext, Icon, SortDropdown};
-use crate::data::IMG_HERO_RV;
+use crate::data::{IMG_HERO_RV_LARGE, IMG_HERO_RV_SMALL};
 use crate::faq_content::featured_faq_items;
 use crate::{BookingLaunchRequest, Route};
 
@@ -278,7 +278,19 @@ fn Hero(
 
     rsx! {
         section { class: "hero",
-            div { class: "hero-media", style: "background-image: url('{IMG_HERO_RV}');",
+            div { class: "hero-media",
+                img {
+                    class: "hero-poster",
+                    src: IMG_HERO_RV_LARGE,
+                    srcset: "{IMG_HERO_RV_SMALL} 768w, {IMG_HERO_RV_LARGE} 1535w",
+                    sizes: "100vw",
+                    width: "1535",
+                    height: "1024",
+                    alt: "",
+                    aria_hidden: "true",
+                    fetchpriority: "high",
+                    decoding: "async",
+                }
                 iframe {
                     id: "hero-youtube-player",
                     class: "hero-video",

@@ -44,8 +44,11 @@ class PreparePagesArtifactTests(unittest.TestCase):
     def make_artifact(self) -> Path:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        root = Path(temporary.name)
+        root = Path(temporary.name) / "public"
+        root.mkdir()
         (root / "index.html").write_text(SHELL, encoding="utf-8")
+        (root / "hero-bullet-overlook-768.jpg").write_bytes(b"small hero")
+        (root / "hero-bullet-overlook.webp").write_bytes(b"large hero")
         return root
 
     def make_sales_snapshot(self) -> Path:
@@ -133,6 +136,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
         for route in PUBLIC_ROUTES:
             path = root / ("index.html" if route.path == "/" else f"{route.path.strip('/')}/index.html")
             self.assertTrue(path.is_file(), route.path)
+
             document = path.read_text(encoding="utf-8")
             self.assertIn(f"<title>{html.escape(route.title)}</title>", document)
             self.assertIn('<div class="seo-prerender"', document)
@@ -143,6 +147,13 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn(f'rel="canonical" href="{canonical}"', document)
             self.assertIn(f'property="og:url" content="{canonical}"', document)
             self.assertIn('name="google-site-verification" content="verification-test-token"', document)
+
+        home = (root / "index.html").read_text(encoding="utf-8")
+        about = (root / "about" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('imagesrcset="/hero-bullet-overlook-768.jpg 768w, /hero-bullet-overlook.webp 1535w"', home)
+        self.assertIn('class="seo-prerender-home-poster"', home)
+        self.assertIn('fetchpriority="high"', home)
+        self.assertNotIn("hero-bullet-overlook-768", about)
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()

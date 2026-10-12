@@ -33,7 +33,7 @@ pub const IMG_BULLET_ORCHARD: Asset = asset!(
 );
 pub const IMG_BULLET_OVERLOOK: Asset = asset!(
     "/assets/img/bullet-overlook.webp",
-    AssetOptions::image().with_jpg().with_preload(true)
+    AssetOptions::image().with_jpg()
 );
 pub const IMG_BULLET_PEACHLAND: Asset = asset!(
     "/assets/img/bullet-peachland.webp",
@@ -125,7 +125,11 @@ pub fn rv_gallery(slug: &str) -> Vec<Asset> {
         _ => Vec::new(),
     }
 }
-pub const IMG_HERO_RV: Asset = IMG_BULLET_OVERLOOK;
+// Public files bypass Dioxus image transforms, which re-encode this already
+// compressed source losslessly and make the output several times larger.
+// Relative URLs are correct on the homepage for both root and Pages base paths.
+pub const IMG_HERO_RV_SMALL: &str = "./hero-bullet-overlook-768.jpg";
+pub const IMG_HERO_RV_LARGE: &str = "./hero-bullet-overlook.webp";
 
 /// Карточка каталога (RV).
 #[derive(Clone, Copy, PartialEq)]

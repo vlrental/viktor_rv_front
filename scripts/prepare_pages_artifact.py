@@ -24,6 +24,8 @@ EXPECTED_STYLES = {
     "faq", "parks", "rv_detail", "rv_sales", "terms",
 }
 FAQ_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "faq.json"
+HERO_SMALL_FILE = "hero-bullet-overlook-768.jpg"
+HERO_LARGE_FILE = "hero-bullet-overlook.webp"
 
 
 def load_faq_content() -> dict[str, object]:
@@ -443,7 +445,12 @@ def render_faq_items(*, featured_only: bool = False) -> str:
     return '<div class="seo-prerender-faq">' + "".join(sections) + "</div>"
 
 
-def render_snapshot(route: SeoRoute, site_url: str, sale_routes: tuple[SeoRoute, ...] = ()) -> str:
+def render_snapshot(
+    route: SeoRoute,
+    site_url: str,
+    sale_routes: tuple[SeoRoute, ...] = (),
+    hero_assets: tuple[str, str] | None = None,
+) -> str:
     by_path = {item.path: item for item in PUBLIC_ROUTES + sale_routes}
     is_park = route.path.startswith("/parks/")
     is_rv = route.path.startswith("/rv/")
@@ -513,6 +520,16 @@ def render_snapshot(route: SeoRoute, site_url: str, sale_routes: tuple[SeoRoute,
     elif route.path == "/":
         faq_content = render_faq_items(featured_only=True)
 
+    hero_poster = ""
+    if route.path == "/" and hero_assets:
+        small, large = hero_assets
+        hero_poster = (
+            f'<img class="seo-prerender-home-poster" src="{html.escape(large, quote=True)}" '
+            f'srcset="{html.escape(small, quote=True)} 768w, {html.escape(large, quote=True)} 1535w" '
+            'sizes="100vw" width="1535" height="1024" alt="" aria-hidden="true" '
+            'fetchpriority="high" decoding="async">'
+        )
+
     return (
         f'<div class="seo-prerender" data-seo-route="{html.escape(route.path, quote=True)}">'
         '<header class="seo-prerender-header">'
@@ -520,7 +537,7 @@ def render_snapshot(route: SeoRoute, site_url: str, sale_routes: tuple[SeoRoute,
         '<img src="/logo-512.png" width="36" height="36" alt="">VL Rental</a>'
         f'<nav aria-label="Main navigation">{nav}</nav></header>'
         '<main class="seo-prerender-main">'
-        '<section class="seo-prerender-hero">'
+        f'<section class="seo-prerender-hero">{hero_poster}'
         '<p class="seo-prerender-kicker">KELOWNA · OKANAGAN RV RENTALS</p>'
         f'<h1>{html.escape(route.heading)}</h1>{description}{planning}'
         '</section>'
@@ -602,6 +619,7 @@ def render_route(
     route: SeoRoute,
     site_url: str,
     sale_routes: tuple[SeoRoute, ...] = (),
+    hero_assets: tuple[str, str] | None = None,
 ) -> str:
     canonical = page_url(site_url, route.path)
     image = absolute_url(site_url, route.image)
@@ -628,7 +646,15 @@ def render_route(
         count=1,
         flags=re.DOTALL,
     )
-    snapshot = render_snapshot(route, site_url, sale_routes)
+    if route.path == "/" and hero_assets:
+        small, large = hero_assets
+        preload = (
+            f'<link rel="preload" as="image" href="{html.escape(large, quote=True)}" '
+            f'imagesrcset="{html.escape(small, quote=True)} 768w, {html.escape(large, quote=True)} 1535w" '
+            'imagesizes="100vw" fetchpriority="high">\n    '
+        )
+        document = document.replace("</head>", preload + "</head>", 1)
+    snapshot = render_snapshot(route, site_url, sale_routes, hero_assets)
     document, count = re.subn(r'(<div id="main">)(</div>)', rf"\1{snapshot}\2", document, count=1)
     if count != 1:
         raise ValueError("missing Dioxus mount element")
@@ -695,9 +721,22 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
         raise FileNotFoundError(f"missing built shell: {index}")
     shell = bundle_route_stylesheets(index.read_text(encoding="utf-8"), root)
 
+    source_root = Path(__file__).resolve().parents[1]
+    base_path = urlparse(site_url).path.rstrip("/")
+    hero_assets = (
+        f"{base_path}/{HERO_SMALL_FILE}",
+        f"{base_path}/{HERO_LARGE_FILE}",
+    )
+    for hero_file in (HERO_SMALL_FILE, HERO_LARGE_FILE):
+        source = source_root / "public" / hero_file
+        if not source.is_file():
+            raise FileNotFoundError(f"missing hero source: {source}")
+        # Like the RV previews below, these files are already compressed for
+        # delivery; restore their exact bytes after Dioxus re-encodes them.
+        shutil.copyfile(source, root / hero_file)
+
     # Dioxus fingerprints and converts images used by the app. SEO metadata uses
     # stable source URLs, so publish those files alongside the transformed assets.
-    source_root = Path(__file__).resolve().parents[1]
     # Dioxus re-encodes WebP assets losslessly, making these already compressed
     # previews much larger. Restore their exact source bytes after the build.
     preview_source = source_root / "public" / "rv-previews"
@@ -739,7 +778,7 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
     for route in public_routes:
         target = output_path(root, route.path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render_route(shell, route, site_url, sale_routes), encoding="utf-8")
+        target.write_text(render_route(shell, route, site_url, sale_routes, hero_assets), encoding="utf-8")
 
     for path, title in PRIVATE_ROUTES:
         target = output_path(root, path)
