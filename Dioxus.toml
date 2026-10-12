@@ -6,7 +6,6 @@ title = "RV Rentals Kelowna & Okanagan — Delivered & Set Up | VL Rental"
 
 [web.resource]
 style = [
-    "https://unpkg.com/lucide-static@1.24.0/font/lucide.css",
 ]
 
 [web.resource.dev]

@@ -155,6 +155,21 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('fetchpriority="high"', home)
         self.assertNotIn("hero-bullet-overlook-768", about)
 
+    def test_lucide_font_is_local_and_does_not_add_a_blocking_stylesheet(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        dioxus = (project / "Dioxus.toml").read_text(encoding="utf-8")
+        shell = (project / "index.html").read_text(encoding="utf-8")
+        main_css = (project / "assets" / "main.css").read_text(encoding="utf-8")
+
+        self.assertNotIn("unpkg.com/lucide-static", dioxus)
+        self.assertIn('src: url("/{base_path}/lucide-1.24.0.woff2") format("woff2")', shell)
+        self.assertIn("font-display: swap", shell)
+        self.assertIn('.icon-map-pin::before { content: "\\e111"; }', main_css)
+        self.assertIn('.icon-calendar::before { content: "\\e063"; }', main_css)
+        self.assertIn('.icon-phone::before { content: "\\e133"; }', main_css)
+        self.assertTrue((project / "public" / "lucide-1.24.0.woff2").is_file())
+        self.assertTrue((project / "public" / "vendor" / "lucide" / "LICENSE-1.24.0.txt").is_file())
+
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")
