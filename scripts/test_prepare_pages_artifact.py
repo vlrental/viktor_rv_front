@@ -160,6 +160,15 @@ class PreparePagesArtifactTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("full 21 ft bumper-to-bumper length", rockwood)
+        for slug, capacity, length in [
+            ("2015-keystone-bullet", "sleeps up to eight", "full 30 ft"),
+            ("2025-open-range-1", "sleeps up to eight", "full 30 ft"),
+            ("2025-highland-ridge-2", "sleeps up to eight", "full 30 ft"),
+            ("2017-keystone-outback-ultra", "sleeps up to six", "full 31 ft"),
+        ]:
+            document = (root / "rv" / slug / "index.html").read_text(encoding="utf-8")
+            self.assertIn(capacity, document.lower())
+            self.assertIn(length, document)
 
         for old_path, target_path in LEGACY_REDIRECTS:
             document = (root / old_path.strip("/") / "index.html").read_text(encoding="utf-8")

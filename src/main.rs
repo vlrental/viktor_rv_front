@@ -199,7 +199,10 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
             .map(|listing| {
                 let description = match listing.slug {
                     "jayco26" => "Rent the Jayco 26 ft model from VL Rental with delivery and setup in Kelowna and approved Okanagan destinations. Its full bumper-to-bumper length is 30 ft.",
+                    "2015-keystone-bullet" => "Rent the Keystone Bullet 272BHS from VL Rental. It sleeps up to eight and has a full 30 ft bumper-to-bumper length, with delivery and setup in approved Okanagan destinations.",
                     "2014-forest-river-rockwood" => "Rent the Forest River Rockwood 18 ft model from VL Rental with delivery and setup in Kelowna and approved Okanagan destinations. Its full bumper-to-bumper length is 21 ft.",
+                    "2025-open-range-1" | "2025-highland-ridge-2" => "Rent this Open Range 26BHS from VL Rental. It sleeps up to eight and has a full 30 ft bumper-to-bumper length, with delivery and setup in approved Okanagan destinations.",
+                    "2017-keystone-outback-ultra" => "Rent the Keystone Outback Ultra-Lite from VL Rental. It sleeps up to six and has a full 31 ft bumper-to-bumper length, with delivery and setup in approved Okanagan destinations.",
                     _ => return SeoMetadata::indexed(
                         format!("{} Rental in Kelowna | VL Rental", listing.title),
                         format!(
@@ -672,6 +675,29 @@ mod seo_tests {
         assert!(metadata.title.contains("18 ft Model"));
         assert!(metadata.description.contains("18 ft model"));
         assert!(metadata.description.contains("21 ft"));
+
+        for (slug, capacity, length) in [
+            ("2015-keystone-bullet-272bhs-bunk-bed", "eight", "30 ft"),
+            (
+                "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
+                "eight",
+                "30 ft",
+            ),
+            (
+                "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+                "eight",
+                "30 ft",
+            ),
+            (
+                "keystone-outback-ultra-lite-family-trailer-with-kids-room",
+                "six",
+                "31 ft",
+            ),
+        ] {
+            let metadata = seo_metadata(&Route::RvDetail { slug: slug.into() });
+            assert!(metadata.description.contains(capacity));
+            assert!(metadata.description.contains(length));
+        }
     }
 
     #[test]

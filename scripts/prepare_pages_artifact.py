@@ -267,9 +267,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv/2015-keystone-bullet",
         "Keystone Bullet Family RV Rental in Kelowna | VL Rental",
-        "Rent the 2015 Keystone Bullet family travel trailer in Kelowna. Sleeps up to ten with delivery and setup in the Okanagan.",
+        "Rent the 2015 Keystone Bullet family travel trailer in Kelowna. Sleeps up to eight, with a full 30 ft bumper-to-bumper length and Okanagan delivery and setup.",
         "2015 Keystone Bullet Family RV Rental",
-        "A spacious family travel trailer that sleeps up to ten, delivered and set up at your approved Okanagan destination.",
+        "A spacious family travel trailer that sleeps up to eight, delivered and set up at your approved Okanagan destination. Campsites must fit its full 30 ft bumper-to-bumper length.",
         kind="Service",
     ),
     SeoRoute(
@@ -283,25 +283,25 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv/2025-open-range-1",
         "2025 Open Range Family RV Rental in Kelowna | VL Rental",
-        "Rent a 2025 Open Range family travel trailer in Kelowna with delivery and setup across approved Okanagan destinations.",
+        "Rent a 2025 Open Range 26BHS family travel trailer in Kelowna. It sleeps up to eight and has a full 30 ft bumper-to-bumper length.",
         "2025 Open Range Family RV Rental",
-        "A modern family bunkhouse delivered, levelled and set up at your approved Okanagan campsite.",
+        "A modern family bunkhouse that sleeps up to eight, delivered, levelled and set up at your approved Okanagan campsite. Campsites must fit its full 30 ft bumper-to-bumper length.",
         kind="Service",
     ),
     SeoRoute(
         "/rv/2017-keystone-outback-ultra",
         "Keystone Outback Ultra RV Rental in Kelowna | VL Rental",
-        "Rent the 2017 Keystone Outback Ultra travel trailer in Kelowna. Sleeps up to eight with Okanagan delivery and setup.",
+        "Rent the 2017 Keystone Outback Ultra travel trailer in Kelowna. Sleeps up to six, with a full 31 ft bumper-to-bumper length and Okanagan delivery and setup.",
         "2017 Keystone Outback Ultra RV Rental",
-        "A family travel trailer that sleeps up to eight, delivered and set up at your approved Okanagan destination.",
+        "A family travel trailer that sleeps up to six, delivered and set up at your approved Okanagan destination. Campsites must fit its full 31 ft bumper-to-bumper length.",
         kind="Service",
     ),
     SeoRoute(
         "/rv/2025-highland-ridge-2",
         "2025 Highland Ridge RV Rental in Kelowna | VL Rental",
-        "Rent a 2025 Highland Ridge family travel trailer in Kelowna with delivery and setup at approved Okanagan destinations.",
+        "Rent a 2025 Highland Ridge Open Range 26BHS in Kelowna. It sleeps up to eight and has a full 30 ft bumper-to-bumper length.",
         "2025 Highland Ridge Family RV Rental",
-        "A modern family bunkhouse delivered, levelled and set up at your approved Okanagan campsite.",
+        "A modern family bunkhouse that sleeps up to eight, delivered, levelled and set up at your approved Okanagan campsite. Campsites must fit its full 30 ft bumper-to-bumper length.",
         kind="Service",
     ),
 )

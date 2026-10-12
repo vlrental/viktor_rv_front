@@ -23,6 +23,10 @@ const JAYCO_LENGTH_NOTE: &str =
     "26 ft is the model designation; campsites must fit the full 30 ft bumper-to-bumper length.";
 const ROCKWOOD_LENGTH_NOTE: &str =
     "18 ft is the model/body designation; campsites must fit the full 21 ft bumper-to-bumper length.";
+const BULLET_LENGTH_NOTE: &str = "Campsites must fit the full 30 ft bumper-to-bumper length.";
+const OPEN_RANGE_LENGTH_NOTE: &str =
+    "26BHS is the model designation; campsites must fit the full 30 ft bumper-to-bumper length.";
+const OUTBACK_LENGTH_NOTE: &str = "Campsites must fit the full 31 ft bumper-to-bumper length.";
 
 #[derive(Clone, Copy)]
 struct GoodToKnowCopy {
@@ -142,7 +146,10 @@ fn static_rv_listing(slug: &str) -> Option<Listing> {
 fn rv_length_note(slug: &str) -> Option<&'static str> {
     match canonical_rv_slug(slug) {
         "jayco26" => Some(JAYCO_LENGTH_NOTE),
+        "2015-keystone-bullet" => Some(BULLET_LENGTH_NOTE),
         "2014-forest-river-rockwood" => Some(ROCKWOOD_LENGTH_NOTE),
+        "2025-open-range-1" | "2025-highland-ridge-2" => Some(OPEN_RANGE_LENGTH_NOTE),
+        "2017-keystone-outback-ultra" => Some(OUTBACK_LENGTH_NOTE),
         _ => None,
     }
 }
@@ -220,6 +227,13 @@ fn DynamicRvDetail(
     let visible_review_summary = review_summary.read().clone();
     let review_slug = rental.slug.clone();
     let review_rental_name = rental.name.clone();
+    let supplemental_length_note = match canonical_rv_slug(&rental.slug) {
+        "2015-keystone-bullet"
+        | "2025-open-range-1"
+        | "2025-highland-ridge-2"
+        | "2017-keystone-outback-ultra" => rv_length_note(&rental.slug),
+        _ => None,
+    };
     rsx! {
         DynamicTitleHead { rental: rental.clone(), review_summary: visible_review_summary.clone() }
         DynamicGallery { rental: rental.clone(), media: value.media.clone() }
@@ -241,7 +255,7 @@ fn DynamicRvDetail(
                     div { class: "rvd-highlights", for feature in highlights { div { key: "{feature.feature_id}", class: "rvd-hl", ApiIcon { name: feature.icon_name.clone(), size: 20 } div { class: "rvd-hl-t", "{feature.label}" } div { class: "rvd-hl-d", "{feature.description}" } } } }
                 }
                 InlineAvailabilityCalendar { rental: rental.clone(), starts_on, ends_on }
-                div { class: "rvd-sec", h2 { class: "rvd-h", "About this RV" } p { class: "rvd-p", "{rental.description}" } }
+                div { class: "rvd-sec", h2 { class: "rvd-h", "About this RV" } p { class: "rvd-p", "{rental.description}" } if let Some(note) = supplemental_length_note { p { class: "rvd-p", "{note}" } } }
                 div { class: "rvd-sec", h2 { class: "rvd-h", "What this RV offers" }
                     if amenities.is_empty() { p { class: "rvd-p", "Amenities are being updated. Contact us for the complete equipment list." } }
                     else { div { class: "rvd-amenities", for feature in amenities { div { key: "{feature.feature_id}", class: "rvd-am", ApiIcon { name: feature.icon_name.clone(), size: 18 } span { "{feature.label}" } } } } }
@@ -664,7 +678,7 @@ fn Overview() -> Element {
             div {
                 div { class: "rvd-overview-t", "Entire travel trailer · hosted by Viktor" }
                 div { class: "rvd-overview-s",
-                    "Sleeps 10 · short stays use 3-night minimum pricing · Delivery only"
+                    "Sleeps 8 · short stays use 3-night minimum pricing · Delivery only"
                 }
             }
             div { class: "rvd-avatar", style: "background-image: url('{IMG_HOST}');" }
@@ -677,8 +691,8 @@ fn Highlights() -> Element {
     rsx! {
         div { class: "rvd-highlights",
             for (icon , title , desc) in [
-                ("users", "Sleeps 10", "Queen bed + double bunks"),
-                ("ruler", "32 ft length", "Bumper-to-bumper, 1 slide-out"),
+                ("users", "Sleeps 8", "Queen bed + double bunks"),
+                ("ruler", "30 ft length", "Bumper-to-bumper, 1 slide-out"),
                 ("move-horizontal", "1 slide-out", "Extra living space"),
                 ("shield-check", "Family ready", "Spacious bunkhouse layout"),
             ]
@@ -699,7 +713,7 @@ fn AboutRv() -> Element {
         div { class: "rvd-sec",
             h2 { class: "rvd-h", "About this RV" }
             p { class: "rvd-p",
-                "A comfortable Keystone Bullet 272BHS travel trailer that's perfect for family getaways across the Okanagan. Sleeps up to 10 with a private queen bedroom, double bunks and convertible living areas, plus a full kitchen and bathroom with shower, TV, powered awning, furnace and A/C. Fully equipped and meticulously maintained, with delivery and setup at your campsite within 150 km of Kelowna."
+                "A comfortable Keystone Bullet 272BHS travel trailer for family getaways across the Okanagan. It sleeps up to 8, and campsites must fit its full 30 ft bumper-to-bumper length. VL Rental delivers and sets it up at approved destinations."
             }
         }
     }
@@ -716,7 +730,7 @@ fn Amenities() -> Element {
                     ("refrigerator", "Fridge & freezer"),
                     ("flame", "Furnace heating"),
                     ("snowflake", "Air conditioning"),
-                    ("bed-double", "Sleeps 10"),
+                    ("bed-double", "Sleeps 8"),
                     ("bath", "Bathroom & shower"),
                     ("tv", "TV"),
                     ("battery-charging", "Battery & solar"),
@@ -1423,6 +1437,24 @@ mod availability_tests {
         assert!(rv_length_note("forest-river-rockwood-19-ft")
             .expect("Rockwood fallback length note")
             .contains("full 21 ft"));
+        assert!(rv_length_note("2015-keystone-bullet-272bhs-bunk-bed")
+            .expect("Bullet fallback length note")
+            .contains("full 30 ft"));
+        assert!(
+            rv_length_note("brand-new-open-range-conventional-26-bhs-bunk-bed-1")
+                .expect("Open Range fallback length note")
+                .contains("full 30 ft")
+        );
+        assert!(
+            rv_length_note("brand-new-highland-ridge-open-range-26bhs-bunk-bed-2")
+                .expect("Highland Ridge fallback length note")
+                .contains("full 30 ft")
+        );
+        assert!(
+            rv_length_note("keystone-outback-ultra-lite-family-trailer-with-kids-room")
+                .expect("Outback fallback length note")
+                .contains("full 31 ft")
+        );
         assert!(rv_length_note("not-a-listed-rv").is_none());
     }
 
