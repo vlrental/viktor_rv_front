@@ -3,7 +3,8 @@ use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
 
 use crate::data::{
-    IMG_BULLET, IMG_JAYCO, IMG_OPENRANGE, IMG_OPENRANGE2, IMG_OUTBACK, IMG_ROCKWOOD,
+    canonical_rv_slug, IMG_BULLET, IMG_JAYCO, IMG_OPENRANGE, IMG_OPENRANGE2, IMG_OUTBACK,
+    IMG_ROCKWOOD,
 };
 use crate::{
     api,
@@ -1203,6 +1204,7 @@ mod catalog_search_tests {
 #[component]
 pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
     let image = rental_image(&rental);
+    let detail_slug = canonical_rv_slug(&rental.slug).to_string();
     let rating = rental
         .review_rating
         .as_deref()
@@ -1215,7 +1217,7 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
         rental.capacity
     );
     rsx! {
-        Link { class: "listing-card", to: Route::RvDetail { slug: rental.slug.clone() },
+        Link { class: "listing-card", to: Route::RvDetail { slug: detail_slug },
             div { class: "lc-image", style: "background-image: url('{image}');",
                 div { class: "lc-badge", "Sleeps {rental.capacity}" }
             }

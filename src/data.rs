@@ -4,6 +4,41 @@ use dioxus::prelude::*;
 
 pub const PHONE: &str = "+1 (250) 878 5874";
 
+const RV_SLUG_ALIASES: [(&str, &str); 6] = [
+    ("jayco26", "brand-new-jayco-26ft-5th-wheel-3"),
+    (
+        "2015-keystone-bullet",
+        "2015-keystone-bullet-272bhs-bunk-bed",
+    ),
+    ("2014-forest-river-rockwood", "forest-river-rockwood-19-ft"),
+    (
+        "2025-open-range-1",
+        "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
+    ),
+    (
+        "2017-keystone-outback-ultra",
+        "keystone-outback-ultra-lite-family-trailer-with-kids-room",
+    ),
+    (
+        "2025-highland-ridge-2",
+        "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+    ),
+];
+
+pub(crate) fn canonical_rv_slug(slug: &str) -> &str {
+    RV_SLUG_ALIASES
+        .iter()
+        .find_map(|(canonical, api)| (*api == slug).then_some(*canonical))
+        .unwrap_or(slug)
+}
+
+pub(crate) fn api_rental_slug(slug: &str) -> &str {
+    RV_SLUG_ALIASES
+        .iter()
+        .find_map(|(canonical, api)| (*canonical == slug).then_some(*api))
+        .unwrap_or(slug)
+}
+
 pub const IMG_BULLET: Asset = asset!("/assets/img/bullet.webp", AssetOptions::image().with_jpg());
 pub const IMG_JAYCO: Asset = asset!("/assets/img/jayco.webp", AssetOptions::image().with_jpg());
 pub const IMG_OPENRANGE: Asset = asset!(
@@ -172,7 +207,7 @@ pub fn rv_listings() -> Vec<Listing> {
         Listing {
             id: 3,
             slug: "2014-forest-river-rockwood",
-            title: "Forest River Rockwood",
+            title: "Forest River Rockwood 18 ft Model",
             meta: "Travel trailer · Sleeps 4",
             badge: "Great value",
             rating: "4.7",
@@ -244,5 +279,18 @@ mod gallery_tests {
                 listing.slug
             );
         }
+    }
+
+    #[test]
+    fn rv_slug_aliases_round_trip_without_changing_unknown_slugs() {
+        for (canonical, api) in RV_SLUG_ALIASES {
+            assert_eq!(canonical_rv_slug(api), canonical);
+            assert_eq!(canonical_rv_slug(canonical), canonical);
+            assert_eq!(api_rental_slug(canonical), api);
+            assert_eq!(api_rental_slug(api), api);
+        }
+
+        assert_eq!(canonical_rv_slug("admin-created-rv"), "admin-created-rv");
+        assert_eq!(api_rental_slug("admin-created-rv"), "admin-created-rv");
     }
 }

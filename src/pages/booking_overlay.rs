@@ -9,7 +9,7 @@ use super::{
 use crate::{
     api,
     components::{Icon, PriceInfoKind, PriceInfoPopover, ReviewForm},
-    data::rv_gallery,
+    data::{canonical_rv_slug, rv_gallery},
     pricing, AuthSession, Route,
 };
 
@@ -2451,7 +2451,9 @@ pub(crate) fn UnifiedBookingOverlay(
             .unwrap_or_else(|| selected_slug.peek().clone());
         api::remove_sensitive_saved(SAVED_DEPOSIT_INSTRUCTIONS);
         deposit_overlay_booking.set(None);
-        navigator.push(Route::RvDetail { slug: return_slug });
+        navigator.push(Route::RvDetail {
+            slug: canonical_rv_slug(&return_slug).to_string(),
+        });
     };
 
     let selected_name_for_booking = selected_name.clone();

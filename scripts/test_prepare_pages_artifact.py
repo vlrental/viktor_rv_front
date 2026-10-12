@@ -154,6 +154,17 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('class="seo-prerender-home-poster"', home)
         self.assertIn('fetchpriority="high"', home)
         self.assertNotIn("hero-bullet-overlook-768", about)
+        jayco = (root / "rv" / "jayco26" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("full 30 ft bumper-to-bumper length", jayco)
+        rockwood = (root / "rv" / "2014-forest-river-rockwood" / "index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("full 21 ft bumper-to-bumper length", rockwood)
+
+        for old_path, target_path in LEGACY_REDIRECTS:
+            document = (root / old_path.strip("/") / "index.html").read_text(encoding="utf-8")
+            canonical = page_url("https://example.test", target_path)
+            self.assertIn(f'rel="canonical" href="{canonical}"', document)
 
     def test_lucide_font_is_local_and_does_not_add_a_blocking_stylesheet(self) -> None:
         project = Path(__file__).resolve().parents[1]

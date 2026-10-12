@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use super::booking_overlay::{
     has_saved_pending_payment, should_open_booking_overlay, UnifiedBookingOverlay,
 };
-use crate::data::{rv_gallery, Listing, PHONE};
+use crate::data::{api_rental_slug, canonical_rv_slug, rv_gallery, Listing, PHONE};
 use crate::{
     api,
     components::{Icon, PriceInfoKind, PriceInfoPopover, RentalReviewsSection},
@@ -19,6 +19,10 @@ const IMG_HOST: Asset = asset!(
     "/assets/img/host-viktor.webp",
     AssetOptions::image().with_jpg()
 );
+const JAYCO_LENGTH_NOTE: &str =
+    "26 ft is the model designation; campsites must fit the full 30 ft bumper-to-bumper length.";
+const ROCKWOOD_LENGTH_NOTE: &str =
+    "18 ft is the model/body designation; campsites must fit the full 21 ft bumper-to-bumper length.";
 
 #[derive(Clone, Copy)]
 struct GoodToKnowCopy {
@@ -129,33 +133,17 @@ pub fn RvDetail(slug: String) -> Element {
 }
 
 fn static_rv_listing(slug: &str) -> Option<Listing> {
-    let legacy_slug = match slug {
-        "brand-new-jayco-26ft-5th-wheel-3" => "jayco26",
-        "2015-keystone-bullet-272bhs-bunk-bed" => "2015-keystone-bullet",
-        "forest-river-rockwood-19-ft" => "2014-forest-river-rockwood",
-        "brand-new-open-range-conventional-26-bhs-bunk-bed-1" => "2025-open-range-1",
-        "keystone-outback-ultra-lite-family-trailer-with-kids-room" => {
-            "2017-keystone-outback-ultra"
-        }
-        "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2" => "2025-highland-ridge-2",
-        _ => slug,
-    };
+    let legacy_slug = canonical_rv_slug(slug);
     crate::data::rv_listings()
         .into_iter()
         .find(|listing| listing.slug == legacy_slug)
 }
 
-fn api_rental_slug(slug: &str) -> &str {
-    match slug {
-        "jayco26" => "brand-new-jayco-26ft-5th-wheel-3",
-        "2015-keystone-bullet" => "2015-keystone-bullet-272bhs-bunk-bed",
-        "2014-forest-river-rockwood" => "forest-river-rockwood-19-ft",
-        "2025-open-range-1" => "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
-        "2017-keystone-outback-ultra" => {
-            "keystone-outback-ultra-lite-family-trailer-with-kids-room"
-        }
-        "2025-highland-ridge-2" => "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
-        _ => slug,
+fn rv_length_note(slug: &str) -> Option<&'static str> {
+    match canonical_rv_slug(slug) {
+        "jayco26" => Some(JAYCO_LENGTH_NOTE),
+        "2014-forest-river-rockwood" => Some(ROCKWOOD_LENGTH_NOTE),
+        _ => None,
     }
 }
 
@@ -189,6 +177,9 @@ fn StaticRvFallback(listing: Listing) -> Element {
                 div { class: "rvd-sec",
                     h2 { class: "rvd-h", "About this RV" }
                     p { class: "rvd-p", "{listing.title} is an RV rental based in Kelowna, British Columbia. {listing.meta}. We deliver and set up RVs at campsites in the Okanagan; customer pickup is not offered." }
+                    if let Some(note) = rv_length_note(listing.slug) {
+                        p { class: "rvd-p", "{note}" }
+                    }
                     p { class: "rvd-p", "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay." }
                     a { class: "rvd-reserve", href: "tel:{PHONE}", "Call us about this RV" }
                 }
@@ -1426,6 +1417,13 @@ mod availability_tests {
         }
         assert!(static_rv_listing("not-a-listed-rv").is_none());
         assert_eq!(api_rental_slug("not-a-listed-rv"), "not-a-listed-rv");
+        assert!(rv_length_note("brand-new-jayco-26ft-5th-wheel-3")
+            .expect("Jayco fallback length note")
+            .contains("full 30 ft"));
+        assert!(rv_length_note("forest-river-rockwood-19-ft")
+            .expect("Rockwood fallback length note")
+            .contains("full 21 ft"));
+        assert!(rv_length_note("not-a-listed-rv").is_none());
     }
 
     #[test]

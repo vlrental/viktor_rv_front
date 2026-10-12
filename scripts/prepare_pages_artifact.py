@@ -259,9 +259,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv/jayco26",
         "Jayco 26′ Fifth Wheel Rental in Kelowna | VL Rental",
-        "Rent the Jayco 26′ fifth wheel in Kelowna with delivery and setup at approved Okanagan destinations. Sleeps four with a full kitchen.",
+        "Rent the Jayco fifth wheel in Kelowna with delivery and setup at approved Okanagan destinations. The 26 ft model designation has a full 30 ft bumper-to-bumper length.",
         "Jayco 26′ Fifth Wheel Rental",
-        "A prepared RV for couples and small families, delivered and set up at your approved Okanagan destination.",
+        "A prepared RV for couples and small families, delivered and set up at your approved Okanagan destination. The 26 ft model designation has a full 30 ft bumper-to-bumper length, so campsites must fit the full exterior length.",
         kind="Service",
     ),
     SeoRoute(
@@ -275,9 +275,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv/2014-forest-river-rockwood",
         "Forest River Rockwood RV Rental in Kelowna | VL Rental",
-        "Rent the 2014 Forest River Rockwood travel trailer in Kelowna with delivery and setup at approved Okanagan destinations.",
-        "2014 Forest River Rockwood RV Rental",
-        "A comfortable travel trailer for couples or small families, delivered and set up at your approved destination.",
+        "Rent the 2014 Forest River Rockwood 18 ft model in Kelowna with delivery and setup. Its full bumper-to-bumper length is 21 ft for campsite fit.",
+        "2014 Forest River Rockwood 18 ft Model RV Rental",
+        "A comfortable travel trailer for couples or small families, delivered and set up at your approved destination. The 18 ft model/body designation has a full 21 ft bumper-to-bumper length, so campsites must fit the full exterior length.",
         kind="Service",
     ),
     SeoRoute(
@@ -327,8 +327,18 @@ LEGACY_REDIRECTS = (
     ("/portfolio/2017KeystoneOutbackUltra", "/rv/2017-keystone-outback-ultra"),
     ("/portfolio/2025HighlandRidge2", "/rv/2025-highland-ridge-2"),
     ("/portfolio/2025openrange1", "/rv/2025-open-range-1"),
+    ("/rv/brand-new-jayco-26ft-5th-wheel-3", "/rv/jayco26"),
+    ("/rv/2015-keystone-bullet-272bhs-bunk-bed", "/rv/2015-keystone-bullet"),
     ("/rv/forest-river-rockwood-19-ft", "/rv/2014-forest-river-rockwood"),
     ("/rv/brand-new-open-range-conventional-26-bhs-bunk-bed-1", "/rv/2025-open-range-1"),
+    (
+        "/rv/keystone-outback-ultra-lite-family-trailer-with-kids-room",
+        "/rv/2017-keystone-outback-ultra",
+    ),
+    (
+        "/rv/brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+        "/rv/2025-highland-ridge-2",
+    ),
 )
 
 FEATURED_RVS = (

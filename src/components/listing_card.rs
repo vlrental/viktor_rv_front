@@ -1,13 +1,15 @@
 use dioxus::prelude::*;
 
 use crate::components::Icon;
-use crate::data::Listing;
+use crate::data::{canonical_rv_slug, Listing};
 use crate::Route;
 
 /// Карточка листинга из дизайна «Listing Card» (bnVxN) — RV.
 #[component]
 pub fn ListingCard(listing: Listing) -> Element {
-    let to = Route::RvDetail { slug: listing.slug.to_string() };
+    let to = Route::RvDetail {
+        slug: canonical_rv_slug(listing.slug).to_string(),
+    };
     rsx! {
         Link { class: "listing-card", to,
             div {

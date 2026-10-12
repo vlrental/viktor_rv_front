@@ -195,14 +195,23 @@ fn seo_metadata(route: &Route) -> SeoMetadata {
         }
         Route::RvDetail { slug } => data::rv_listings()
             .into_iter()
-            .find(|listing| listing.slug == slug)
+            .find(|listing| listing.slug == data::canonical_rv_slug(slug))
             .map(|listing| {
+                let description = match listing.slug {
+                    "jayco26" => "Rent the Jayco 26 ft model from VL Rental with delivery and setup in Kelowna and approved Okanagan destinations. Its full bumper-to-bumper length is 30 ft.",
+                    "2014-forest-river-rockwood" => "Rent the Forest River Rockwood 18 ft model from VL Rental with delivery and setup in Kelowna and approved Okanagan destinations. Its full bumper-to-bumper length is 21 ft.",
+                    _ => return SeoMetadata::indexed(
+                        format!("{} Rental in Kelowna | VL Rental", listing.title),
+                        format!(
+                            "Rent the {} from VL Rental with delivery and setup available in Kelowna and approved Okanagan destinations. View details and request your dates.",
+                            listing.title
+                        ),
+                        &format!("/rv/{}", listing.slug),
+                    ),
+                };
                 SeoMetadata::indexed(
                     format!("{} Rental in Kelowna | VL Rental", listing.title),
-                    format!(
-                        "Rent the {} from VL Rental with delivery and setup available in Kelowna and approved Okanagan destinations. View details and request your dates.",
-                        listing.title
-                    ),
+                    description,
                     &format!("/rv/{}", listing.slug),
                 )
             })
@@ -639,6 +648,30 @@ mod seo_tests {
             );
             assert!(metadata.title.contains(listing.title));
         }
+    }
+
+    #[test]
+    fn api_rv_aliases_publish_the_existing_short_canonical_urls() {
+        let metadata = seo_metadata(&Route::RvDetail {
+            slug: "brand-new-jayco-26ft-5th-wheel-3".into(),
+        });
+
+        assert_eq!(metadata.canonical, format!("{SITE_URL}/rv/jayco26/"));
+        assert!(metadata.title.contains("Jayco"));
+        assert!(metadata.description.contains("26 ft model"));
+        assert!(metadata.description.contains("30 ft"));
+
+        let metadata = seo_metadata(&Route::RvDetail {
+            slug: "forest-river-rockwood-19-ft".into(),
+        });
+
+        assert_eq!(
+            metadata.canonical,
+            format!("{SITE_URL}/rv/2014-forest-river-rockwood/")
+        );
+        assert!(metadata.title.contains("18 ft Model"));
+        assert!(metadata.description.contains("18 ft model"));
+        assert!(metadata.description.contains("21 ft"));
     }
 
     #[test]
