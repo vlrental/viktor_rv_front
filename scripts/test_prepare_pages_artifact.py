@@ -12,6 +12,7 @@ from scripts.prepare_pages_artifact import (
     LEGACY_REDIRECTS,
     PUBLIC_ROUTES,
     bundle_route_stylesheets,
+    load_terms_content,
     page_url,
     prepare_artifact,
 )
@@ -155,10 +156,12 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('fetchpriority="high"', home)
         self.assertNotIn("hero-bullet-overlook-768", about)
         jayco = (root / "rv" / "jayco26" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("sleeps up to four", jayco.lower())
         self.assertIn("full 30 ft bumper-to-bumper length", jayco)
         rockwood = (root / "rv" / "2014-forest-river-rockwood" / "index.html").read_text(
             encoding="utf-8"
         )
+        self.assertIn("sleeps up to four", rockwood.lower())
         self.assertIn("full 21 ft bumper-to-bumper length", rockwood)
         for slug, capacity, length in [
             ("2015-keystone-bullet", "sleeps up to eight", "full 30 ft"),
@@ -339,6 +342,23 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('href="https://example.test/contact/"', document)
         self.assertIn('href="https://example.test/terms/"', document)
         self.assertNotIn("propane refill", document.lower())
+
+    def test_terms_prerender_uses_complete_canonical_content(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "terms/index.html").read_text(encoding="utf-8")
+        terms = load_terms_content()
+
+        self.assertEqual(len(terms["sections"]), 20)
+        self.assertEqual(document.count('<section id="terms-'), 21)
+        for phrase in [
+            "RV Preparation Fee: CA$97 once per booking.",
+            "Stationary Plus Protection: CA$150 fixed per trip",
+            "separate refundable CA$1,000 damage deposit",
+            "100% of the trip price when the request is received 14 days or less before delivery",
+        ]:
+            self.assertIn(phrase, document)
+        self.assertIn("21. Contact and notices", document)
 
     def test_park_and_rv_documents_have_relevant_crawlable_links(self) -> None:
         root = self.make_artifact()

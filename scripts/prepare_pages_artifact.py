@@ -36,6 +36,7 @@ EXPECTED_STYLES = {
     "faq", "parks", "rv_detail", "rv_sales", "terms",
 }
 FAQ_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "faq.json"
+TERMS_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "terms.json"
 HERO_SMALL_FILE = "hero-bullet-overlook-768.jpg"
 HERO_LARGE_FILE = "hero-bullet-overlook.webp"
 
@@ -46,6 +47,26 @@ def load_faq_content() -> dict[str, object]:
     items = [item for category in categories for item in category.get("items", [])]
     if len(categories) != 5 or len(items) != 50:
         raise ValueError("content/faq.json must contain five categories and 50 questions")
+    return document
+
+
+def load_terms_content() -> dict[str, object]:
+    document = json.loads(TERMS_CONTENT_PATH.read_text(encoding="utf-8"))
+    sections = document.get("sections", [])
+    ids = [section.get("id", "") for section in sections]
+    if len(sections) != 20 or len(set(ids)) != 20:
+        raise ValueError("content/terms.json must contain 20 uniquely identified sections")
+    for section in sections:
+        paragraphs = section.get("paragraphs", [])
+        bullets = section.get("bullets", [])
+        if (
+            not section.get("id", "").strip()
+            or not section.get("title", "").strip()
+            or not paragraphs
+            or any(not text.strip() for text in paragraphs)
+            or any(not text.strip() for text in bullets)
+        ):
+            raise ValueError("content/terms.json contains an incomplete section")
     return document
 
 
@@ -271,9 +292,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv/jayco26",
         "Jayco 26′ Fifth Wheel Rental in Kelowna | VL Rental",
-        "Rent the Jayco fifth wheel in Kelowna with delivery and setup at approved Okanagan destinations. The 26 ft model designation has a full 30 ft bumper-to-bumper length.",
+        "Rent the Jayco fifth wheel in Kelowna with delivery and setup at approved Okanagan destinations. Sleeps up to four. The 26 ft model designation has a full 30 ft bumper-to-bumper length.",
         "Jayco 26′ Fifth Wheel Rental",
-        "A prepared RV for couples and small families, delivered and set up at your approved Okanagan destination. The 26 ft model designation has a full 30 ft bumper-to-bumper length, so campsites must fit the full exterior length.",
+        "A prepared RV that sleeps up to four, delivered and set up at your approved Okanagan destination. The 26 ft model designation has a full 30 ft bumper-to-bumper length, so campsites must fit the full exterior length.",
         kind="Service",
     ),
     SeoRoute(
@@ -287,9 +308,9 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/rv/2014-forest-river-rockwood",
         "Forest River Rockwood RV Rental in Kelowna | VL Rental",
-        "Rent the 2014 Forest River Rockwood 18 ft model in Kelowna with delivery and setup. Its full bumper-to-bumper length is 21 ft for campsite fit.",
+        "Rent the 2014 Forest River Rockwood 18 ft model in Kelowna with delivery and setup. Sleeps up to four, with a full 21 ft bumper-to-bumper length for campsite fit.",
         "2014 Forest River Rockwood 18 ft Model RV Rental",
-        "A comfortable travel trailer for couples or small families, delivered and set up at your approved destination. The 18 ft model/body designation has a full 21 ft bumper-to-bumper length, so campsites must fit the full exterior length.",
+        "A comfortable travel trailer that sleeps up to four, delivered and set up at your approved destination. The 18 ft model/body designation has a full 21 ft bumper-to-bumper length, so campsites must fit the full exterior length.",
         kind="Service",
     ),
     SeoRoute(
@@ -467,6 +488,29 @@ def render_faq_items(*, featured_only: bool = False) -> str:
     return '<div class="seo-prerender-faq">' + "".join(sections) + "</div>"
 
 
+def render_terms_content() -> str:
+    sections = []
+    for section in load_terms_content()["sections"]:
+        paragraphs = "".join(
+            f'<p>{html.escape(paragraph)}</p>' for paragraph in section["paragraphs"]
+        )
+        bullets = ""
+        if section["bullets"]:
+            bullets = "<ul>" + "".join(
+                f'<li>{html.escape(bullet)}</li>' for bullet in section["bullets"]
+            ) + "</ul>"
+        sections.append(
+            f'<section id="terms-{html.escape(section["id"], quote=True)}">'
+            f'<h2>{html.escape(section["title"])}</h2>{paragraphs}{bullets}</section>'
+        )
+    sections.append(
+        '<section id="terms-contact"><h2>21. Contact and notices</h2>'
+        '<p>VL Rental · Kelowna, British Columbia, Canada</p>'
+        '<p>Email Vlrental.ca@gmail.com · Phone +1 (250) 878-5874</p></section>'
+    )
+    return '<div class="seo-prerender-terms">' + "".join(sections) + "</div>"
+
+
 def render_snapshot(
     route: SeoRoute,
     site_url: str,
@@ -541,6 +585,8 @@ def render_snapshot(
         )
     elif route.path == "/":
         faq_content = render_faq_items(featured_only=True)
+    elif route.path == "/terms":
+        faq_content = render_terms_content()
 
     hero_poster = ""
     if route.path == "/" and hero_assets:
