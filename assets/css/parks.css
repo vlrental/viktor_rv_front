@@ -333,6 +333,10 @@
     padding: 72px;
 }
 
+.park-detail-content .parks-eyebrow {
+    color: var(--vl-accent-text);
+}
+
 .park-detail-main h2,
 .park-delivery-card h2,
 .park-detail-missing h1 {

@@ -247,13 +247,26 @@ class PreparePagesArtifactTests(unittest.TestCase):
             f'<link rel="preload" as="image" href="{jayco_preview}" fetchpriority="high">',
             jayco,
         )
+        self.assertIn(
+            f'<img class="seo-prerender-detail-poster" src="{jayco_preview}"',
+            jayco,
+        )
+        self.assertIn('width="1140" height="456"', jayco)
+        self.assertIn('alt="Jayco 26′ Fifth Wheel Rental main photo"', jayco)
+        self.assertEqual(jayco.count(jayco_preview), 2)
         bear = (root / "parks" / "bear-creek" / "index.html").read_text(encoding="utf-8")
         self.assertIn(
             f'<link rel="preload" as="image" href="/assets/{bear_asset}" fetchpriority="high">',
             bear,
         )
+        self.assertIn(
+            f'<img class="seo-prerender-detail-poster" src="/assets/{bear_asset}"',
+            bear,
+        )
+        self.assertEqual(bear.count(f"/assets/{bear_asset}"), 2)
         about = (root / "about" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('<link rel="preload" as="image"', about)
+        self.assertNotIn('class="seo-prerender-detail-poster"', about)
         self.assertNotIn("park-bear-creek", jayco)
         self.assertNotIn("d147526c", bear)
 

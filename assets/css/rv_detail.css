@@ -133,7 +133,7 @@
 .rvd-reviews { display: grid; gap: 20px; width: 100%; padding-top: 44px; scroll-margin-top: 96px; }
 .rvd-reviews-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
 .rvd-reviews-heading { display: grid; gap: 7px; }
-.rvd-reviews-heading > span { color: var(--vl-accent); font: 700 10px var(--font-mono); letter-spacing: .11em; }
+.rvd-reviews-heading > span { color: var(--vl-accent-text); font: 700 10px var(--font-mono); letter-spacing: .11em; }
 .rvd-reviews-heading h2 { color: var(--vl-ink); font: 400 32px/1.05 var(--font-heading); }
 .rvd-reviews-heading p { color: var(--vl-muted); font-size: 14px; line-height: 20px; }
 .rvd-reviews-summary { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--vl-mint); }

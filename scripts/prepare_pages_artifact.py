@@ -529,6 +529,7 @@ def render_snapshot(
     site_url: str,
     sale_routes: tuple[SeoRoute, ...] = (),
     hero_assets: tuple[str, str] | None = None,
+    detail_preload: str | None = None,
 ) -> str:
     by_path = {item.path: item for item in PUBLIC_ROUTES + sale_routes}
     is_park = route.path.startswith("/parks/")
@@ -646,12 +647,20 @@ def render_snapshot(
         faq_content = render_terms_content()
 
     hero_poster = ""
+    detail_poster = ""
     if route.path == "/" and hero_assets:
         small, large = hero_assets
         hero_poster = (
             f'<img class="seo-prerender-home-poster" src="{html.escape(large, quote=True)}" '
             f'srcset="{html.escape(small, quote=True)} 768w, {html.escape(large, quote=True)} 1535w" '
             'sizes="100vw" width="1535" height="1024" alt="" aria-hidden="true" '
+            'fetchpriority="high" decoding="async">'
+        )
+    elif detail_preload and (is_rv or is_park):
+        detail_poster = (
+            f'<img class="seo-prerender-detail-poster" '
+            f'src="{html.escape(detail_preload, quote=True)}" '
+            f'width="1140" height="456" alt="{html.escape(route.heading, quote=True)} main photo" '
             'fetchpriority="high" decoding="async">'
         )
 
@@ -664,7 +673,7 @@ def render_snapshot(
         '<main class="seo-prerender-main">'
         f'<section class="seo-prerender-hero">{hero_poster}'
         '<p class="seo-prerender-kicker">KELOWNA · OKANAGAN RV RENTALS</p>'
-        f'<h1>{html.escape(route.heading)}</h1>{description}{planning}'
+        f'<h1>{html.escape(route.heading)}</h1>{description}{detail_poster}{planning}'
         '</section>'
         f'{faq_content}{campsite_planning}{park_rv_comparison}{related_section}</main>'
         '<footer class="seo-prerender-footer">'
@@ -817,7 +826,7 @@ def render_route(
             'fetchpriority="high">\n    '
         )
         document = document.replace("</head>", preload + "</head>", 1)
-    snapshot = render_snapshot(route, site_url, sale_routes, hero_assets)
+    snapshot = render_snapshot(route, site_url, sale_routes, hero_assets, detail_preload)
     document, count = re.subn(r'(<div id="main">)(</div>)', rf"\1{snapshot}\2", document, count=1)
     if count != 1:
         raise ValueError("missing Dioxus mount element")

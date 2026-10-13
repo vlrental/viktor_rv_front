@@ -156,6 +156,9 @@
             .seo-prerender[data-seo-route="/"] .seo-prerender-main { max-width: none; padding: 0 0 80px; }
             .seo-prerender[data-seo-route="/"] .seo-prerender-hero { position: relative; isolation: isolate; overflow: hidden; max-width: none; padding: 104px max(24px, calc((100vw - 1140px) / 2)); background: var(--vl-forest-2); }
             .seo-prerender-home-poster { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+            .seo-prerender-detail-poster { width: 100%; height: 456px; margin-bottom: 32px; border-radius: 18px; object-fit: cover; object-position: center; }
+            .seo-prerender[data-seo-route^="/rv/"] .seo-prerender-hero,
+            .seo-prerender[data-seo-route^="/parks/"] .seo-prerender-hero { max-width: none; }
             .seo-prerender[data-seo-route="/"] .seo-prerender-hero::after { content: ""; position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, #06120BB8 0%, #06120B42 42%, #06120B0F 75%, #06120B24 100%); }
             .seo-prerender[data-seo-route="/"] h1, .seo-prerender[data-seo-route="/"] .seo-prerender-hero p { position: relative; max-width: 720px; color: var(--vl-white); }
             .seo-prerender[data-seo-route="/"] .seo-prerender-related { max-width: 1140px; margin: 56px auto 0; padding: 32px 24px 0; }
@@ -184,6 +187,7 @@
                 .seo-prerender p { font-size: 16px; }
                 .seo-prerender[data-seo-route="/"] .seo-prerender-hero { padding: 64px 18px; }
                 .seo-prerender[data-seo-route="/"] .seo-prerender-related { padding: 0 18px; }
+                .seo-prerender-detail-poster { height: 280px; margin-bottom: 24px; border-radius: 14px; }
                 .nav-burger { display: flex; width: 42px; height: 42px; align-items: center; justify-content: center; flex-direction: column; gap: 4px; border: 1px solid var(--vl-hair); border-radius: 13px; }
                 .nav-burger-line { display: block; width: 18px; height: 2px; border-radius: 2px; background: currentColor; }
                 .site-footer { padding: 36px 18px; }

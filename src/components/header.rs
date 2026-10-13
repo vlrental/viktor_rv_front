@@ -170,7 +170,7 @@ pub fn Header() -> Element {
                 }
             },
             Link { class: "brand", to: Route::Home {},
-                img { class: "brand-mark", src: LOGO, alt: "VL Rental" }
+                img { class: "brand-mark", src: LOGO, alt: "" }
                 span { class: "brand-word", "VL Rental" }
             }
             button {

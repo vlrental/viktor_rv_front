@@ -24,7 +24,7 @@ pub fn Footer() -> Element {
             div { class: "footer-top",
                 div { class: "f-brand",
                     Link { class: "brand", to: Route::Home {},
-                        img { class: "brand-mark", src: LOGO, alt: "VL Rental" }
+                        img { class: "brand-mark", src: LOGO, alt: "" }
                         span { class: "brand-word", style: "color: var(--vl-white);", "VL Rental" }
                     }
                     p { class: "f-tagline",

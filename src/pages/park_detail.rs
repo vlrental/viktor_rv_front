@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{components::Icon, Route};
+use crate::{api, components::Icon, Route};
 
 const IMG_BEAR_CREEK: Asset = asset!(
     "/assets/img/park-bear-creek.webp",
@@ -188,6 +188,7 @@ pub fn ParkDetail(slug: String) -> Element {
         };
     };
 
+    let rentals_href = api::frontend_path("/#home-rentals");
     rsx! {
         article { class: "park-detail-page",
             header { class: "park-detail-hero",
@@ -200,7 +201,7 @@ pub fn ParkDetail(slug: String) -> Element {
                     h1 { "RV Delivery to {park.name}" }
                     p { "{park.introduction}" }
                     div { class: "park-detail-actions",
-                        Link { class: "parks-primary-link", to: Route::Catalog {},
+                        a { class: "parks-primary-link", href: rentals_href,
                             "Browse available RVs"
                             Icon { name: "arrow-right", size: 17, color: "currentColor" }
                         }

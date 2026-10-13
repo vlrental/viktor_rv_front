@@ -32,6 +32,32 @@ class RvOnlyContentTests(unittest.TestCase):
 
         self.assertEqual(failures, [], "Boat-related public content found:\n" + "\n".join(failures))
 
+    def test_brand_logo_is_decorative_when_adjacent_name_supplies_link_text(self) -> None:
+        for relative in ("src/components/header.rs", "src/components/footer.rs"):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            brand = source[source.index('class: "brand"'):]
+            brand = brand[:brand.index("}", brand.index('class: "brand-word"'))]
+            self.assertIn('class: "brand-mark", src: LOGO, alt: ""', brand, relative)
+            self.assertIn('class: "brand-word"', brand, relative)
+            self.assertIn('"VL Rental"', brand, relative)
+            self.assertNotIn('alt: "VL Rental"', brand, relative)
+
+    def test_accessible_accent_text_is_scoped_to_light_detail_labels(self) -> None:
+        main = (ROOT / "assets/main.css").read_text(encoding="utf-8")
+        reviews = (ROOT / "assets/css/rv_detail.css").read_text(encoding="utf-8")
+        parks = (ROOT / "assets/css/parks.css").read_text(encoding="utf-8")
+
+        self.assertIn("--vl-accent-text: #8B5B12;", main)
+        self.assertIn(
+            ".rvd-reviews-heading > span { color: var(--vl-accent-text);",
+            reviews,
+        )
+        self.assertIn(
+            ".park-detail-content .parks-eyebrow {\n    color: var(--vl-accent-text);\n}",
+            parks,
+        )
+        self.assertIn(".rvd-review-stars > span.filled { color: var(--vl-accent);", reviews)
+
 
 if __name__ == "__main__":
     unittest.main()
