@@ -72,24 +72,24 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
         "fintry" => Some(ParkGuide {
             name: "Fintry Provincial Park",
             area: "Westside Road, Okanagan",
-            introduction: "Plan a delivered RV stay at this waterfront park north of Kelowna. Reserve your campsite first, then choose an available VL Rental RV for your dates.",
+            introduction: "Plan a delivered RV stay at this waterfront park north of Kelowna. Arrange a suitable campsite directly with the campground, then choose an available VL Rental RV for your dates.",
             image: IMG_FINTRY,
             image_alt: "Waterfront and mountains at Fintry Provincial Park",
             official_url: "https://bcparks.ca/fintry-park/",
             planning_title: "Waterfront camping on Westside Road",
             planning_copy: "Fintry offers a long Okanagan Lake shoreline, walking routes and access to the historic estate and nearby waterfall. Because the destination is reached along Westside Road, final delivery approval is based on the actual route and campsite details.",
-            access_note: "Fintry is reached from Westside Road via Fintry Delta Road. Share the campground loop, site number and permitted trailer length so we can check both the route and the space available for setup.",
+            access_note: "Fintry Delta Road leaves Westside Road about 34 km north of Kelowna and 49 km south of Vernon. Reserve the campsite separately, then send the loop, site number, full bumper-to-bumper trailer allowance and listed hookups for that booked site. We confirm route access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
         }),
         "ellison" => Some(ParkGuide {
             name: "Ellison Provincial Park",
             area: "Vernon, Okanagan",
-            introduction: "Enjoy a forested campsite near Okanagan Lake without towing an RV. Reserve your campsite first and VL Rental can deliver and set up an available trailer for your stay.",
+            introduction: "Enjoy a forested campsite near Okanagan Lake without towing an RV. Arrange a suitable campsite directly with the campground and VL Rental can deliver and set up an available trailer for your stay.",
             image: IMG_ELLISON,
             image_alt: "Rocky Okanagan Lake shoreline at Ellison Provincial Park",
             official_url: "https://bcparks.ca/ellison-park/",
             planning_title: "A forested base near Vernon",
             planning_copy: "Ellison is known for sheltered swimming coves and lakeside trails in a quieter forest setting near Vernon. It works well for guests who want an Okanagan Lake stay without collecting or towing a trailer themselves.",
-            access_note: "The park approach runs from Vernon via 25th Avenue. Send the site number and its trailer-length limit; a campground reservation alone does not confirm that our RV fits or can be delivered safely.",
+            access_note: "From Vernon, follow 25th Avenue for about 16 km from the Highway 97 junction. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. We confirm route access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
         }),
         "kekuli-bay" => Some(ParkGuide {
             name: "Kekuli Bay Provincial Park",
@@ -100,7 +100,7 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             official_url: "https://bcparks.ca/kekuli-bay-park/",
             planning_title: "Sunny sites and Kalamalka Lake views",
             planning_copy: "Kekuli Bay has landscaped campsites, lake views and access to the Okanagan Rail Trail. The campground can have limited shade in summer, so guests should plan for warm daytime conditions and verify current park advisories before arrival.",
-            access_note: "The campground is about 3 km beyond the Highway 97 turn-off. Tell us your site number and the site's trailer-length allowance so we can confirm the last part of the route and setup space.",
+            access_note: "The park is about 11 km south of Vernon on the west side of Kalamalka Lake; the campground is about 3 km beyond the Highway 97 turn-off, past two park-boundary signs and the campground sign. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. We confirm access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
         }),
         "okanagan-lake" => Some(ParkGuide {
             name: "Okanagan Lake Provincial Park",
@@ -116,13 +116,13 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
         "okanagan-falls" => Some(ParkGuide {
             name: "sx̌ʷəx̌ʷnitkʷ Provincial Park",
             area: "Okanagan Falls",
-            introduction: "Stay beside the Okanagan River in Okanagan Falls with a delivered RV ready at your reserved campsite.",
+            introduction: "Stay beside the Okanagan River in Okanagan Falls with a delivered RV ready at your approved campsite.",
             image: IMG_OKANAGAN_FALLS,
             image_alt: "Entrance to sx̌ʷəx̌ʷnitkʷ Provincial Park in Okanagan Falls",
             official_url: "https://bcparks.ca/sxwexwnitkw-park/",
             planning_title: "A compact riverside campground in town",
             planning_copy: "The campground is on Green Lake Road, approximately 500 metres from Highway 97. It is managed by the Osoyoos Indian Band and is culturally significant; guests should review current notices and respect all posted rules and protected areas.",
-            access_note: "BC Parks notes a narrow approach with a blind corner from Green Lake Road. Send your exact site and permitted trailer length before paying for the RV so we can assess safe access; check the park's current opening dates and advisories too.",
+            access_note: "The Green Lake Road entrance is about 500 metres from Highway 97; BC Parks notes a narrow approach with a blind corner. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. We confirm safe access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
         }),
         "vaseux-lake" => Some(ParkGuide {
             name: "Vaseux Lake Provincial Park",
@@ -133,7 +133,7 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             official_url: "https://bcparks.ca/vaseux-lake-park/",
             planning_title: "A small nature-focused lakeside stay",
             planning_copy: "Vaseux Lake is surrounded by dry-country scenery and important wildlife habitat. It suits guests looking for a quieter base for paddling, birdwatching and exploring the South Okanagan rather than a large resort-style campground.",
-            access_note: "Check the specific site's trailer allowance and available services in the current reservation details. Send us the site number and RV length limit before assuming a trailer or its equipment will fit.",
+            access_note: "Vaseux Lake is beside Highway 97 about 25 km south of Penticton. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. We confirm route access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
         }),
         "swiws" => Some(ParkGuide {
             name: "sẁiẁs Provincial Park",
@@ -144,7 +144,7 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             official_url: "https://bcparks.ca/swiws-park/",
             planning_title: "Water on both sides in Osoyoos",
             planning_copy: "sẁiẁs extends into Osoyoos Lake and is valued for waterfront camping, swimming and wetland habitat. It sits near the outer edge of VL Rental's service range, so actual driving distance and route conditions must be approved before the booking is finalized.",
-            access_note: "The park is south of Osoyoos off Highway 97. Send the exact campsite and its trailer-length allowance before committing to a reservation; delivery is available only if the actual one-way road route is within 150 km and access is safe.",
+            access_note: "The park is about 2 km south of Osoyoos, reached from Highway 97 via 32nd Avenue. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed: we must confirm safe access, RV fit and an actual one-way road route within 150 km.",
         }),
         "shuswap-lake" => Some(ParkGuide {
             name: "Shuswap Lake Provincial Park",
@@ -154,8 +154,8 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             image_alt: "Beach and mountain view at Shuswap Lake Provincial Park",
             official_url: "https://bcparks.ca/shuswap-lake-park/",
             planning_title: "A family beach destination in the Shuswap",
-            planning_copy: "This large campground in Scotch Creek is known for its broad beach, warm-water swimming and paved approach. As a longer delivery from Kelowna, it requires an exact route calculation and confirmation that the chosen site fits the RV.",
-            access_note: "The campground is reached by a further 19 km of paved road after leaving Highway 1 at Squilax. Send us the loop, site number and trailer-length limit early; we can offer delivery only after confirming the full one-way road distance is within 150 km.",
+            planning_copy: "This large campground on the north side of Shuswap Lake's main arm is known for its broad beach, warm-water swimming and paved approach. Copper Island is a landmark offshore, not an RV destination. As a longer delivery from Kelowna, the park requires an exact route and campsite check.",
+            access_note: "From Highway 1 at Squilax, the campground is reached by another 19 km of paved road. Reserve the campsite separately, then send the loop, site number, full bumper-to-bumper trailer allowance and listed hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed: we must confirm safe access, RV fit and an actual one-way road route within 150 km.",
         }),
         "herald" => Some(ParkGuide {
             name: "Herald Provincial Park",
@@ -165,8 +165,8 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             image_alt: "Margaret Falls trail at Herald Provincial Park",
             official_url: "https://bcparks.ca/herald-park/",
             planning_title: "Beach days and the Margaret Falls trail",
-            planning_copy: "Herald is a large campground with a family beach and a shaded walking route to Margaret Falls. The drive from Kelowna is near the outer portion of our service area, so delivery depends on the actual road distance and safe access to the reserved site.",
-            access_note: "Herald Park is 14 km east of Highway 1 at Tappen. Send the campground loop, site number and permitted trailer length before paying for an RV; the complete road route and campsite access must be approved first.",
+            planning_copy: "Herald is on the west shore of Shuswap Lake near Salmon Arm, with a family beach and a shaded walking route to Margaret Falls. The drive from Kelowna is near the outer portion of our service area, so delivery depends on the actual road distance and safe access to the reserved site.",
+            access_note: "Herald Park is 14 km east of Highway 1 at Tappen. Reserve the campsite separately, then send the loop, site number, full bumper-to-bumper trailer allowance and listed hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed: we must confirm safe access, RV fit and an actual one-way road route within 150 km.",
         }),
         _ => None,
     }
@@ -225,7 +225,15 @@ pub fn ParkDetail(slug: String) -> Element {
                         p { "{park.planning_copy}" }
                         div { class: "park-access-note",
                             Icon { name: "info", size: 18, color: "currentColor" }
-                            span { "{park.access_note}" }
+                            span {
+                                "{park.access_note}"
+                                br {}
+                                small {
+                                    "Source: "
+                                    a { href: park.official_url, target: "_blank", rel: "noopener noreferrer", "BC Parks" }
+                                    " · checked October 13, 2026"
+                                }
+                            }
                         }
                     }
                     div { class: "parks-eyebrow", "HOW IT WORKS" }
@@ -234,8 +242,8 @@ pub fn ParkDetail(slug: String) -> Element {
                         div { class: "park-step",
                             span { "01" }
                             div {
-                                h3 { "Reserve your campsite" }
-                                p { "Book a suitable campsite directly with the campground and keep your reservation details handy." }
+                                h3 { "Arrange your campsite" }
+                                p { "Arrange a suitable campsite directly with the campground and follow its current booking or site-allocation rules. Keep your campsite details handy." }
                             }
                         }
                         div { class: "park-step",
@@ -253,6 +261,7 @@ pub fn ParkDetail(slug: String) -> Element {
                             }
                         }
                     }
+                    ParkRvComparison {}
                 }
                 aside { class: "park-delivery-card",
                     div { class: "parks-eyebrow", "DELIVERY DETAILS" }
@@ -272,5 +281,75 @@ pub fn ParkDetail(slug: String) -> Element {
                 }
             }
         }
+    }
+}
+
+#[component]
+fn ParkRvComparison() -> Element {
+    let links = [
+        (
+            "Rockwood · 21 ft · sleeps 4",
+            "/rv/2014-forest-river-rockwood/",
+        ),
+        (
+            "Keystone Bullet · 30 ft · sleeps 8",
+            "/rv/2015-keystone-bullet/",
+        ),
+        ("Compare all RV rentals", "/#home-rentals"),
+    ];
+    rsx! {
+        section { class: "park-destination-intro park-rv-comparison",
+            h2 { "Compare RVs for your campsite" }
+            p { "These are rental options, not a guarantee that they fit this park. Confirm the site’s permitted full trailer length and delivery route." }
+            for (label, path) in links {
+                p {
+                    a {
+                        class: "park-detail-contact",
+                        href: crate::api::frontend_path(path),
+                        style: "text-decoration: underline; text-underline-offset: 4px;",
+                        "{label}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn researched_park_guides_keep_confirmed_access_and_site_requirements() {
+        let expected = [
+            ("fintry", "34 km north of Kelowna"),
+            ("ellison", "25th Avenue for about 16 km"),
+            ("kekuli-bay", "about 3 km beyond the Highway 97 turn-off"),
+            ("okanagan-falls", "about 500 metres from Highway 97"),
+            ("vaseux-lake", "about 25 km south of Penticton"),
+            ("swiws", "about 2 km south of Osoyoos"),
+            ("shuswap-lake", "another 19 km of paved road"),
+            ("herald", "14 km east of Highway 1 at Tappen"),
+        ];
+        for (slug, access_fact) in expected {
+            let guide = guide_for(slug).expect("researched park guide");
+            assert!(guide.access_note.contains(access_fact));
+            assert!(guide
+                .access_note
+                .contains("Reserve the campsite separately"));
+            assert!(guide.access_note.contains("full bumper-to-bumper"));
+            assert!(guide.access_note.contains("listed hookups"));
+            assert!(guide.access_note.contains("30-amp or 50-amp"));
+            assert!(guide.official_url.starts_with("https://bcparks.ca/"));
+        }
+        for slug in ["swiws", "shuswap-lake", "herald"] {
+            let note = guide_for(slug).expect("outer-range guide").access_note;
+            assert!(note.contains("Delivery is not guaranteed"));
+            assert!(note.contains("actual one-way road route within 150 km"));
+        }
+        assert!(guide_for("shuswap-lake")
+            .expect("Shuswap guide")
+            .planning_copy
+            .contains("Copper Island is a landmark offshore, not an RV destination"));
     }
 }

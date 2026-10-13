@@ -189,27 +189,27 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/fintry",
         "RV Delivery to Fintry Provincial Park | VL Rental",
-        "Rent an RV for Fintry Provincial Park in the Okanagan. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+        "Plan delivered RV camping at Fintry via Fintry Delta Road and Westside Road, subject to reserved-site fit, hookups and route approval.",
         "RV Delivery to Fintry Provincial Park",
-        "Reserve your Fintry campsite, choose an available VL Rental trailer, and arrive to an RV that has been delivered, levelled and set up for your stay.",
+        "Arrange a suitable Fintry campsite directly with the campground, then choose an available VL Rental trailer for delivery and setup.",
         image="/assets/img/park-fintry.webp",
         kind="Service",
     ),
     SeoRoute(
         "/parks/ellison",
         "RV Delivery to Ellison Provincial Park | VL Rental",
-        "Rent an RV for Ellison Provincial Park near Vernon. VL Rental delivers, levels and sets up your trailer at your reserved campsite.",
+        "Plan delivered RV camping at Ellison, about 16 km from Vernon's Highway 97 junction via 25th Avenue, subject to site and access approval.",
         "RV Delivery to Ellison Provincial Park",
-        "Reserve your Ellison campsite, choose an available VL Rental trailer, and arrive to an RV that has been delivered, levelled and set up for your stay.",
+        "Arrange a suitable Ellison campsite directly with the campground, then choose an available VL Rental trailer for delivery and setup.",
         image="/assets/img/park-ellison.webp",
         kind="Service",
     ),
     SeoRoute(
         "/parks/kekuli-bay",
         "RV Delivery to Kekuli Bay Provincial Park | VL Rental",
-        "Rent a delivered RV for Kekuli Bay Provincial Park near Vernon, with setup at your reserved Kalamalka Lake campsite.",
+        "Plan delivered RV camping at Kekuli Bay, 11 km south of Vernon with a 3 km campground approach from Highway 97, subject to site approval.",
         "RV Delivery to Kekuli Bay Provincial Park",
-        "Reserve a suitable campsite above Kalamalka Lake, choose an available VL Rental trailer and arrive to an RV that has already been delivered, levelled and set up.",
+        "Arrange a suitable campsite above Kalamalka Lake directly with the campground, then choose an available VL Rental trailer for delivery and setup.",
         image="/assets/img/park-kekuli-bay.webp",
         kind="Service",
     ),
@@ -225,16 +225,16 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/okanagan-falls",
         "RV Delivery to sx̌ʷəx̌ʷnitkʷ Park | VL Rental",
-        "Plan a delivered RV stay at sx̌ʷəx̌ʷnitkʷ Park in Okanagan Falls, with setup at your reserved riverside campsite.",
+        "Plan delivered RV camping at sx̌ʷəx̌ʷnitkʷ Park via Green Lake Road, subject to its narrow approach, reserved-site fit and access approval.",
         "RV Delivery to sx̌ʷəx̌ʷnitkʷ Provincial Park",
-        "Stay beside the Okanagan River in Okanagan Falls with a delivered RV ready at your reserved campsite.",
+        "Arrange a suitable riverside campsite directly with the campground, then plan delivery of an available VL Rental RV.",
         image="/assets/img/park-okanagan-falls.webp",
         kind="Service",
     ),
     SeoRoute(
         "/parks/vaseux-lake",
         "RV Delivery to Vaseux Lake Provincial Park | VL Rental",
-        "Rent a delivered RV for Vaseux Lake Provincial Park between Okanagan Falls and Oliver, subject to campsite and route approval.",
+        "Plan delivered RV camping at Vaseux Lake beside Highway 97, about 25 km south of Penticton, subject to campsite and route approval.",
         "RV Delivery to Vaseux Lake Provincial Park",
         "Plan a quiet South Okanagan stay with your selected RV delivered directly to an approved campsite.",
         image="/assets/img/park-vaseux-lake.webp",
@@ -243,7 +243,7 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/swiws",
         "RV Delivery to sẁiẁs Park in Osoyoos | VL Rental",
-        "Request RV delivery and setup at sẁiẁs Provincial Park on Osoyoos Lake, subject to the 150 km road-distance limit.",
+        "Request RV delivery to sẁiẁs, 2 km south of Osoyoos via 32nd Avenue, subject to campsite approval and the 150 km road-route limit.",
         "RV Delivery to sẁiẁs Provincial Park",
         "Explore waterfront camping on Osoyoos Lake, then ask us to verify the road route and site before committing to an RV rental at this outer-range destination.",
         image="/assets/img/park-haynes-point.webp",
@@ -252,7 +252,7 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/shuswap-lake",
         "RV Delivery to Shuswap Lake Provincial Park | VL Rental",
-        "Explore RV camping at Shuswap Lake Provincial Park in Scotch Creek. Delivery requires a road-distance and campsite check before booking.",
+        "Plan RV camping at Shuswap Lake's main arm via the 19 km paved road from Squilax, subject to campsite and 150 km route approval.",
         "RV Delivery to Shuswap Lake Provincial Park",
         "Explore a family campground at Shuswap Lake and ask us to verify the road route and campsite before making RV rental plans.",
         image="/assets/img/park-shuswap-lake.webp",
@@ -261,7 +261,7 @@ PUBLIC_ROUTES = (
     SeoRoute(
         "/parks/herald",
         "RV Delivery to Herald Provincial Park | VL Rental",
-        "Plan an RV stay at Herald Provincial Park near Tappen with delivery and setup, subject to route and campsite approval.",
+        "Plan RV camping at Herald, 14 km east of Highway 1 at Tappen on Shuswap Lake's west shore, subject to site and 150 km route approval.",
         "RV Delivery to Herald Provincial Park",
         "Explore a Shuswap Lake campsite near Tappen and request a route and site check before committing to RV delivery.",
         image="/assets/img/park-herald.webp",
@@ -386,16 +386,29 @@ FEATURED_PARKS = (
 )
 PARK_PLANNING_NOTES = {
     "/parks/bear-creek": "Send the site number, full bumper-to-bumper trailer length and hookups shown on your Bear Creek reservation. Confirm the services for your booked site. We will check Westside Road access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
-    "/parks/fintry": "Share the campground loop, site number and permitted trailer length so we can check the Westside Road and Fintry Delta Road approach.",
-    "/parks/ellison": "Send the site number and trailer-length limit; a reservation alone does not confirm that your selected RV fits or can be delivered safely.",
-    "/parks/kekuli-bay": "Share the site number and trailer-length allowance so we can check the approach beyond the Highway 97 turn-off and setup space.",
+    "/parks/fintry": "Fintry Delta Road leaves Westside Road about 34 km north of Kelowna and 49 km south of Vernon. Arrange the campsite separately and send the loop, site, full bumper-to-bumper trailer allowance and booked-site hookups. We confirm access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
+    "/parks/ellison": "Follow Vernon's 25th Avenue about 16 km from the Highway 97 junction. Arrange the campsite separately and send the site, full bumper-to-bumper trailer allowance and booked-site hookups. We confirm access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
+    "/parks/kekuli-bay": "The park is 11 km south of Vernon; the campground is 3 km beyond the Highway 97 turn-off, past two park-boundary signs and the campground sign. Arrange the campsite separately and send the site, full bumper-to-bumper allowance and booked-site hookups. Air conditioning requires compatible 30-amp or 50-amp service.",
     "/parks/okanagan-lake": "This guide covers the distinct North and South campgrounds, not every Okanagan Lake campground or Okanagan Mountain Provincial Park. Send North or South, the loop, site number, full bumper-to-bumper trailer length and reserved hookups.",
-    "/parks/okanagan-falls": "The Green Lake Road approach has a narrow road and blind corner. Send the exact site and trailer-length limit before paying for the RV.",
-    "/parks/vaseux-lake": "Check the specific site's trailer allowance and services, then send us its number and RV length limit before booking the RV.",
-    "/parks/swiws": "Send the exact campsite and trailer-length allowance before committing; delivery requires a safe one-way road route within 150 km.",
-    "/parks/shuswap-lake": "Send the loop, site number and trailer-length limit early; delivery requires a confirmed one-way road route within 150 km.",
-    "/parks/herald": "Send the loop, site number and trailer-length allowance before paying for an RV; route and campsite access must be approved first.",
+    "/parks/okanagan-falls": "The Green Lake Road entrance is 500 metres from Highway 97 and has a narrow approach with a blind corner. Arrange the campsite separately and send the site, full bumper-to-bumper allowance and booked-site hookups. We confirm access and fit; air conditioning requires compatible 30-amp or 50-amp service.",
+    "/parks/vaseux-lake": "Vaseux Lake is beside Highway 97 about 25 km south of Penticton. Arrange the campsite separately and send the site, full bumper-to-bumper trailer allowance and booked-site hookups. We confirm access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
+    "/parks/swiws": "The park is 2 km south of Osoyoos via 32nd Avenue. Arrange the campsite separately and send the site, full bumper-to-bumper allowance and booked-site hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed until safe access, RV fit and an actual one-way road route within 150 km are confirmed.",
+    "/parks/shuswap-lake": "The main-arm campground is 19 km along paved road from Highway 1 at Squilax; Copper Island is not an RV destination. Arrange the campsite separately and send the loop, site, full bumper-to-bumper allowance and booked-site hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed until safe access, fit and an actual road route within 150 km are confirmed.",
+    "/parks/herald": "Herald is on Shuswap Lake's west shore near Salmon Arm, 14 km east of Highway 1 at Tappen. Arrange the campsite separately and send the loop, site, full bumper-to-bumper allowance and booked-site hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed until safe access, fit and an actual road route within 150 km are confirmed.",
 }
+
+PARK_SOURCE_URLS = {
+    route.path: f"https://bcparks.ca/{slug}-park/"
+    for route in PUBLIC_ROUTES
+    if route.path.startswith("/parks/")
+    for slug in [route.path.removeprefix("/parks/")]
+}
+PARK_SOURCE_URLS.update(
+    {
+        "/parks/okanagan-falls": "https://bcparks.ca/sxwexwnitkw-park/",
+        "/parks/swiws": "https://bcparks.ca/swiws-park/",
+    }
+)
 
 
 def route_link(site_url: str, route: SeoRoute) -> str:
@@ -538,7 +551,7 @@ def render_snapshot(
         related_paths = FEATURED_RVS + FEATURED_PARKS + ("/delivery", "/parks-in-our-range", "/faq")
         related_title = "Plan your Okanagan RV stay"
     elif is_park:
-        related_paths = ("/parks-in-our-range", "/delivery") + FEATURED_RVS
+        related_paths = ("/parks-in-our-range", "/delivery")
         related_title = "Choose an RV for your campsite"
     elif is_rv:
         related_paths = ("/delivery", "/parks-in-our-range") + tuple(
@@ -557,7 +570,9 @@ def render_snapshot(
     )
     note = PARK_PLANNING_NOTES.get(route.path)
     planning = (
-        f'<p class="seo-prerender-note"><strong>Before you book:</strong> {html.escape(note)}</p>'
+        f'<p class="seo-prerender-note"><strong>Before you book:</strong> {html.escape(note)} '
+        f'<small>Source: <a href="{html.escape(PARK_SOURCE_URLS[route.path], quote=True)}">BC Parks</a> '
+        f'· checked October 13, 2026</small></p>'
         if note else ""
     )
     description = f"<p>{html.escape(route.copy)}</p>" if route.copy else ""
@@ -602,6 +617,20 @@ def render_snapshot(
         campsite_planning = campsite_planning.replace(
             "<ul>", f"<p>{html.escape(sleep_layout)}</p><ul>", 1
         )
+    park_rv_comparison = ""
+    if is_park:
+        park_rv_comparison = (
+            '<section class="seo-prerender-related" aria-labelledby="seo-park-rvs-title">'
+            '<h2 id="seo-park-rvs-title">Compare RVs for your campsite</h2>'
+            '<p>These are rental options, not a guarantee that they fit this park. '
+            'Confirm the site’s permitted full trailer length and delivery route.</p><ul>'
+            f'<li><a href="{html.escape(page_url(site_url, "/rv/2014-forest-river-rockwood"), quote=True)}">'
+            'Rockwood · 21 ft · sleeps 4</a></li>'
+            f'<li><a href="{html.escape(page_url(site_url, "/rv/2015-keystone-bullet"), quote=True)}">'
+            'Keystone Bullet · 30 ft · sleeps 8</a></li>'
+            f'<li><a href="{html.escape(page_url(site_url, "/"), quote=True)}#home-rentals">'
+            'Compare all RV rentals</a></li></ul></section>'
+        )
     faq_content = ""
     if route.path == "/faq":
         faq_content = (
@@ -637,7 +666,7 @@ def render_snapshot(
         '<p class="seo-prerender-kicker">KELOWNA · OKANAGAN RV RENTALS</p>'
         f'<h1>{html.escape(route.heading)}</h1>{description}{planning}'
         '</section>'
-        f'{faq_content}{campsite_planning}{related_section}</main>'
+        f'{faq_content}{campsite_planning}{park_rv_comparison}{related_section}</main>'
         '<footer class="seo-prerender-footer">'
         'Delivery-only RV rentals · Kelowna, British Columbia · '
         '<a href="tel:+12508785874">+1 (250) 878-5874</a></footer></div>'

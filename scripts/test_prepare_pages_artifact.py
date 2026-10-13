@@ -439,7 +439,8 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn("full bumper-to-bumper trailer length", park)
         self.assertIn("Confirm the services for your booked site", park)
         self.assertIn("30-amp or 50-amp service", park)
-        self.assertIn('href="https://example.test/rv/2025-open-range-1/"', park)
+        self.assertIn('href="https://example.test/rv/2014-forest-river-rockwood/"', park)
+        self.assertIn('href="https://example.test/rv/2015-keystone-bullet/"', park)
         self.assertIn('href="https://example.test/parks-in-our-range/"', rv)
         self.assertIn('href="https://example.test/parks/herald/"', hub)
         self.assertEqual(park.count("<h1>"), 1)
@@ -506,8 +507,69 @@ class PreparePagesArtifactTests(unittest.TestCase):
 
         for slug in ("swiws", "shuswap-lake", "herald"):
             document = (root / "parks" / slug / "index.html").read_text(encoding="utf-8")
-            self.assertIn("150 km" if slug != "herald" else "route and campsite access", document)
+            self.assertIn("150 km", document)
             self.assertIn("Before you book:", document)
+
+    def test_researched_park_snapshots_keep_access_facts_and_official_sources(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        expected = {
+            "fintry": "34 km north of Kelowna",
+            "ellison": "25th Avenue about 16 km",
+            "kekuli-bay": "3 km beyond the Highway 97 turn-off",
+            "okanagan-falls": "500 metres from Highway 97",
+            "vaseux-lake": "25 km south of Penticton",
+            "swiws": "2 km south of Osoyoos",
+            "shuswap-lake": "19 km along paved road",
+            "herald": "14 km east of Highway 1 at Tappen",
+        }
+        for slug, access_fact in expected.items():
+            document = (root / "parks" / slug / "index.html").read_text(encoding="utf-8")
+            self.assertIn(access_fact, document)
+            self.assertIn("Arrange the campsite separately", document)
+            self.assertIn("full bumper-to-bumper", document)
+            self.assertIn("booked-site hookups", document)
+            self.assertIn("30-amp or 50-amp", document)
+            self.assertIn("Source:", document)
+            self.assertIn("checked October 13, 2026", document)
+            self.assertIn('href="https://bcparks.ca/', document)
+        for slug in ("swiws", "shuswap-lake", "herald"):
+            document = (root / "parks" / slug / "index.html").read_text(encoding="utf-8")
+            self.assertIn("Delivery is not guaranteed", document)
+            self.assertIn("actual", document)
+            self.assertIn("150 km", document)
+        shuswap = (root / "parks/shuswap-lake/index.html").read_text(encoding="utf-8")
+        self.assertIn("Copper Island is not an RV destination", shuswap)
+
+    def test_every_park_snapshot_has_the_approved_rv_comparison_links(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        park_documents = [
+            root / route.path.lstrip("/") / "index.html"
+            for route in PUBLIC_ROUTES
+            if route.path.startswith("/parks/")
+        ]
+        self.assertEqual(len(park_documents), 10)
+        for path in park_documents:
+            document = path.read_text(encoding="utf-8")
+            self.assertEqual(document.count("Compare RVs for your campsite"), 1)
+            self.assertIn(
+                "These are rental options, not a guarantee that they fit this park. Confirm the site’s permitted full trailer length and delivery route.",
+                document,
+            )
+            self.assertIn(
+                'href="https://example.test/rv/2014-forest-river-rockwood/">Rockwood · 21 ft · sleeps 4',
+                document,
+            )
+            self.assertIn(
+                'href="https://example.test/rv/2015-keystone-bullet/">Keystone Bullet · 30 ft · sleeps 8',
+                document,
+            )
+            self.assertIn(
+                'href="https://example.test/#home-rentals">Compare all RV rentals',
+                document,
+            )
+            self.assertNotIn("/rv/jayco26/", document)
 
     def test_sitemap_is_generated_from_public_routes_only(self) -> None:
         root = self.make_artifact()
