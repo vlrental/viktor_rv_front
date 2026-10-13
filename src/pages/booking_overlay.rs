@@ -3599,7 +3599,7 @@ fn RentalChoice(
 #[component]
 fn RatingStars(rating: i32) -> Element {
     rsx! {
-        span { class: "ub-rating-stars", aria_label: "{rating} out of 5 stars",
+        span { class: "ub-rating-stars", role: "img", aria_label: "{rating} out of 5 stars",
             for value in 1..=5_i32 {
                 span { key: "rating-star-{value}", class: if value <= rating { "filled" } else { "" }, aria_hidden: "true", "★" }
             }
@@ -4546,5 +4546,17 @@ mod saved_address_tests {
             addon_description("generator"),
             "Portable backup power; fuel not included."
         );
+    }
+
+    #[test]
+    fn booking_star_group_uses_a_label_permitted_for_its_role() {
+        let source = include_str!("booking_overlay.rs");
+        let start = source.find("fn RatingStars").unwrap();
+        let end = source[start..].find("fn MandatoryPriceLine").unwrap() + start;
+        let component = &source[start..end];
+        assert!(component.contains(
+            r#"span { class: "ub-rating-stars", role: "img", aria_label: "{rating} out of 5 stars""#
+        ));
+        assert!(component.contains(r#"aria_hidden: "true", "★""#));
     }
 }

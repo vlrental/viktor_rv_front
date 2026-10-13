@@ -390,7 +390,7 @@ pub fn RentalReviewsSection(
 #[component]
 fn ReviewStars(rating: i32) -> Element {
     rsx! {
-        span { class: "rvd-review-stars", aria_label: "{rating} out of 5 stars",
+        span { class: "rvd-review-stars", role: "img", aria_label: "{rating} out of 5 stars",
             for value in 1..=5_i32 {
                 span { key: "rvd-review-star-{value}", class: if value <= rating { "filled" } else { "" }, aria_hidden: "true", "★" }
             }
@@ -463,5 +463,16 @@ mod tests {
         }
         assert_eq!(external_review_url("outdoorsy", None), None);
         assert_eq!(external_review_url("vl_rental", Some(rvezy)), None);
+    }
+
+    #[test]
+    fn review_star_group_uses_a_label_permitted_for_its_role() {
+        let source = include_str!("rental_reviews.rs");
+        let component =
+            &source[source.find("fn ReviewStars").unwrap()..source.find("#[cfg(test)]").unwrap()];
+        assert!(component.contains(
+            r#"span { class: "rvd-review-stars", role: "img", aria_label: "{rating} out of 5 stars""#
+        ));
+        assert!(component.contains(r#"aria_hidden: "true", "★""#));
     }
 }
