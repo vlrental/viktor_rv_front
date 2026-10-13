@@ -15,6 +15,7 @@ from scripts.prepare_pages_artifact import (
     load_terms_content,
     page_url,
     prepare_artifact,
+    schema_for,
 )
 from scripts.fetch_public_sales_snapshot import validate_snapshot
 
@@ -56,15 +57,54 @@ class PreparePagesArtifactTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         path = Path(temporary.name) / "sales.json"
-        path.write_text(json.dumps([{
-            "sale_id": "6df950db-7844-495e-870a-d438e3dcf801",
-            "title": "2015 Keystone Bullet 272BHS",
-            "summary": "Family travel trailer for sale in Kelowna.",
-            "description": "A well maintained RV with a large slide-out.",
-            "status": "published",
-            "photos": [{"source_url": "https://api.vlrental.ca/cover.webp"}],
-        }]), encoding="utf-8")
+        path.write_text(json.dumps([
+            {
+                "sale_id": "6df950db-7844-495e-870a-d438e3dcf801",
+                "title": "2015 Keystone Bullet 272BHS",
+                "summary": "Family travel trailer for sale in Kelowna.",
+                "description": "A well maintained RV with a large slide-out.",
+                "status": "published",
+                "photos": [{"source_url": "https://api.vlrental.ca/cover.webp"}],
+            },
+            {
+                "sale_id": "d8bd4da5-b2dc-406f-aa61-30827e214d2a",
+                "title": "2014 Forest River Rockwood 18 ft",
+                "summary": "Compact travel trailer for sale in Kelowna.",
+                "description": "An 18 ft model with a 21 ft bumper-to-bumper length.",
+                "status": "published",
+                "photos": [{"source_url": "https://api.vlrental.ca/rockwood.webp"}],
+            },
+        ]), encoding="utf-8")
         return path
+
+    def test_current_twenty_seven_public_documents_have_unique_valid_identity(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test", self.make_sales_snapshot())
+        documents = []
+        for path in root.rglob("index.html"):
+            document = path.read_text(encoding="utf-8")
+            if 'name="robots" content="index,follow' not in document:
+                continue
+            title = re.search(r"<title>(.*?)</title>", document, re.DOTALL)
+            description = re.search(
+                r'<meta\s+name="description"\s+content="([^"]*)"', document, re.DOTALL
+            )
+            canonical = re.search(r'<link rel="canonical" href="([^"]*)"', document)
+            schema = re.search(
+                r'<script type="application/ld\+json">(.*?)</script>', document, re.DOTALL
+            )
+            self.assertIsNotNone(title, path)
+            self.assertIsNotNone(description, path)
+            self.assertIsNotNone(canonical, path)
+            self.assertIsNotNone(schema, path)
+            self.assertEqual(document.count("<h1>"), 1, path)
+            json.loads(schema.group(1))
+            documents.append((title.group(1), description.group(1), canonical.group(1)))
+
+        self.assertEqual(len(documents), 27)
+        self.assertEqual(len({item[0] for item in documents}), 27)
+        self.assertEqual(len({item[1] for item in documents}), 27)
+        self.assertEqual(len({item[2] for item in documents}), 27)
 
     def test_bundles_all_route_css_in_original_order_for_pages_base(self) -> None:
         root = self.make_artifact()
@@ -295,11 +335,40 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertEqual(service["@type"], "Service", route.path)
             self.assertEqual(service["provider"], {"@id": "https://example.test/#organization"})
             self.assertEqual(service["url"], canonical)
+            self.assertEqual(service["serviceType"], "Delivered RV rental")
+            self.assertEqual(service["areaServed"], ["Kelowna", "Okanagan, British Columbia"])
             self.assertEqual(breadcrumb["itemListElement"][-1]["item"], canonical)
             self.assertNotIn('"@type": "Product"', document)
             for node in graph:
                 for unverified_field in ("offers", "review", "aggregateRating", "priceRange"):
                     self.assertNotIn(unverified_field, node, route.path)
+
+    def test_schema_uses_stable_organization_and_route_specific_primary_images(self) -> None:
+        for route in PUBLIC_ROUTES:
+            schema = json.loads(schema_for(route, "https://example.test"))
+            canonical = page_url("https://example.test", route.path)
+            organization = next(node for node in schema["@graph"] if node.get("@type") == "Organization")
+            page = next(node for node in schema["@graph"] if node.get("@id") == f"{canonical}#page")
+            image = next(node for node in schema["@graph"] if node.get("@type") == "ImageObject")
+
+            self.assertEqual(organization["image"], "https://example.test/og-image.webp")
+            self.assertEqual(page["primaryImageOfPage"], {"@id": f"{canonical}#primaryimage"})
+            self.assertEqual(image["@id"], f"{canonical}#primaryimage")
+            self.assertEqual(image["url"], image["contentUrl"])
+
+    def test_faq_schema_comes_from_the_same_fifty_approved_answers(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+        document = (root / "faq/index.html").read_text(encoding="utf-8")
+        match = re.search(r'<script type="application/ld\+json">(.*?)</script>', document, re.DOTALL)
+        self.assertIsNotNone(match)
+        graph = json.loads(match.group(1))["@graph"]
+        page = next(node for node in graph if node.get("@type") == "FAQPage")
+
+        self.assertEqual(len(page["mainEntity"]), 50)
+        self.assertEqual(page["mainEntity"][0]["@type"], "Question")
+        self.assertEqual(page["mainEntity"][0]["acceptedAnswer"]["@type"], "Answer")
+        self.assertIn("Two 20 lb propane tanks are supplied", json.dumps(page["mainEntity"]))
 
     def test_home_targets_real_kelowna_rv_queries(self) -> None:
         root = self.make_artifact()

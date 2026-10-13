@@ -636,13 +636,14 @@ def page_url(site_url: str, path: str) -> str:
 
 def schema_for(route: SeoRoute, site_url: str) -> str:
     canonical = page_url(site_url, route.path)
+    image = absolute_url(site_url, route.image)
     graph: list[dict[str, object]] = [
         {
             "@type": "Organization",
             "@id": f"{site_url}/#organization",
             "name": SITE_NAME,
             "url": f"{site_url}/",
-            "image": absolute_url(site_url, route.image),
+            "image": f"{site_url}/og-image.webp",
             "logo": f"{site_url}/logo-512.png",
             "telephone": "+1-250-878-5874",
             "areaServed": ["Kelowna", "Okanagan, British Columbia"],
@@ -657,17 +658,46 @@ def schema_for(route: SeoRoute, site_url: str) -> str:
         },
     ]
     page: dict[str, object] = {
-        "@type": route.kind,
+        "@type": "FAQPage" if route.path == "/faq" else route.kind,
         "@id": f"{canonical}#page",
         "url": canonical,
         "name": route.title,
         "description": route.description,
         "inLanguage": "en-CA",
         "isPartOf": {"@id": f"{site_url}/#website"},
+        "primaryImageOfPage": {"@id": f"{canonical}#primaryimage"},
     }
     if route.kind == "Service":
         page["provider"] = {"@id": f"{site_url}/#organization"}
+        page["areaServed"] = ["Kelowna", "Okanagan, British Columbia"]
+        if route.path == "/delivery":
+            page["serviceType"] = "RV delivery and campsite setup"
+        elif route.path.startswith("/rv/"):
+            page["serviceType"] = "Delivered RV rental"
+        else:
+            page["serviceType"] = "RV delivery and campsite setup at the named park"
+    if route.path == "/faq":
+        page["mainEntity"] = [
+            {
+                "@type": "Question",
+                "name": item["question"],
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "\n".join([item["answer"], *item.get("bullets", [])]),
+                },
+            }
+            for category in load_faq_content()["categories"]
+            for item in category["items"]
+        ]
     graph.append(page)
+    graph.append(
+        {
+            "@type": "ImageObject",
+            "@id": f"{canonical}#primaryimage",
+            "url": image,
+            "contentUrl": image,
+        }
+    )
     if route.path != "/":
         graph.append(
             {
@@ -708,9 +738,10 @@ def render_route(
         document,
         count=1,
     )
+    schema = f'<script type="application/ld+json">\n{schema_for(route, site_url)}\n        </script>'
     document = re.sub(
         r'<script type="application/ld\+json">.*?</script>',
-        f'<script type="application/ld+json">\n{schema_for(route, site_url)}\n        </script>',
+        lambda _: schema,
         document,
         count=1,
         flags=re.DOTALL,
