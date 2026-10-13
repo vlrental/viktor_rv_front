@@ -179,10 +179,20 @@ fn is_missing_rental(error: &api::ApiError) -> bool {
     matches!(error.status, 404 | 410)
 }
 
+fn static_fallback_cover(slug: &str, existing_photo: Option<String>) -> Option<String> {
+    if crate::rv_media_previews::has_cover_preview_for_slug(slug) {
+        crate::rv_media_previews::cover_preview_for_slug(slug)
+    } else {
+        existing_photo
+    }
+}
+
 #[component]
 fn StaticRvFallback(listing: Listing) -> Element {
     let rentals_href = api::frontend_path("/#home-rentals");
     let photos = rv_gallery(listing.slug);
+    let fallback_cover =
+        static_fallback_cover(listing.slug, photos.first().map(ToString::to_string));
     rsx! {
         div { class: "rvd-crumb",
             a { href: rentals_href, "RV Rentals" }
@@ -195,9 +205,9 @@ fn StaticRvFallback(listing: Listing) -> Element {
                 div { class: "rvd-meta", "{listing.meta} · Kelowna, BC" }
             }
         }
-        if let Some(photo) = photos.first() {
+        if let Some(photo) = fallback_cover {
             div { class: "rvd-gallery rvd-fallback-gallery",
-                img { src: "{photo}", alt: "{listing.title} RV rental" }
+                img { src: "{photo}", alt: "{listing.title} RV rental", fetchpriority: "high", decoding: "async" }
             }
         }
         div { class: "rvd-content",
@@ -1477,6 +1487,10 @@ mod availability_tests {
         }
         assert!(static_rv_listing("not-a-listed-rv").is_none());
         assert_eq!(api_rental_slug("not-a-listed-rv"), "not-a-listed-rv");
+        assert_eq!(
+            static_fallback_cover("not-a-listed-rv", Some("existing-photo.jpg".to_string())),
+            Some("existing-photo.jpg".to_string())
+        );
         assert!(rv_length_note("brand-new-jayco-26ft-5th-wheel-3")
             .expect("Jayco fallback length note")
             .contains("full 30 ft"));

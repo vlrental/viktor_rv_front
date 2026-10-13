@@ -11,6 +11,7 @@ from scripts.prepare_pages_artifact import (
     EXPECTED_STYLES,
     LEGACY_REDIRECTS,
     PUBLIC_ROUTES,
+    RV_DETAIL_PRELOADS,
     bundle_route_stylesheets,
     load_terms_content,
     page_url,
@@ -269,6 +270,18 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertNotIn('class="seo-prerender-detail-poster"', about)
         self.assertNotIn("park-bear-creek", jayco)
         self.assertNotIn("d147526c", bear)
+
+    def test_shared_rv_cover_map_matches_all_preloads_and_files(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        covers = json.loads((project / "content" / "rv_cover_previews.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(covers), 6)
+        self.assertEqual(
+            RV_DETAIL_PRELOADS,
+            {f"/rv/{slug}": filename for slug, filename in covers.items()},
+        )
+        for filename in covers.values():
+            self.assertRegex(filename, r"^[0-9a-f-]{36}-preview\.webp$")
+            self.assertTrue((project / "public" / "rv-previews" / filename).is_file())
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()

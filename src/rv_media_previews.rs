@@ -1,6 +1,13 @@
 //! Lightweight previews for the current public RV media.
 //! Unknown or newly uploaded photos continue to use their original URL.
 
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use crate::data::canonical_rv_slug;
+
+const RV_COVER_PREVIEWS_JSON: &str = include_str!("../content/rv_cover_previews.json");
+
 const THUMB_IDS: &[&str] = &[
     "0543922d-40a8-44ed-a6a4-e9c139d34ab6",
     "f064605d-cbb1-4625-bb33-3ab601b0a1e6",
@@ -46,14 +53,21 @@ const THUMB_IDS: &[&str] = &[
     "661afb4a-e8d5-454a-8bcf-91e86aad6907",
 ];
 
-const COVER_IDS: &[&str] = &[
-    "0543922d-40a8-44ed-a6a4-e9c139d34ab6",
-    "c126b58c-46b8-421a-959d-3b4e3f652046",
-    "d147526c-bf9c-464a-8a21-71bd2d391e7b",
-    "f69f3398-79d6-4674-8dd8-f5b25cad99b0",
-    "53a83e6e-681d-4307-9b7d-e136c65791f1",
-    "c01a25dc-c538-48a5-91f0-217e796ca118",
-];
+fn cover_previews() -> &'static HashMap<String, String> {
+    static COVERS: OnceLock<HashMap<String, String>> = OnceLock::new();
+    COVERS.get_or_init(|| {
+        serde_json::from_str(RV_COVER_PREVIEWS_JSON)
+            .expect("content/rv_cover_previews.json must remain valid")
+    })
+}
+
+#[cfg(test)]
+fn cover_ids() -> Vec<String> {
+    cover_previews()
+        .values()
+        .map(|filename| filename.trim_end_matches("-preview.webp").to_string())
+        .collect()
+}
 
 fn image_id(source_url: &str) -> Option<&str> {
     source_url.rsplit('/').next()?.split('.').next()
@@ -77,7 +91,30 @@ pub fn thumbnail_for(source_url: &str) -> Option<String> {
 
 pub fn cover_preview_for(source_url: &str) -> Option<String> {
     let id = image_id(source_url)?;
-    COVER_IDS.contains(&id).then(|| preview_url(id, "preview"))
+    cover_previews()
+        .values()
+        .any(|filename| filename.strip_suffix("-preview.webp") == Some(id))
+        .then(|| preview_url(id, "preview"))
+}
+
+fn cover_preview_for_slug_and_base(slug: &str, base_url: &str) -> Option<String> {
+    cover_previews()
+        .get(canonical_rv_slug(slug))
+        .map(|filename| {
+            preview_url_for_base(
+                base_url,
+                filename.trim_end_matches("-preview.webp"),
+                "preview",
+            )
+        })
+}
+
+pub fn has_cover_preview_for_slug(slug: &str) -> bool {
+    cover_previews().contains_key(canonical_rv_slug(slug))
+}
+
+pub fn cover_preview_for_slug(slug: &str) -> Option<String> {
+    cover_preview_for_slug_and_base(slug, &crate::api::frontend_base_url())
 }
 
 #[cfg(test)]
@@ -86,24 +123,67 @@ mod tests {
 
     #[test]
     fn preview_urls_follow_production_and_pages_base_paths() {
-        let id = COVER_IDS[0];
+        let id = cover_ids().remove(0);
         assert_eq!(
-            preview_url_for_base("https://vlrental.ca/", id, "preview"),
+            preview_url_for_base("https://vlrental.ca/", &id, "preview"),
             format!("https://vlrental.ca/rv-previews/{id}-preview.webp")
         );
         assert_eq!(
-            preview_url_for_base("https://vlrental.github.io/viktor_rv_front", id, "thumb"),
+            preview_url_for_base("https://vlrental.github.io/viktor_rv_front", &id, "thumb"),
             format!("https://vlrental.github.io/viktor_rv_front/rv-previews/{id}-thumb.webp")
+        );
+        assert_eq!(
+            cover_preview_for_slug_and_base(
+                "jayco26",
+                "https://vlrental.github.io/viktor_rv_front/"
+            ),
+            Some("https://vlrental.github.io/viktor_rv_front/rv-previews/d147526c-bf9c-464a-8a21-71bd2d391e7b-preview.webp".to_string())
         );
     }
 
     #[test]
     fn only_current_media_has_local_previews() {
         assert_eq!(THUMB_IDS.len(), 42);
-        assert_eq!(COVER_IDS.len(), 6);
+        let covers = cover_ids();
+        assert_eq!(covers.len(), 6);
         assert!(THUMB_IDS.iter().all(|id| !id.is_empty()));
-        assert!(COVER_IDS.iter().all(|id| THUMB_IDS.contains(id)));
+        assert!(covers.iter().all(|id| THUMB_IDS.contains(&id.as_str())));
         assert!(thumbnail_for("https://example.com/new-photo.jpg").is_none());
         assert!(cover_preview_for("https://example.com/new-photo.jpg").is_none());
+    }
+
+    #[test]
+    fn canonical_and_api_aliases_share_static_cover_previews() {
+        for (canonical, api) in [
+            ("jayco26", "brand-new-jayco-26ft-5th-wheel-3"),
+            (
+                "2015-keystone-bullet",
+                "2015-keystone-bullet-272bhs-bunk-bed",
+            ),
+            ("2014-forest-river-rockwood", "forest-river-rockwood-19-ft"),
+            (
+                "2025-open-range-1",
+                "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
+            ),
+            (
+                "2017-keystone-outback-ultra",
+                "keystone-outback-ultra-lite-family-trailer-with-kids-room",
+            ),
+            (
+                "2025-highland-ridge-2",
+                "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+            ),
+        ] {
+            assert_eq!(
+                cover_preview_for_slug_and_base(canonical, "https://vlrental.ca"),
+                cover_preview_for_slug_and_base(api, "https://vlrental.ca")
+            );
+            assert!(
+                cover_preview_for_slug_and_base(canonical, "https://vlrental.ca")
+                    .expect("known cover")
+                    .ends_with("-preview.webp")
+            );
+        }
+        assert!(cover_preview_for_slug_and_base("unknown-rv", "https://vlrental.ca").is_none());
     }
 }

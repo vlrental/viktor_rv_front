@@ -17,17 +17,13 @@ from urllib.parse import urlparse
 SITE_NAME = "VL Rental"
 PRODUCTION_URL = "https://vlrental.ca"
 INDEX_ROBOTS = "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
-# Current published API cover IDs. These must be refreshed when an administrator
-# changes a rental cover; missing local previews intentionally disable preloading.
-# If the API is unavailable, the UI may render a static fallback image instead,
-# so this optimization applies only to the normal live-data path.
+# Current published API covers, shared with the Rust static fallback. These must
+# be refreshed when an administrator changes a rental cover; missing local files
+# intentionally disable the route-specific optimization.
+RV_COVER_PREVIEWS_PATH = Path(__file__).resolve().parents[1] / "content" / "rv_cover_previews.json"
 RV_DETAIL_PRELOADS = {
-    "/rv/jayco26": "d147526c-bf9c-464a-8a21-71bd2d391e7b-preview.webp",
-    "/rv/2015-keystone-bullet": "0543922d-40a8-44ed-a6a4-e9c139d34ab6-preview.webp",
-    "/rv/2014-forest-river-rockwood": "53a83e6e-681d-4307-9b7d-e136c65791f1-preview.webp",
-    "/rv/2025-open-range-1": "f69f3398-79d6-4674-8dd8-f5b25cad99b0-preview.webp",
-    "/rv/2017-keystone-outback-ultra": "c01a25dc-c538-48a5-91f0-217e796ca118-preview.webp",
-    "/rv/2025-highland-ridge-2": "c126b58c-46b8-421a-959d-3b4e3f652046-preview.webp",
+    f"/rv/{slug}": filename
+    for slug, filename in json.loads(RV_COVER_PREVIEWS_PATH.read_text(encoding="utf-8")).items()
 }
 NOINDEX_ROBOTS = "noindex,nofollow"
 LOCAL_STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]*/assets/[^"/]+\.css)" type="text/css">')

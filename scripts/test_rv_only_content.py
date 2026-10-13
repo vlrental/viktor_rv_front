@@ -58,6 +58,15 @@ class RvOnlyContentTests(unittest.TestCase):
         )
         self.assertIn(".rvd-review-stars > span.filled { color: var(--vl-accent);", reviews)
 
+    def test_static_rv_fallback_uses_shared_high_priority_cover(self) -> None:
+        source = (ROOT / "src/pages/rv_detail.rs").read_text(encoding="utf-8")
+        component = source[source.index("fn StaticRvFallback"):]
+        component = component[:component.index("fn DynamicRvDetail")]
+        self.assertIn("static_fallback_cover(listing.slug", component)
+        self.assertIn('fetchpriority: "high"', component)
+        self.assertIn('decoding: "async"', component)
+        self.assertNotIn("photos.first() {", component)
+
 
 if __name__ == "__main__":
     unittest.main()
