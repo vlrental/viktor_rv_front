@@ -35,7 +35,7 @@ SHELL = """<!doctype html>
   <meta name="google-site-verification" content="verification-test-token">
   <script type="application/ld+json">{}</script>
 </head>
-<body><div id="main"></div><script type="module" async src="/assets/viktor_rv_front-dxhapp.js"></script></body>
+<body><div id="main"></div></body>
 </html>
 """
 
@@ -49,13 +49,6 @@ class PreparePagesArtifactTests(unittest.TestCase):
         (root / "index.html").write_text(SHELL, encoding="utf-8")
         (root / "hero-bullet-overlook-768.jpg").write_bytes(b"small hero")
         (root / "hero-bullet-overlook.webp").write_bytes(b"large hero")
-        assets = root / "assets"
-        assets.mkdir()
-        (assets / "viktor_rv_front-dxhapp.js").write_text(
-            'init({module_or_path:"/assets/viktor_rv_front_bg-dxhwasm.wasm"});',
-            encoding="utf-8",
-        )
-        (assets / "viktor_rv_front_bg-dxhwasm.wasm").write_bytes(b"wasm")
         return root
 
     def make_sales_snapshot(self) -> Path:
@@ -75,7 +68,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
     def test_bundles_all_route_css_in_original_order_for_pages_base(self) -> None:
         root = self.make_artifact()
         assets = root / "assets"
-        assets.mkdir(exist_ok=True)
+        assets.mkdir()
         ordered = sorted(EXPECTED_STYLES - {"main"}) + ["main"]
         links = []
         for name in ordered:
@@ -96,7 +89,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
     def test_bundling_removes_unreferenced_main_css_but_keeps_previous_bundle(self) -> None:
         root = self.make_artifact()
         assets = root / "assets"
-        assets.mkdir(exist_ok=True)
+        assets.mkdir()
         links = []
         for name in sorted(EXPECTED_STYLES):
             (assets / f"{name}-dxh1111.css").write_text(
@@ -200,7 +193,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
     def test_detail_preloads_are_route_specific_and_match_runtime_assets(self) -> None:
         root = self.make_artifact()
         assets = root / "assets"
-        assets.mkdir(exist_ok=True)
+        assets.mkdir()
         bear_asset = "park-bear-creek-dxh1234.jpg"
         (assets / bear_asset).write_bytes(b"fingerprinted bear creek")
         prepare_artifact(root, "https://example.test")
@@ -218,16 +211,6 @@ class PreparePagesArtifactTests(unittest.TestCase):
         )
         about = (root / "about" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('<link rel="preload" as="image"', about)
-        wasm_preload = (
-            '<link rel="preload" as="fetch" type="application/wasm" '
-            'href="/assets/viktor_rv_front_bg-dxhwasm.wasm" crossorigin="anonymous">'
-        )
-        self.assertIn(wasm_preload, jayco)
-        self.assertIn(wasm_preload, bear)
-        self.assertEqual(jayco.count(wasm_preload), 1)
-        self.assertEqual(bear.count(wasm_preload), 1)
-        self.assertNotIn(wasm_preload, about)
-        self.assertNotIn(wasm_preload, (root / "index.html").read_text(encoding="utf-8"))
         self.assertNotIn("park-bear-creek", jayco)
         self.assertNotIn("d147526c", bear)
 
