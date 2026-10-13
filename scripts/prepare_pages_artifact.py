@@ -643,6 +643,7 @@ def render_route(
     sale_routes: tuple[SeoRoute, ...] = (),
     hero_assets: tuple[str, str] | None = None,
     detail_preload: str | None = None,
+    detail_wasm_preload: str | None = None,
 ) -> str:
     canonical = page_url(site_url, route.path)
     image = absolute_url(site_url, route.image)
@@ -669,20 +670,26 @@ def render_route(
         count=1,
         flags=re.DOTALL,
     )
+    preloads = ""
     if route.path == "/" and hero_assets:
         small, large = hero_assets
-        preload = (
+        preloads += (
             f'<link rel="preload" as="image" href="{html.escape(large, quote=True)}" '
             f'imagesrcset="{html.escape(small, quote=True)} 768w, {html.escape(large, quote=True)} 1535w" '
             'imagesizes="100vw" fetchpriority="high">\n    '
         )
-        document = document.replace("</head>", preload + "</head>", 1)
     elif detail_preload:
-        preload = (
+        preloads += (
             f'<link rel="preload" as="image" href="{html.escape(detail_preload, quote=True)}" '
             'fetchpriority="high">\n    '
         )
-        document = document.replace("</head>", preload + "</head>", 1)
+    if detail_wasm_preload:
+        preloads += (
+            f'<link rel="preload" as="fetch" type="application/wasm" '
+            f'href="{html.escape(detail_wasm_preload, quote=True)}" crossorigin="anonymous">\n    '
+        )
+    if preloads:
+        document = document.replace("</head>", preloads + "</head>", 1)
     snapshot = render_snapshot(route, site_url, sale_routes, hero_assets)
     document, count = re.subn(r'(<div id="main">)(</div>)', rf"\1{snapshot}\2", document, count=1)
     if count != 1:
@@ -757,6 +764,30 @@ def detail_preload_for(root: Path, route: SeoRoute, base_path: str) -> str | Non
     return None
 
 
+def wasm_preload_for(root: Path, shell: str) -> str:
+    script_match = re.search(
+        r'<script[^>]+type="module"[^>]+src="([^"]*viktor_rv_front-dxh[^"]+\.js)"',
+        shell,
+    )
+    if script_match is None:
+        raise ValueError("missing fingerprinted Dioxus module")
+    script_url = script_match.group(1)
+    script_path = root / "assets" / Path(urlparse(script_url).path).name
+    if not script_path.is_file():
+        raise FileNotFoundError(f"missing Dioxus module: {script_path}")
+    wasm_match = re.search(
+        r'module_or_path\s*:\s*"([^"]*viktor_rv_front_bg-dxh[^"]+\.wasm)"',
+        script_path.read_text(encoding="utf-8"),
+    )
+    if wasm_match is None:
+        raise ValueError("Dioxus module does not reference a fingerprinted WASM asset")
+    wasm_url = wasm_match.group(1)
+    wasm_path = root / "assets" / Path(urlparse(wasm_url).path).name
+    if not wasm_path.is_file():
+        raise FileNotFoundError(f"missing Dioxus WASM asset: {wasm_path}")
+    return wasm_url
+
+
 def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = None) -> None:
     index = root / "index.html"
     if not index.is_file():
@@ -812,6 +843,7 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
         for route in public_routes
         if (preload := detail_preload_for(root, route, base_path)) is not None
     }
+    detail_wasm_preload = wasm_preload_for(root, shell)
 
     sales_root = root / "rv-sales"
     if sales_root.is_dir():
@@ -833,6 +865,9 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
                 sale_routes,
                 hero_assets,
                 detail_preloads.get(route.path),
+                detail_wasm_preload
+                if route.path.startswith(("/rv/", "/parks/"))
+                else None,
             ),
             encoding="utf-8",
         )
