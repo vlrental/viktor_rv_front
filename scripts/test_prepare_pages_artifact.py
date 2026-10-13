@@ -190,6 +190,30 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertTrue((project / "public" / "lucide-1.24.0.woff2").is_file())
         self.assertTrue((project / "public" / "vendor" / "lucide" / "LICENSE-1.24.0.txt").is_file())
 
+    def test_detail_preloads_are_route_specific_and_match_runtime_assets(self) -> None:
+        root = self.make_artifact()
+        assets = root / "assets"
+        assets.mkdir()
+        bear_asset = "park-bear-creek-dxh1234.jpg"
+        (assets / bear_asset).write_bytes(b"fingerprinted bear creek")
+        prepare_artifact(root, "https://example.test")
+
+        jayco = (root / "rv" / "jayco26" / "index.html").read_text(encoding="utf-8")
+        jayco_preview = "/rv-previews/d147526c-bf9c-464a-8a21-71bd2d391e7b-preview.webp"
+        self.assertIn(
+            f'<link rel="preload" as="image" href="{jayco_preview}" fetchpriority="high">',
+            jayco,
+        )
+        bear = (root / "parks" / "bear-creek" / "index.html").read_text(encoding="utf-8")
+        self.assertIn(
+            f'<link rel="preload" as="image" href="/assets/{bear_asset}" fetchpriority="high">',
+            bear,
+        )
+        about = (root / "about" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn('<link rel="preload" as="image"', about)
+        self.assertNotIn("park-bear-creek", jayco)
+        self.assertNotIn("d147526c", bear)
+
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")

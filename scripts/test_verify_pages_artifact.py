@@ -63,6 +63,22 @@ class VerifyPagesArtifactTests(unittest.TestCase):
         image.write_bytes(b"test-image")
         self.assertEqual(verify_html(root, html_path), [])
 
+    def test_rv_preview_preload_resolves_inside_preview_directory(self) -> None:
+        root, html_path = self.make_artifact()
+        preview_name = "cover-preview.webp"
+        html_path.write_text(
+            HTML.replace(
+                "</head>",
+                f'<link rel="preload" as="image" href="/rv-previews/{preview_name}">\n</head>',
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("missing asset" in failure for failure in verify_html(root, html_path)))
+        previews = root / "rv-previews"
+        previews.mkdir()
+        (previews / preview_name).write_bytes(b"preview")
+        self.assertEqual(verify_html(root, html_path), [])
+
     def test_missing_css_marker_fails(self) -> None:
         root, html_path = self.make_artifact(":root{color:#17261c}")
         failures = verify_html(root, html_path)

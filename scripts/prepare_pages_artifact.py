@@ -17,6 +17,18 @@ from urllib.parse import urlparse
 SITE_NAME = "VL Rental"
 PRODUCTION_URL = "https://vlrental.ca"
 INDEX_ROBOTS = "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
+# Current published API cover IDs. These must be refreshed when an administrator
+# changes a rental cover; missing local previews intentionally disable preloading.
+# If the API is unavailable, the UI may render a static fallback image instead,
+# so this optimization applies only to the normal live-data path.
+RV_DETAIL_PRELOADS = {
+    "/rv/jayco26": "d147526c-bf9c-464a-8a21-71bd2d391e7b-preview.webp",
+    "/rv/2015-keystone-bullet": "0543922d-40a8-44ed-a6a4-e9c139d34ab6-preview.webp",
+    "/rv/2014-forest-river-rockwood": "53a83e6e-681d-4307-9b7d-e136c65791f1-preview.webp",
+    "/rv/2025-open-range-1": "f69f3398-79d6-4674-8dd8-f5b25cad99b0-preview.webp",
+    "/rv/2017-keystone-outback-ultra": "c01a25dc-c538-48a5-91f0-217e796ca118-preview.webp",
+    "/rv/2025-highland-ridge-2": "c126b58c-46b8-421a-959d-3b4e3f652046-preview.webp",
+}
 NOINDEX_ROBOTS = "noindex,nofollow"
 LOCAL_STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]*/assets/[^"/]+\.css)" type="text/css">')
 EXPECTED_STYLES = {
@@ -630,6 +642,7 @@ def render_route(
     site_url: str,
     sale_routes: tuple[SeoRoute, ...] = (),
     hero_assets: tuple[str, str] | None = None,
+    detail_preload: str | None = None,
 ) -> str:
     canonical = page_url(site_url, route.path)
     image = absolute_url(site_url, route.image)
@@ -662,6 +675,12 @@ def render_route(
             f'<link rel="preload" as="image" href="{html.escape(large, quote=True)}" '
             f'imagesrcset="{html.escape(small, quote=True)} 768w, {html.escape(large, quote=True)} 1535w" '
             'imagesizes="100vw" fetchpriority="high">\n    '
+        )
+        document = document.replace("</head>", preload + "</head>", 1)
+    elif detail_preload:
+        preload = (
+            f'<link rel="preload" as="image" href="{html.escape(detail_preload, quote=True)}" '
+            'fetchpriority="high">\n    '
         )
         document = document.replace("</head>", preload + "</head>", 1)
     snapshot = render_snapshot(route, site_url, sale_routes, hero_assets)
@@ -725,6 +744,19 @@ def output_path(root: Path, path: str) -> Path:
     return root / path.strip("/") / "index.html"
 
 
+def detail_preload_for(root: Path, route: SeoRoute, base_path: str) -> str | None:
+    if preview := RV_DETAIL_PRELOADS.get(route.path):
+        path = root / "rv-previews" / preview
+        return f"{base_path}/rv-previews/{preview}" if path.is_file() else None
+    if route.path.startswith("/parks/") and route.image.startswith("/assets/img/"):
+        stem = Path(route.image).stem
+        matches = sorted((root / "assets").glob(f"{stem}-dxh*.jpg"))
+        if len(matches) != 1:
+            return None
+        return f"{base_path}/assets/{matches[0].name}"
+    return None
+
+
 def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = None) -> None:
     index = root / "index.html"
     if not index.is_file():
@@ -775,6 +807,11 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
 
     sale_routes = load_sale_routes(sales_snapshot)
     public_routes = PUBLIC_ROUTES + sale_routes
+    detail_preloads = {
+        route.path: preload
+        for route in public_routes
+        if (preload := detail_preload_for(root, route, base_path)) is not None
+    }
 
     sales_root = root / "rv-sales"
     if sales_root.is_dir():
@@ -788,7 +825,17 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
     for route in public_routes:
         target = output_path(root, route.path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render_route(shell, route, site_url, sale_routes, hero_assets), encoding="utf-8")
+        target.write_text(
+            render_route(
+                shell,
+                route,
+                site_url,
+                sale_routes,
+                hero_assets,
+                detail_preloads.get(route.path),
+            ),
+            encoding="utf-8",
+        )
 
     for path, title in PRIVATE_ROUTES:
         target = output_path(root, path)

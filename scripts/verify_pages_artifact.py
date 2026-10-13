@@ -37,6 +37,8 @@ def artifact_path(root: Path, raw_url: str) -> Path | None:
     path = unquote(parsed.path)
     if "/assets/" in path:
         return root / "assets" / path.split("/assets/", 1)[1]
+    if "/rv-previews/" in path:
+        return root / "rv-previews" / path.split("/rv-previews/", 1)[1]
 
     name = Path(path).name
     if Path(name).suffix.lower() in {

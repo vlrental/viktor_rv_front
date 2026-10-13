@@ -214,7 +214,7 @@ pub fn ParkDetail(slug: String) -> Element {
                         }
                     }
                 }
-                img { src: park.image, alt: park.image_alt, decoding: "async" }
+                img { src: park.image, alt: park.image_alt, decoding: "async", fetchpriority: "high" }
             }
 
             section { class: "park-detail-content",
