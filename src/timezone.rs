@@ -37,6 +37,8 @@ pub fn format_local_moment(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Offset, TimeZone, Utc};
+    use chrono_tz::America::Vancouver;
 
     #[test]
     fn native_fallback_uses_business_time_without_a_zone_label() {
@@ -45,5 +47,40 @@ mod tests {
         assert!(value.contains("2:00 PM"));
         assert!(!value.contains("PDT"));
         assert!(!value.contains("-07:00"));
+    }
+
+    #[test]
+    fn vancouver_timezone_keeps_winter_summer_and_dst_offsets() {
+        let winter = Vancouver.with_ymd_and_hms(2030, 1, 15, 14, 0, 0).unwrap();
+        let summer = Vancouver.with_ymd_and_hms(2030, 7, 15, 14, 0, 0).unwrap();
+        let before_spring_transition = Vancouver.with_ymd_and_hms(2030, 3, 10, 1, 59, 0).unwrap();
+        let after_spring_transition = Vancouver.with_ymd_and_hms(2030, 3, 10, 3, 0, 0).unwrap();
+        let before_autumn_transition = Utc
+            .with_ymd_and_hms(2030, 11, 3, 8, 59, 0)
+            .unwrap()
+            .with_timezone(&Vancouver);
+        let after_autumn_transition = Utc
+            .with_ymd_and_hms(2030, 11, 3, 9, 0, 0)
+            .unwrap()
+            .with_timezone(&Vancouver);
+
+        assert_eq!(winter.offset().fix().local_minus_utc(), -8 * 60 * 60);
+        assert_eq!(summer.offset().fix().local_minus_utc(), -7 * 60 * 60);
+        assert_eq!(
+            before_spring_transition.offset().fix().local_minus_utc(),
+            -8 * 60 * 60
+        );
+        assert_eq!(
+            after_spring_transition.offset().fix().local_minus_utc(),
+            -7 * 60 * 60
+        );
+        assert_eq!(
+            before_autumn_transition.offset().fix().local_minus_utc(),
+            -7 * 60 * 60
+        );
+        assert_eq!(
+            after_autumn_transition.offset().fix().local_minus_utc(),
+            -8 * 60 * 60
+        );
     }
 }

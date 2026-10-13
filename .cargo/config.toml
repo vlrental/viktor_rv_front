@@ -1,0 +1,2 @@
+[env]
+CHRONO_TZ_TIMEZONE_FILTER = { value = "^(America/Vancouver|UTC)$", force = true }
