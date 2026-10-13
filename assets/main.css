@@ -12,6 +12,8 @@
   --vl-accent: #D7A24A;
   --vl-accent-text: #8B5B12;
   --vl-coral: #EA6A4B;
+  --vl-coral-text: #B7472D;
+  --vl-step-number-text: #918B80;
   --vl-sage: #7A9A80;
   --vl-hair: #E7E4DB;
   --vl-line: #D6DDD0;
@@ -2142,6 +2144,10 @@ img { display: block; max-width: 100%; }
 .sec-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
 .eyebrow { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--vl-coral); letter-spacing: 0.5px; }
 .eyebrow.gold { color: var(--vl-accent); }
+.home-rentals .eyebrow,
+.hiw-header > .eyebrow,
+.home-faq .eyebrow,
+.google-reviews .eyebrow { color: var(--vl-coral-text); }
 .sec-title { font-family: var(--font-heading); font-size: 40px; font-weight: 400; color: var(--vl-ink); margin-top: 8px; }
 .sec-title.on-dark { color: var(--vl-white); }
 
@@ -2350,6 +2356,7 @@ img { display: block; max-width: 100%; }
   display: flex; align-items: center; justify-content: center;
 }
 .step-num { font-family: var(--font-heading); font-size: 38px; color: var(--vl-hair); }
+.hiw-header + .card-row > .step-card .step-num { color: var(--vl-step-number-text); }
 .step-title { font-family: var(--font-heading); font-size: 24px; color: var(--vl-ink); }
 .step-desc { font-size: 15px; line-height: 23px; color: var(--vl-muted); }
 
