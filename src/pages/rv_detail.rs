@@ -4,6 +4,7 @@
 use chrono::{DateTime, Datelike, Duration, LocalResult, Months, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::Vancouver;
 use dioxus::prelude::*;
+use serde::Deserialize;
 
 use super::booking_overlay::{
     has_saved_pending_payment, should_open_booking_overlay, UnifiedBookingOverlay,
@@ -27,6 +28,19 @@ const BULLET_LENGTH_NOTE: &str = "Campsites must fit the full 30 ft bumper-to-bu
 const OPEN_RANGE_LENGTH_NOTE: &str =
     "26BHS is the model designation; campsites must fit the full 30 ft bumper-to-bumper length.";
 const OUTBACK_LENGTH_NOTE: &str = "Campsites must fit the full 31 ft bumper-to-bumper length.";
+const CAMPSITE_PLANNING_NOTE: &str =
+    "Reserve your campsite separately. We confirm RV fit and delivery access before delivery.";
+const CAMPSITE_PLANNING_LINKS: [(&str, &str); 3] = [
+    ("Bear Creek delivery guide", "/parks/bear-creek/"),
+    ("Okanagan Lake delivery guide", "/parks/okanagan-lake/"),
+    ("All parks in our delivery range", "/parks-in-our-range/"),
+];
+const RV_CONFIRMED_DETAILS_JSON: &str = include_str!("../../content/rv_confirmed_details.json");
+
+#[derive(Deserialize)]
+struct ConfirmedRvDetails {
+    sleep_layouts: std::collections::HashMap<String, String>,
+}
 
 #[derive(Clone, Copy)]
 struct GoodToKnowCopy {
@@ -154,6 +168,13 @@ fn rv_length_note(slug: &str) -> Option<&'static str> {
     }
 }
 
+fn rv_sleep_layout_note(slug: &str) -> Option<String> {
+    serde_json::from_str::<ConfirmedRvDetails>(RV_CONFIRMED_DETAILS_JSON)
+        .expect("content/rv_confirmed_details.json must remain valid")
+        .sleep_layouts
+        .remove(canonical_rv_slug(slug))
+}
+
 fn is_missing_rental(error: &api::ApiError) -> bool {
     matches!(error.status, 404 | 410)
 }
@@ -187,9 +208,13 @@ fn StaticRvFallback(listing: Listing) -> Element {
                     if let Some(note) = rv_length_note(listing.slug) {
                         p { class: "rvd-p", "{note}" }
                     }
+                    if let Some(note) = rv_sleep_layout_note(listing.slug) {
+                        p { class: "rvd-p", "{note}" }
+                    }
                     p { class: "rvd-p", "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay." }
                     a { class: "rvd-reserve", href: "tel:{PHONE}", "Call us about this RV" }
                 }
+                CampsitePlanning {}
             }
         }
     }
@@ -234,6 +259,7 @@ fn DynamicRvDetail(
         | "2017-keystone-outback-ultra" => rv_length_note(&rental.slug),
         _ => None,
     };
+    let sleep_layout_note = rv_sleep_layout_note(&rental.slug);
     rsx! {
         DynamicTitleHead { rental: rental.clone(), review_summary: visible_review_summary.clone() }
         DynamicGallery { rental: rental.clone(), media: value.media.clone() }
@@ -255,12 +281,13 @@ fn DynamicRvDetail(
                     div { class: "rvd-highlights", for feature in highlights { div { key: "{feature.feature_id}", class: "rvd-hl", ApiIcon { name: feature.icon_name.clone(), size: 20 } div { class: "rvd-hl-t", "{feature.label}" } div { class: "rvd-hl-d", "{feature.description}" } } } }
                 }
                 InlineAvailabilityCalendar { rental: rental.clone(), starts_on, ends_on }
-                div { class: "rvd-sec", h2 { class: "rvd-h", "About this RV" } p { class: "rvd-p", "{rental.description}" } if let Some(note) = supplemental_length_note { p { class: "rvd-p", "{note}" } } }
+                div { class: "rvd-sec", h2 { class: "rvd-h", "About this RV" } p { class: "rvd-p", "{rental.description}" } if let Some(note) = supplemental_length_note { p { class: "rvd-p", "{note}" } } if let Some(note) = sleep_layout_note { p { class: "rvd-p", "{note}" } } }
                 div { class: "rvd-sec", h2 { class: "rvd-h", "What this RV offers" }
                     if amenities.is_empty() { p { class: "rvd-p", "Amenities are being updated. Contact us for the complete equipment list." } }
                     else { div { class: "rvd-amenities", for feature in amenities { div { key: "{feature.feature_id}", class: "rvd-am", ApiIcon { name: feature.icon_name.clone(), size: 18 } span { "{feature.label}" } } } } }
                 }
                 GoodToKnow {}
+                CampsitePlanning {}
             }
             DynamicBookingCard { rental, starts_on, ends_on, review_summary: visible_review_summary }
         }
@@ -774,6 +801,25 @@ fn GoodToKnow() -> Element {
                             title: item.title,
                             desc: item.desc,
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn CampsitePlanning() -> Element {
+    rsx! {
+        div { class: "rvd-sec",
+            h2 { class: "rvd-h", "Plan your campsite" }
+            p { class: "rvd-p", "{CAMPSITE_PLANNING_NOTE}" }
+            for (label, path) in CAMPSITE_PLANNING_LINKS {
+                p { class: "rvd-p",
+                    a {
+                        href: api::frontend_path(path),
+                        style: "color: var(--vl-forest); font-weight: 600; text-decoration: underline; text-underline-offset: 4px;",
+                        "{label}"
                     }
                 }
             }
@@ -1481,6 +1527,53 @@ mod availability_tests {
                 "missing approved policy: {required}"
             );
         }
+    }
+
+    #[test]
+    fn campsite_planning_uses_only_approved_canonical_routes_and_copy() {
+        assert_eq!(
+            CAMPSITE_PLANNING_NOTE,
+            "Reserve your campsite separately. We confirm RV fit and delivery access before delivery."
+        );
+        assert_eq!(
+            CAMPSITE_PLANNING_LINKS,
+            [
+                ("Bear Creek delivery guide", "/parks/bear-creek/"),
+                ("Okanagan Lake delivery guide", "/parks/okanagan-lake/"),
+                ("All parks in our delivery range", "/parks-in-our-range/"),
+            ]
+        );
+    }
+
+    #[test]
+    fn confirmed_sleep_layouts_cover_all_six_rvs_without_unapproved_details() {
+        let expected = [
+            ("jayco26", "Sleep layout: fixed bed and convertible sofa."),
+            (
+                "2015-keystone-bullet",
+                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            ),
+            (
+                "2014-forest-river-rockwood",
+                "Sleep layout: fixed bed and pull-out sofa.",
+            ),
+            (
+                "2025-open-range-1",
+                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            ),
+            (
+                "2017-keystone-outback-ultra",
+                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            ),
+            (
+                "2025-highland-ridge-2",
+                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            ),
+        ];
+        for (slug, note) in expected {
+            assert_eq!(rv_sleep_layout_note(slug).as_deref(), Some(note));
+        }
+        assert!(rv_sleep_layout_note("not-a-listed-rv").is_none());
     }
 
     #[test]

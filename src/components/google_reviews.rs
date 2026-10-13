@@ -72,7 +72,7 @@ pub fn GoogleReviews() -> Element {
                     h2 { id: "google-reviews-title", class: "ab-reviews-title", "Google Reviews" }
                 }
                 a { class: "google-reviews-rating", href: data.profile_url.clone(), target: "_blank", rel: "noopener noreferrer",
-                    "{data.rating} / 5 · {total} Google reviews"
+                    "{data.rating} / 5 · {total} selected Google reviews"
                 }
             }
             div { class: "google-reviews-grid",

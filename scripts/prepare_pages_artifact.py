@@ -520,6 +520,11 @@ def render_snapshot(
     by_path = {item.path: item for item in PUBLIC_ROUTES + sale_routes}
     is_park = route.path.startswith("/parks/")
     is_rv = route.path.startswith("/rv/")
+    confirmed_details = json.loads(
+        (Path(__file__).resolve().parents[1] / "content" / "rv_confirmed_details.json").read_text(
+            encoding="utf-8"
+        )
+    )
     if route.path == "/rv-sales":
         related_paths = tuple(item.path for item in sale_routes) or ("/contact", "/")
         related_title = "Current RVs for sale"
@@ -574,6 +579,29 @@ def render_snapshot(
         f'<h2 id="seo-related-title">{html.escape(related_title)}</h2><ul>{related}</ul></section>'
         if related else ""
     )
+    campsite_planning = ""
+    if is_rv:
+        campsite_links = (
+            ("Bear Creek delivery guide", "/parks/bear-creek"),
+            ("Okanagan Lake delivery guide", "/parks/okanagan-lake"),
+            ("All parks in our delivery range", "/parks-in-our-range"),
+        )
+        campsite_planning = (
+            '<section class="seo-prerender-related" aria-labelledby="seo-campsite-title">'
+            '<h2 id="seo-campsite-title">Plan your campsite</h2>'
+            '<p>Reserve your campsite separately. We confirm RV fit and delivery access before delivery.</p>'
+            '<ul>'
+            + "".join(
+                f'<li><a href="{html.escape(page_url(site_url, path), quote=True)}">'
+                f'{html.escape(label)}</a></li>'
+                for label, path in campsite_links
+            )
+            + "</ul></section>"
+        )
+        sleep_layout = confirmed_details["sleep_layouts"][route.path.removeprefix("/rv/")]
+        campsite_planning = campsite_planning.replace(
+            "<ul>", f"<p>{html.escape(sleep_layout)}</p><ul>", 1
+        )
     faq_content = ""
     if route.path == "/faq":
         faq_content = (
@@ -609,7 +637,7 @@ def render_snapshot(
         '<p class="seo-prerender-kicker">KELOWNA · OKANAGAN RV RENTALS</p>'
         f'<h1>{html.escape(route.heading)}</h1>{description}{planning}'
         '</section>'
-        f'{faq_content}{related_section}</main>'
+        f'{faq_content}{campsite_planning}{related_section}</main>'
         '<footer class="seo-prerender-footer">'
         'Delivery-only RV rentals · Kelowna, British Columbia · '
         '<a href="tel:+12508785874">+1 (250) 878-5874</a></footer></div>'

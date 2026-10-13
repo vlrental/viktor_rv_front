@@ -444,6 +444,43 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('href="https://example.test/parks/herald/"', hub)
         self.assertEqual(park.count("<h1>"), 1)
 
+    def test_every_rv_snapshot_has_the_approved_campsite_planning_section(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test")
+
+        rv_documents = [
+            root / route.path.lstrip("/") / "index.html"
+            for route in PUBLIC_ROUTES
+            if route.path.startswith("/rv/")
+        ]
+        self.assertEqual(len(rv_documents), 6)
+        for path in rv_documents:
+            document = path.read_text(encoding="utf-8")
+            self.assertEqual(document.count("Plan your campsite"), 1)
+            self.assertIn(
+                "Reserve your campsite separately. We confirm RV fit and delivery access before delivery.",
+                document,
+            )
+            self.assertIn('href="https://example.test/parks/bear-creek/"', document)
+            self.assertIn('href="https://example.test/parks/okanagan-lake/"', document)
+            self.assertIn('href="https://example.test/parks-in-our-range/"', document)
+
+        expected_layouts = {
+            "jayco26": "Sleep layout: fixed bed and convertible sofa.",
+            "2015-keystone-bullet": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            "2014-forest-river-rockwood": "Sleep layout: fixed bed and pull-out sofa.",
+            "2025-open-range-1": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            "2017-keystone-outback-ultra": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            "2025-highland-ridge-2": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+        }
+        for slug, phrase in expected_layouts.items():
+            document = (root / "rv" / slug / "index.html").read_text(encoding="utf-8")
+            self.assertEqual(document.count(phrase), 1)
+
+        for unrelated in ["index.html", "delivery/index.html", "parks/bear-creek/index.html"]:
+            document = (root / unrelated).read_text(encoding="utf-8")
+            self.assertNotIn("Plan your campsite", document)
+
     def test_bear_creek_snapshot_keeps_route_specific_planning_copy(self) -> None:
         root = self.make_artifact()
         prepare_artifact(root, "https://example.test")
