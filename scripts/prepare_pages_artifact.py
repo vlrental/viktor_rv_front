@@ -33,7 +33,7 @@ EXPECTED_STYLES = {
 }
 FAQ_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "faq.json"
 TERMS_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "terms.json"
-HERO_SMALL_FILE = "hero-bullet-overlook-768.jpg"
+HERO_SMALL_FILE = "hero-bullet-overlook-768.webp"
 HERO_LARGE_FILE = "hero-bullet-overlook.webp"
 
 

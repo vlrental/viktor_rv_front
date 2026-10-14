@@ -50,7 +50,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
         root = Path(temporary.name) / "public"
         root.mkdir()
         (root / "index.html").write_text(SHELL, encoding="utf-8")
-        (root / "hero-bullet-overlook-768.jpg").write_bytes(b"small hero")
+        (root / "hero-bullet-overlook-768.webp").write_bytes(b"small hero")
         (root / "hero-bullet-overlook.webp").write_bytes(b"large hero")
         return root
 
@@ -192,7 +192,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
 
         home = (root / "index.html").read_text(encoding="utf-8")
         about = (root / "about" / "index.html").read_text(encoding="utf-8")
-        self.assertIn('imagesrcset="/hero-bullet-overlook-768.jpg 768w, /hero-bullet-overlook.webp 1535w"', home)
+        self.assertIn('imagesrcset="/hero-bullet-overlook-768.webp 768w, /hero-bullet-overlook.webp 1535w"', home)
         self.assertIn('class="seo-prerender-home-poster"', home)
         self.assertIn('fetchpriority="high"', home)
         self.assertNotIn("hero-bullet-overlook-768", about)
@@ -282,6 +282,16 @@ class PreparePagesArtifactTests(unittest.TestCase):
         for filename in covers.values():
             self.assertRegex(filename, r"^[0-9a-f-]{36}-preview\.webp$")
             self.assertTrue((project / "public" / "rv-previews" / filename).is_file())
+
+    def test_mobile_hero_is_a_smaller_webp_and_legacy_jpeg_is_preserved(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        mobile = project / "public" / "hero-bullet-overlook-768.webp"
+        legacy = project / "public" / "hero-bullet-overlook-768.jpg"
+        self.assertTrue(mobile.is_file())
+        self.assertTrue(legacy.is_file())
+        self.assertLess(mobile.stat().st_size, legacy.stat().st_size)
+        self.assertEqual(mobile.read_bytes()[:4], b"RIFF")
+        self.assertEqual(mobile.read_bytes()[8:12], b"WEBP")
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()

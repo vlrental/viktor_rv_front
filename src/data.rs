@@ -163,7 +163,7 @@ pub fn rv_gallery(slug: &str) -> Vec<Asset> {
 // Public files bypass Dioxus image transforms, which re-encode this already
 // compressed source losslessly and make the output several times larger.
 // Relative URLs are correct on the homepage for both root and Pages base paths.
-pub const IMG_HERO_RV_SMALL: &str = "./hero-bullet-overlook-768.jpg";
+pub const IMG_HERO_RV_SMALL: &str = "./hero-bullet-overlook-768.webp";
 pub const IMG_HERO_RV_LARGE: &str = "./hero-bullet-overlook.webp";
 
 /// Карточка каталога (RV).
