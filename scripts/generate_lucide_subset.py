@@ -22,7 +22,7 @@ BLOCK_END = "            /* lucide-font-partition:end */"
 MAPPING_RE = re.compile(
     r'\.icon-([a-z0-9-]+)::before\s*\{\s*content:\s*"\\([0-9a-fA-F]+)";\s*\}'
 )
-TOKEN_RE = re.compile(r"[a-z][a-z0-9-]+")
+TOKEN_RE = re.compile(r"[a-z][a-z0-9-]*")
 ESCAPED_POINT_RE = re.compile(r"\\([eE][0-9a-fA-F]{3})")
 
 

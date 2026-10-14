@@ -4,7 +4,13 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.generate_lucide_subset import MANIFEST, directly_used_codepoints, mappings, used_icon_names
+from scripts.generate_lucide_subset import (
+    MANIFEST,
+    TOKEN_RE,
+    directly_used_codepoints,
+    mappings,
+    used_icon_names,
+)
 
 
 class LucideSubsetTests(unittest.TestCase):
@@ -25,6 +31,16 @@ class LucideSubsetTests(unittest.TestCase):
         discovered = used_icon_names(icon_map, {unused})
         self.assertIn(unused, discovered)
         self.assertNotEqual(manifest["used_names"], discovered)
+
+    def test_every_mapped_name_is_detectable_as_a_standalone_quoted_token(self) -> None:
+        for name in mappings():
+            with self.subTest(name=name):
+                self.assertIn(name, TOKEN_RE.findall(f'"{name}"'))
+
+    def test_close_icon_is_in_the_generated_subset(self) -> None:
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        self.assertIn("x", manifest["used_names"])
+        self.assertIn("U+E1B2", manifest["used_codepoints"])
 
     def test_original_font_and_license_remain_present(self) -> None:
         root = Path(__file__).resolve().parents[1]
