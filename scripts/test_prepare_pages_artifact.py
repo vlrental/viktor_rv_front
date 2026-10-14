@@ -493,16 +493,32 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn('href="https://example.test/parks-in-our-range/"', document)
 
         expected_layouts = {
-            "jayco26": "Sleep layout: fixed bed and convertible sofa.",
-            "2015-keystone-bullet": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            "jayco26": "Sleep layout: fixed bed, convertible sofa and convertible dinette.",
+            "2015-keystone-bullet": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
             "2014-forest-river-rockwood": "Sleep layout: fixed bed and pull-out sofa.",
-            "2025-open-range-1": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
-            "2017-keystone-outback-ultra": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
-            "2025-highland-ridge-2": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+            "2025-open-range-1": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
+            "2017-keystone-outback-ultra": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
+            "2025-highland-ridge-2": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
         }
         for slug, phrase in expected_layouts.items():
             document = (root / "rv" / slug / "index.html").read_text(encoding="utf-8")
             self.assertEqual(document.count(phrase), 1)
+            if slug == "2014-forest-river-rockwood":
+                self.assertNotIn("dinette", document.lower())
+            else:
+                self.assertEqual(document.count("convertible dinette"), 1)
+
+        expected_capacities = {
+            "jayco26": "sleeps up to four",
+            "2015-keystone-bullet": "sleeps up to eight",
+            "2014-forest-river-rockwood": "sleeps up to four",
+            "2025-open-range-1": "sleeps up to eight",
+            "2017-keystone-outback-ultra": "sleeps up to six",
+            "2025-highland-ridge-2": "sleeps up to eight",
+        }
+        for slug, phrase in expected_capacities.items():
+            document = (root / "rv" / slug / "index.html").read_text(encoding="utf-8")
+            self.assertIn(phrase, document.lower())
 
         jayco_electrical = "Electrical connection: this RV uses a regular 50-amp campsite hookup."
         thirty_amp_electrical = (

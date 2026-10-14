@@ -1575,10 +1575,13 @@ mod availability_tests {
     #[test]
     fn confirmed_sleep_layouts_cover_all_six_rvs_without_unapproved_details() {
         let expected = [
-            ("jayco26", "Sleep layout: fixed bed and convertible sofa."),
+            (
+                "jayco26",
+                "Sleep layout: fixed bed, convertible sofa and convertible dinette.",
+            ),
             (
                 "2015-keystone-bullet",
-                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+                "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
             ),
             (
                 "2014-forest-river-rockwood",
@@ -1586,19 +1589,28 @@ mod availability_tests {
             ),
             (
                 "2025-open-range-1",
-                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+                "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
             ),
             (
                 "2017-keystone-outback-ultra",
-                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+                "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
             ),
             (
                 "2025-highland-ridge-2",
-                "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+                "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
             ),
         ];
         for (slug, note) in expected {
             assert_eq!(rv_sleep_layout_note(slug).as_deref(), Some(note));
+        }
+        let details: ConfirmedRvDetails = serde_json::from_str(RV_CONFIRMED_DETAILS_JSON).unwrap();
+        assert_eq!(details.sleep_layouts.len(), 6);
+        for (slug, note) in &details.sleep_layouts {
+            if slug == "2014-forest-river-rockwood" {
+                assert!(!note.to_ascii_lowercase().contains("dinette"));
+            } else {
+                assert!(note.contains("convertible dinette"), "{slug}: {note}");
+            }
         }
         assert!(rv_sleep_layout_note("not-a-listed-rv").is_none());
     }

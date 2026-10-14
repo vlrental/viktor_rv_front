@@ -1,11 +1,11 @@
 {
   "sleep_layouts": {
-    "jayco26": "Sleep layout: fixed bed and convertible sofa.",
-    "2015-keystone-bullet": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
+    "jayco26": "Sleep layout: fixed bed, convertible sofa and convertible dinette.",
+    "2015-keystone-bullet": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
     "2014-forest-river-rockwood": "Sleep layout: fixed bed and pull-out sofa.",
-    "2025-open-range-1": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
-    "2017-keystone-outback-ultra": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
-    "2025-highland-ridge-2": "Sleep layout: fixed bed, bunk beds, and pull-out sofa."
+    "2025-open-range-1": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
+    "2017-keystone-outback-ultra": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette.",
+    "2025-highland-ridge-2": "Sleep layout: fixed bed, bunk beds, pull-out sofa and convertible dinette."
   },
   "electrical_notes": {
     "jayco26": "Electrical connection: this RV uses a regular 50-amp campsite hookup.",
