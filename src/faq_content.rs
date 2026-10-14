@@ -90,6 +90,9 @@ mod tests {
             "Bedding sets are available for CA$40 per selected bed",
             "Wastewater emptying costs CA$45",
             "30-amp or 50-amp hookup",
+            "The Jayco uses a regular 50-amp campsite hookup",
+            "the other five RVs use regular 30-amp campsite hookups",
+            "request a suitable adapter before delivery; it is not automatically included",
             "dry camping under normal use",
             "9:00 AM to 8:00 PM",
         ] {

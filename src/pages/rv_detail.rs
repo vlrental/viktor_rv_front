@@ -40,6 +40,7 @@ const RV_CONFIRMED_DETAILS_JSON: &str = include_str!("../../content/rv_confirmed
 #[derive(Deserialize)]
 struct ConfirmedRvDetails {
     sleep_layouts: std::collections::HashMap<String, String>,
+    electrical_notes: std::collections::HashMap<String, String>,
 }
 
 #[derive(Clone, Copy)]
@@ -175,6 +176,13 @@ fn rv_sleep_layout_note(slug: &str) -> Option<String> {
         .remove(canonical_rv_slug(slug))
 }
 
+fn rv_electrical_note(slug: &str) -> Option<String> {
+    serde_json::from_str::<ConfirmedRvDetails>(RV_CONFIRMED_DETAILS_JSON)
+        .expect("content/rv_confirmed_details.json must remain valid")
+        .electrical_notes
+        .remove(canonical_rv_slug(slug))
+}
+
 fn is_missing_rental(error: &api::ApiError) -> bool {
     matches!(error.status, 404 | 410)
 }
@@ -224,7 +232,7 @@ fn StaticRvFallback(listing: Listing) -> Element {
                     p { class: "rvd-p", "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay." }
                     a { class: "rvd-reserve", href: "tel:{PHONE}", "Call us about this RV" }
                 }
-                CampsitePlanning {}
+                CampsitePlanning { slug: listing.slug.to_string() }
             }
         }
     }
@@ -297,7 +305,7 @@ fn DynamicRvDetail(
                     else { div { class: "rvd-amenities", for feature in amenities { div { key: "{feature.feature_id}", class: "rvd-am", ApiIcon { name: feature.icon_name.clone(), size: 18 } span { "{feature.label}" } } } } }
                 }
                 GoodToKnow {}
-                CampsitePlanning {}
+                CampsitePlanning { slug: rental.slug.clone() }
             }
             DynamicBookingCard { rental, starts_on, ends_on, review_summary: visible_review_summary }
         }
@@ -819,11 +827,15 @@ fn GoodToKnow() -> Element {
 }
 
 #[component]
-fn CampsitePlanning() -> Element {
+fn CampsitePlanning(slug: String) -> Element {
+    let electrical_note = rv_electrical_note(&slug);
     rsx! {
         div { class: "rvd-sec",
             h2 { class: "rvd-h", "Plan your campsite" }
             p { class: "rvd-p", "{CAMPSITE_PLANNING_NOTE}" }
+            if let Some(note) = electrical_note {
+                p { class: "rvd-p", "{note}" }
+            }
             for (label, path) in CAMPSITE_PLANNING_LINKS {
                 p { class: "rvd-p",
                     a {
@@ -1450,6 +1462,7 @@ fn InlineAvailabilityMonth(
 #[allow(clippy::items_after_test_module)]
 mod availability_tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn static_fallback_covers_every_known_rv_but_no_unknown_slug() {
@@ -1588,6 +1601,50 @@ mod availability_tests {
             assert_eq!(rv_sleep_layout_note(slug).as_deref(), Some(note));
         }
         assert!(rv_sleep_layout_note("not-a-listed-rv").is_none());
+    }
+
+    #[test]
+    fn confirmed_electrical_connections_cover_all_six_rvs_and_api_aliases() {
+        let details: ConfirmedRvDetails = serde_json::from_str(RV_CONFIRMED_DETAILS_JSON).unwrap();
+        assert_eq!(details.electrical_notes.len(), 6);
+        assert_eq!(
+            details.electrical_notes.keys().collect::<HashSet<_>>(),
+            details.sleep_layouts.keys().collect::<HashSet<_>>()
+        );
+        let jayco = "Electrical connection: this RV uses a regular 50-amp campsite hookup.";
+        let thirty_amp = "Electrical connection: this RV uses a regular 30-amp campsite hookup. If your site offers only 50-amp service, request a suitable adapter before delivery; it is not automatically included.";
+        for (canonical, api, note) in [
+            ("jayco26", "brand-new-jayco-26ft-5th-wheel-3", jayco),
+            (
+                "2015-keystone-bullet",
+                "2015-keystone-bullet-272bhs-bunk-bed",
+                thirty_amp,
+            ),
+            (
+                "2014-forest-river-rockwood",
+                "forest-river-rockwood-19-ft",
+                thirty_amp,
+            ),
+            (
+                "2025-open-range-1",
+                "brand-new-open-range-conventional-26-bhs-bunk-bed-1",
+                thirty_amp,
+            ),
+            (
+                "2017-keystone-outback-ultra",
+                "keystone-outback-ultra-lite-family-trailer-with-kids-room",
+                thirty_amp,
+            ),
+            (
+                "2025-highland-ridge-2",
+                "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2",
+                thirty_amp,
+            ),
+        ] {
+            assert_eq!(rv_electrical_note(canonical).as_deref(), Some(note));
+            assert_eq!(rv_electrical_note(api).as_deref(), Some(note));
+        }
+        assert!(rv_electrical_note("not-a-listed-rv").is_none());
     }
 
     #[test]

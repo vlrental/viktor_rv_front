@@ -504,6 +504,29 @@ class PreparePagesArtifactTests(unittest.TestCase):
             document = (root / "rv" / slug / "index.html").read_text(encoding="utf-8")
             self.assertEqual(document.count(phrase), 1)
 
+        jayco_electrical = "Electrical connection: this RV uses a regular 50-amp campsite hookup."
+        thirty_amp_electrical = (
+            "Electrical connection: this RV uses a regular 30-amp campsite hookup. "
+            "If your site offers only 50-amp service, request a suitable adapter before delivery; "
+            "it is not automatically included."
+        )
+        for slug in expected_layouts:
+            document = (root / "rv" / slug / "index.html").read_text(encoding="utf-8")
+            expected = jayco_electrical if slug == "jayco26" else thirty_amp_electrical
+            self.assertEqual(document.count(expected), 1)
+
+        api_aliases = {
+            "brand-new-jayco-26ft-5th-wheel-3": "jayco26",
+            "2015-keystone-bullet-272bhs-bunk-bed": "2015-keystone-bullet",
+            "forest-river-rockwood-19-ft": "2014-forest-river-rockwood",
+            "brand-new-open-range-conventional-26-bhs-bunk-bed-1": "2025-open-range-1",
+            "keystone-outback-ultra-lite-family-trailer-with-kids-room": "2017-keystone-outback-ultra",
+            "brand-new-highland-ridge-open-range-26bhs-bunk-bed-2": "2025-highland-ridge-2",
+        }
+        for alias, canonical in api_aliases.items():
+            redirect = (root / "rv" / alias / "index.html").read_text(encoding="utf-8")
+            self.assertIn(f'https://example.test/rv/{canonical}/', redirect)
+
         for unrelated in ["index.html", "delivery/index.html", "parks/bear-creek/index.html"]:
             document = (root / unrelated).read_text(encoding="utf-8")
             self.assertNotIn("Plan your campsite", document)

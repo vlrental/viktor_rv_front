@@ -611,8 +611,11 @@ def render_snapshot(
             + "</ul></section>"
         )
         sleep_layout = confirmed_details["sleep_layouts"][route.path.removeprefix("/rv/")]
+        electrical_note = confirmed_details["electrical_notes"][route.path.removeprefix("/rv/")]
         campsite_planning = campsite_planning.replace(
-            "<ul>", f"<p>{html.escape(sleep_layout)}</p><ul>", 1
+            "<ul>",
+            f"<p>{html.escape(sleep_layout)}</p><p>{html.escape(electrical_note)}</p><ul>",
+            1,
         )
     park_rv_comparison = ""
     if is_park:

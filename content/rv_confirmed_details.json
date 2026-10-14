@@ -6,5 +6,13 @@
     "2025-open-range-1": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
     "2017-keystone-outback-ultra": "Sleep layout: fixed bed, bunk beds, and pull-out sofa.",
     "2025-highland-ridge-2": "Sleep layout: fixed bed, bunk beds, and pull-out sofa."
+  },
+  "electrical_notes": {
+    "jayco26": "Electrical connection: this RV uses a regular 50-amp campsite hookup.",
+    "2015-keystone-bullet": "Electrical connection: this RV uses a regular 30-amp campsite hookup. If your site offers only 50-amp service, request a suitable adapter before delivery; it is not automatically included.",
+    "2014-forest-river-rockwood": "Electrical connection: this RV uses a regular 30-amp campsite hookup. If your site offers only 50-amp service, request a suitable adapter before delivery; it is not automatically included.",
+    "2025-open-range-1": "Electrical connection: this RV uses a regular 30-amp campsite hookup. If your site offers only 50-amp service, request a suitable adapter before delivery; it is not automatically included.",
+    "2017-keystone-outback-ultra": "Electrical connection: this RV uses a regular 30-amp campsite hookup. If your site offers only 50-amp service, request a suitable adapter before delivery; it is not automatically included.",
+    "2025-highland-ridge-2": "Electrical connection: this RV uses a regular 30-amp campsite hookup. If your site offers only 50-amp service, request a suitable adapter before delivery; it is not automatically included."
   }
 }

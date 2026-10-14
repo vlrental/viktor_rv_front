@@ -133,6 +133,9 @@ mod tests {
             "Stationary Plus Protection: CA$150 fixed per trip",
             "separate refundable CA$1,000 damage deposit",
             "100% of the trip price when the request is received 14 days or less before delivery",
+            "The Jayco uses a regular 50-amp campsite hookup",
+            "the other five RVs use regular 30-amp campsite hookups",
+            "request a suitable adapter before delivery; it is not automatically included",
         ] {
             assert!(source.contains(phrase), "missing policy phrase: {phrase}");
         }
