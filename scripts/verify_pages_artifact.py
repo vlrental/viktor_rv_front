@@ -48,6 +48,7 @@ def artifact_path(root: Path, raw_url: str) -> Path | None:
         ".png",
         ".webmanifest",
         ".webp",
+        ".woff2",
     }:
         return root / name
     return None
@@ -58,6 +59,7 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
     html = html_path.read_text(encoding="utf-8")
     collector = AssetCollector()
     collector.feed(html)
+    collector.urls.update(re.findall(r'url\(["\']?([^"\')]+\.woff2)["\']?\)', html))
 
     if html_path.name == "index.html" and 'name="robots" content="index,follow' in html:
         relative = html_path.parent.relative_to(root).as_posix()

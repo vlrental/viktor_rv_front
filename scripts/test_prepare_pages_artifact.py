@@ -226,12 +226,15 @@ class PreparePagesArtifactTests(unittest.TestCase):
         main_css = (project / "assets" / "main.css").read_text(encoding="utf-8")
 
         self.assertNotIn("unpkg.com/lucide-static", dioxus)
+        self.assertIn('src: url("/{base_path}/lucide-1.24.0-used.woff2") format("woff2")', shell)
         self.assertIn('src: url("/{base_path}/lucide-1.24.0.woff2") format("woff2")', shell)
-        self.assertIn("font-display: swap", shell)
+        self.assertEqual(shell.count("font-display: swap"), 2)
+        self.assertEqual(shell.count("unicode-range:"), 2)
         self.assertIn('.icon-map-pin::before { content: "\\e111"; }', main_css)
         self.assertIn('.icon-calendar::before { content: "\\e063"; }', main_css)
         self.assertIn('.icon-phone::before { content: "\\e133"; }', main_css)
         self.assertTrue((project / "public" / "lucide-1.24.0.woff2").is_file())
+        self.assertTrue((project / "public" / "lucide-1.24.0-used.woff2").is_file())
         self.assertTrue((project / "public" / "vendor" / "lucide" / "LICENSE-1.24.0.txt").is_file())
 
     def test_detail_preloads_are_route_specific_and_match_runtime_assets(self) -> None:

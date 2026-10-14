@@ -79,6 +79,19 @@ class VerifyPagesArtifactTests(unittest.TestCase):
         (previews / preview_name).write_bytes(b"preview")
         self.assertEqual(verify_html(root, html_path), [])
 
+    def test_inline_font_face_urls_must_resolve_inside_artifact(self) -> None:
+        root, html_path = self.make_artifact()
+        html_path.write_text(
+            HTML.replace(
+                "</head>",
+                '<style>@font-face{src:url("/lucide-1.24.0-used.woff2") format("woff2")}</style>\n</head>',
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("lucide-1.24.0-used.woff2" in failure for failure in verify_html(root, html_path)))
+        (root / "lucide-1.24.0-used.woff2").write_bytes(b"font")
+        self.assertEqual(verify_html(root, html_path), [])
+
     def test_missing_css_marker_fails(self) -> None:
         root, html_path = self.make_artifact(":root{color:#17261c}")
         failures = verify_html(root, html_path)
