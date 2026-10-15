@@ -277,7 +277,7 @@ pub fn Header() -> Element {
                                     Icon { name: "arrow-right", size: 16, color: "var(--vl-white)" }
                                 }
                                 if user.role == "admin" {
-                                    Link { class: "nav-account-admin", to: Route::Admin {}, onclick: move |_| account_open.set(false),
+                                    a { class: "nav-account-admin", href: api::frontend_path("/admin"), onclick: move |_| account_open.set(false),
                                         Icon { name: "layout-dashboard", size: 16, color: "var(--vl-forest)" }
                                         span { "Open admin dashboard" }
                                     }
@@ -370,7 +370,7 @@ pub fn Header() -> Element {
                     }
                 }
                 if current_user.as_ref().is_some_and(|user| user.role == "admin") {
-                    Link { class: "nav-admin-cta", to: Route::Admin {},
+                    a { class: "nav-admin-cta", href: api::frontend_path("/admin"),
                         Icon { name: "shield-check", size: 15, color: "currentColor" }
                         span { "Admin dashboard" }
                     }

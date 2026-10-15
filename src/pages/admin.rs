@@ -45,6 +45,27 @@ fn open_evidence_preview_window(target: &str) -> bool {
         .is_some()
 }
 
+async fn redirect_storefront_admin(force: bool) -> bool {
+    let destination = serde_json::to_string(&api::frontend_path("/admin"))
+        .expect("admin transition URL must serialize");
+    let script = format!(
+        r#"
+const destination = new URL({destination}, window.location.href);
+const navigation = performance.getEntriesByType('navigation')[0];
+const initial = new URL(navigation?.name || window.location.href);
+const normalize = path => path.replace(/\/+$/, '') || '/';
+if (!{force} && normalize(initial.pathname) === normalize(destination.pathname)) return false;
+window.location.assign(destination.href);
+await new Promise(resolve => setTimeout(resolve, 1500));
+return false;
+"#
+    );
+    document::eval(&script)
+        .join::<bool>()
+        .await
+        .unwrap_or(false)
+}
+
 async fn navigate_evidence_preview(
     access: &api::AdminDamageEvidenceAccess,
     target: &str,
@@ -465,6 +486,31 @@ fn manual_booking_error(
 
 #[component]
 pub fn Admin() -> Element {
+    if cfg!(feature = "storefront_bundle") {
+        let mut transition_failed = use_signal(|| false);
+        use_effect(move || {
+            spawn(async move {
+                redirect_storefront_admin(false).await;
+                transition_failed.set(true);
+            });
+        });
+        return rsx! {
+            if transition_failed() {
+                div { class: "admin-error admin-page-notice", role: "alert",
+                    p { "The admin dashboard did not open." }
+                    button { r#type: "button", onclick: move |_| {
+                        transition_failed.set(false);
+                        spawn(async move {
+                            redirect_storefront_admin(true).await;
+                            transition_failed.set(true);
+                        });
+                    }, "Try again" }
+                }
+            } else {
+                div { class: "admin-bookings-loading", Icon { name: "loader-circle", size: 20, color: "var(--vl-forest)" } "Opening the secure admin dashboard…" }
+            }
+        };
+    }
     let navigator = use_navigator();
     let mut authorized = use_signal(|| None::<bool>);
     let mut active_tab = use_signal(|| "overview".to_string());

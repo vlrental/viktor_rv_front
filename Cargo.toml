@@ -18,6 +18,8 @@ wasm-bindgen = "0.2.106"
 [features]
 default = ["web"]
 web = ["dioxus/web"]
+# Release-only storefront bundle. Local development keeps the default full app.
+storefront_bundle = []
 
 [profile.dev]
 opt-level = 1

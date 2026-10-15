@@ -23,6 +23,11 @@ devo:
 build:
 	dx build --release --web --debug-symbols false
 
+# Production-equivalent dual bundle build; artifact preparation still requires
+# the same sale snapshot and site URL used by the Pages workflow.
+build-pages-variants:
+	python3 scripts/build_pages_variants.py
+
 # Push development work. This does not publish GitHub Pages.
 deploy:
 	@test "$$(git branch --show-current)" = "dev" || (echo "Run this command from the dev branch" && exit 1)
@@ -58,4 +63,4 @@ b: build
 d: deploy
 dm: deploy-migrate
 
-.PHONY: dev devo build deploy deploy-test deploy-migrate k cc c co b d dm
+.PHONY: dev devo build build-pages-variants deploy deploy-test deploy-migrate k cc c co b d dm

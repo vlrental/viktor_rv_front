@@ -34,12 +34,18 @@ jobs:
         run: cargo fmt --all --check
       - name: Run frontend tests
         run: cargo test --all-targets
+      - name: Run storefront bundle tests
+        run: cargo test --all-targets --features storefront_bundle
       - name: Test Pages artifact verifier
-        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py scripts/test_rv_only_content.py scripts/test_lucide_subset.py scripts/test_responsive_images.py
+        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py scripts/test_rv_only_content.py scripts/test_lucide_subset.py scripts/test_responsive_images.py scripts/test_pages_variants.py
       - name: Reject compiler warnings
         run: cargo clippy --all-targets -- -D warnings
+      - name: Reject storefront bundle compiler warnings
+        run: cargo clippy --all-targets --features storefront_bundle -- -D warnings
       - name: Check browser build target
         run: cargo check --target wasm32-unknown-unknown
+      - name: Check storefront browser build target
+        run: cargo check --target wasm32-unknown-unknown --features storefront_bundle
 
   build:
     # A dev build is available only through a deliberate manual dispatch. Normal
@@ -65,12 +71,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version 0.7.9 --locked
-      - name: Start with a fresh Pages output directory
-        run: |
-          output=target/dx/viktor_rv_front/release/web/public
-          if [ -d "$output" ]; then
-            mv "$output" "$RUNNER_TEMP/viktor-rv-pages-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          fi
       - name: Select production URL and base path
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
@@ -80,16 +80,16 @@ jobs:
             echo "VL_FRONTEND_BASE_URL=https://${{ github.repository_owner }}.github.io/viktor_rv_front" >> "$GITHUB_ENV"
             echo "VL_FRONTEND_BASE_PATH=viktor_rv_front" >> "$GITHUB_ENV"
           fi
-      - name: Build site
+      - name: Build storefront and full admin variants
+        run: python3 scripts/build_pages_variants.py --base-path "$VL_FRONTEND_BASE_PATH"
+      - name: Fetch published RV sale inventory once
+        run: python3 scripts/fetch_public_sales_snapshot.py "$RUNNER_TEMP/public-rv-sales.json"
+      - name: Prepare and merge Pages variants
+        run: python3 scripts/prepare_pages_variants.py target/dx/viktor_rv_front/release/web/public target/dx/viktor_rv_front/release/web/admin-public "$VL_FRONTEND_BASE_URL" "$RUNNER_TEMP/public-rv-sales.json"
+      - name: Snapshot current dual-bundle asset union
+        run: python3 scripts/manage_pages_asset_cache.py snapshot target/dx/viktor_rv_front/release/web/public "$RUNNER_TEMP/pages-assets-v2.json"
+      - name: Merge one bounded previous asset generation
         run: |
-          if [ -n "$VL_FRONTEND_BASE_PATH" ]; then
-            dx build --release --web --debug-symbols false --base-path "$VL_FRONTEND_BASE_PATH"
-          else
-            dx build --release --web --debug-symbols false
-          fi
-      - name: Preserve one previous asset generation
-        run: |
-          output=target/dx/viktor_rv_front/release/web/public/assets
           if [ -d .pages-assets-cache ]; then
             if [ -f .pages-assets-cache/.vl-pages-generation-v1 ]; then
               mv .pages-assets-cache .pages-assets-previous
@@ -97,22 +97,20 @@ jobs:
               mv .pages-assets-cache "$RUNNER_TEMP/viktor-rv-unversioned-assets-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             fi
           fi
-          mkdir -p .pages-assets-cache
-          cp -a "$output/." .pages-assets-cache/
-          touch .pages-assets-cache/.vl-pages-generation-v1
           if [ -d .pages-assets-previous ]; then
-            cp -a -n .pages-assets-previous/. "$output/"
+            python3 scripts/manage_pages_asset_cache.py merge .pages-assets-previous target/dx/viktor_rv_front/release/web/public
           fi
       - name: Keep dev metadata on GitHub Pages
         if: github.ref_name == 'dev'
         run: |
           sed -i 's#https://vlrental.ca/#https://${{ github.repository_owner }}.github.io/viktor_rv_front/#g' target/dx/viktor_rv_front/release/web/public/index.html
-      - name: Fetch published RV sale inventory
-        run: python3 scripts/fetch_public_sales_snapshot.py "$RUNNER_TEMP/public-rv-sales.json"
-      - name: Prepare Pages artifact
-        run: python3 scripts/prepare_pages_artifact.py target/dx/viktor_rv_front/release/web/public "$VL_FRONTEND_BASE_URL" "$RUNNER_TEMP/public-rv-sales.json"
       - name: Verify Pages asset references and CSS recovery
         run: python3 scripts/verify_pages_artifact.py target/dx/viktor_rv_front/release/web/public
+      - name: Stage the current asset union for the next deployment
+        run: |
+          mkdir -p .pages-assets-cache
+          python3 scripts/manage_pages_asset_cache.py stage "$RUNNER_TEMP/pages-assets-v2.json" target/dx/viktor_rv_front/release/web/public .pages-assets-cache
+          touch .pages-assets-cache/.vl-pages-generation-v1
       - name: Save current Pages assets for the next deployment
         continue-on-error: true
         uses: actions/cache/save@v4

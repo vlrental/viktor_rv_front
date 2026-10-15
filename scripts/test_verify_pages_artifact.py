@@ -179,7 +179,7 @@ class VerifyPagesArtifactTests(unittest.TestCase):
                 encoding="utf-8",
             )
         failures = verify_artifact(root)
-        self.assertTrue(any("more than two generations" in failure for failure in failures))
+        self.assertTrue(any("more than 2 bounded generations" in failure for failure in failures))
 
 
 if __name__ == "__main__":

@@ -133,6 +133,42 @@ def verify_snapshot_brand_logo(root: Path) -> list[str]:
     return []
 
 
+def application_bundle_refs(root: Path, html_path: Path) -> tuple[set[str], set[str]]:
+    html = html_path.read_text(encoding="utf-8")
+    scripts = set(re.findall(r"/assets/(viktor_rv_front-dxh[0-9a-f]+\.js)", html))
+    wasm: set[str] = set()
+    for script in scripts:
+        script_path = root / "assets" / script
+        if script_path.is_file():
+            wasm.update(re.findall(r"(viktor_rv_front_bg-dxh[0-9a-f]+\.wasm)", script_path.read_text(encoding="utf-8")))
+    return scripts, wasm
+
+
+def verify_bundle_split(root: Path, html_paths: list[Path]) -> list[str]:
+    failures: list[str] = []
+    home = root / "index.html"
+    admin = root / "admin/index.html"
+    if not home.is_file() or not admin.is_file():
+        return ["storefront and admin documents are both required"]
+    storefront_refs = application_bundle_refs(root, home)
+    admin_refs = application_bundle_refs(root, admin)
+    if any(len(refs) != 1 for refs in storefront_refs + admin_refs):
+        failures.append("storefront and admin documents must each reference one JS/WASM pair")
+        return failures
+    if storefront_refs == admin_refs:
+        failures.append("admin document must reference the distinct full application bundle")
+    for label, refs in (("storefront", storefront_refs), ("admin", admin_refs)):
+        for filename in refs[0] | refs[1]:
+            if not (root / "assets" / filename).is_file():
+                failures.append(f"{label} bundle references missing asset: assets/{filename}")
+    for path in html_paths:
+        if path == admin or not path.is_file():
+            continue
+        if application_bundle_refs(root, path) != storefront_refs:
+            failures.append(f"{path.relative_to(root)} must reference the storefront bundle")
+    return failures
+
+
 def verify_artifact(root: Path) -> list[str]:
     failures = verify_snapshot_brand_logo(root)
     html_paths = sorted(root.glob("**/index.html"))
@@ -142,6 +178,7 @@ def verify_artifact(root: Path) -> list[str]:
             failures.append(f"missing {path.relative_to(root)}")
         else:
             failures.extend(verify_html(root, path))
+    failures.extend(verify_bundle_split(root, html_paths))
 
     expected_routes = {
         "index.html",
@@ -168,9 +205,10 @@ def verify_artifact(root: Path) -> list[str]:
                 generations.setdefault(key, []).append(path.name)
 
     for (stem, suffix), names in sorted(generations.items()):
-        if len(names) > 2:
+        limit = 4 if stem in {"viktor_rv_front", "viktor_rv_front_bg"} else 2
+        if len(names) > limit:
             failures.append(
-                f"assets contain more than two generations of {stem}.{suffix}: "
+                f"assets contain more than {limit} bounded generations of {stem}.{suffix}: "
                 + ", ".join(sorted(names))
             )
 
