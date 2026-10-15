@@ -24,16 +24,18 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install pinned Lucide subset tooling
+      - name: Install pinned asset tooling
         run: python3 -m pip install --disable-pip-version-check -r scripts/requirements-lucide-subset.txt
       - name: Verify Lucide subset and source coverage
         run: python3 scripts/generate_lucide_subset.py --check
+      - name: Verify lossless snapshot logo
+        run: python3 scripts/generate_responsive_images.py --check
       - name: Validate formatting
         run: cargo fmt --all --check
       - name: Run frontend tests
         run: cargo test --all-targets
       - name: Test Pages artifact verifier
-        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py scripts/test_rv_only_content.py scripts/test_lucide_subset.py
+        run: python3 -m unittest scripts/test_prepare_pages_artifact.py scripts/test_verify_pages_artifact.py scripts/test_rv_only_content.py scripts/test_lucide_subset.py scripts/test_responsive_images.py
       - name: Reject compiler warnings
         run: cargo clippy --all-targets -- -D warnings
       - name: Check browser build target

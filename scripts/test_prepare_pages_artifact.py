@@ -12,6 +12,7 @@ from scripts.prepare_pages_artifact import (
     LEGACY_REDIRECTS,
     PUBLIC_ROUTES,
     RV_DETAIL_PRELOADS,
+    SNAPSHOT_BRAND_LOGO_FILE,
     bundle_route_stylesheets,
     load_terms_content,
     page_url,
@@ -301,6 +302,22 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertLess(mobile.stat().st_size, legacy.stat().st_size)
         self.assertEqual(mobile.read_bytes()[:4], b"RIFF")
         self.assertEqual(mobile.read_bytes()[8:12], b"WEBP")
+
+    def test_snapshot_brand_uses_hashed_lossless_derivative_without_changing_schema_logo(self) -> None:
+        root = self.make_artifact()
+        prepare_artifact(root, "https://example.test", self.make_sales_snapshot())
+        document = (root / "index.html").read_text(encoding="utf-8")
+        header = document.split('<header class="seo-prerender-header">', 1)[1].split("</header>", 1)[0]
+        self.assertRegex(SNAPSHOT_BRAND_LOGO_FILE, r"^logo-512-lossless-[0-9a-f]{16}\.webp$")
+        self.assertIn(
+            f'<img src="/{SNAPSHOT_BRAND_LOGO_FILE}" width="36" height="36" alt="">VL Rental',
+            header,
+        )
+        schema = json.loads(
+            re.search(r'<script type="application/ld\+json">(.*?)</script>', document, re.DOTALL).group(1)
+        )
+        organization = next(node for node in schema["@graph"] if node["@type"] == "Organization")
+        self.assertEqual(organization["logo"], "https://example.test/logo-512.png")
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()

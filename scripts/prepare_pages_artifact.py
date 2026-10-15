@@ -33,6 +33,12 @@ EXPECTED_STYLES = {
 }
 FAQ_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "faq.json"
 TERMS_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "terms.json"
+SNAPSHOT_BRAND_LOGO_PATH = (
+    Path(__file__).resolve().parents[1] / "content" / "snapshot_brand_logo.json"
+)
+SNAPSHOT_BRAND_LOGO_FILE = json.loads(
+    SNAPSHOT_BRAND_LOGO_PATH.read_text(encoding="utf-8")
+)["derivative"]
 HERO_SMALL_FILE = "hero-bullet-overlook-768.webp"
 HERO_LARGE_FILE = "hero-bullet-overlook.webp"
 
@@ -667,7 +673,8 @@ def render_snapshot(
         f'<div class="seo-prerender" data-seo-route="{html.escape(route.path, quote=True)}">'
         '<header class="seo-prerender-header">'
         f'<a class="seo-prerender-brand" href="{html.escape(page_url(site_url, "/"), quote=True)}">'
-        '<img src="/logo-512.png" width="36" height="36" alt="">VL Rental</a>'
+        f'<img src="/{html.escape(SNAPSHOT_BRAND_LOGO_FILE, quote=True)}" '
+        'width="36" height="36" alt="">VL Rental</a>'
         f'<nav aria-label="Main navigation">{nav}</nav></header>'
         '<main class="seo-prerender-main">'
         f'<section class="seo-prerender-hero">{hero_poster}'
