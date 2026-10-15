@@ -389,6 +389,48 @@ mod booking_entry_tests {
         assert_eq!(home_booking_entry_step(HomeBookingEntry::Rvs), 2);
         assert_eq!(home_booking_entry_step(HomeBookingEntry::Search), 1);
     }
+
+    #[test]
+    fn parallax_cta_uses_a_native_lazy_image_without_changing_its_asset() {
+        let source = include_str!("home.rs");
+        let cta = source
+            .split(concat!("fn Cta", "Band"))
+            .nth(1)
+            .expect("CTA component source");
+        assert!(cta.contains("img {"));
+        assert!(cta.contains("src: \"{IMG_CTA_PARALLAX}\""));
+        assert!(cta.contains("loading: \"lazy\""));
+        assert!(cta.contains("decoding: \"async\""));
+        assert!(cta.contains("width: \"1823\""));
+        assert!(cta.contains("height: \"863\""));
+        assert!(cta.contains("alt: \"Travel trailer at an Okanagan lakeside campsite\""));
+        assert!(!cta.contains("background-image"));
+    }
+
+    #[test]
+    fn parallax_cta_preserves_overscan_geometry_and_existing_js_selector() {
+        let css = include_str!("../../assets/main.css");
+        let cta_css = css
+            .split(".cta-img {")
+            .nth(1)
+            .expect("CTA image CSS")
+            .split('}')
+            .next()
+            .expect("CTA image CSS block");
+        assert!(cta_css.contains("inset: -124px 0"));
+        assert!(cta_css.contains("height: calc(100% + 248px)"));
+        assert!(cta_css.contains("object-fit: cover"));
+        assert!(cta_css.contains("object-position: 62% center"));
+        assert!(cta_css.contains("pointer-events: none"));
+        assert!(css.contains(".cta-img { object-position: 66% center; }"));
+        assert!(css.contains(
+            ".cta-copy { position: relative; left: auto; top: auto; margin: 60px 18px; max-width: none; width: auto; }"
+        ));
+        assert!(css.contains(".cta-img { inset: 0; height: 100%; transform: none !important; }"));
+
+        let parallax = include_str!("../../assets/parallax.js");
+        assert!(parallax.contains("band?.querySelector(\".cta-img\")"));
+    }
 }
 
 #[component]
@@ -645,11 +687,14 @@ fn MoreServices() -> Element {
 fn CtaBand(mut search_open: Signal<bool>, mut search_initial_step: Signal<u8>) -> Element {
     rsx! {
         section { id: "home-parallax-cta", class: "cta-band",
-            div {
+            img {
                 class: "cta-img",
-                role: "img",
-                aria_label: "Travel trailer at an Okanagan lakeside campsite",
-                style: "background-image: url('{IMG_CTA_PARALLAX}');"
+                src: "{IMG_CTA_PARALLAX}",
+                alt: "Travel trailer at an Okanagan lakeside campsite",
+                loading: "lazy",
+                decoding: "async",
+                width: "1823",
+                height: "863",
             }
             div { class: "cta-overlay" }
             div { class: "cta-copy",

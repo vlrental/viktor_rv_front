@@ -2392,9 +2392,10 @@ img { display: block; max-width: 100%; }
 .cta-img {
   position: absolute;
   inset: -124px 0;
-  background-position: 62% center;
-  background-repeat: no-repeat;
-  background-size: cover;
+  width: 100%;
+  height: calc(100% + 248px);
+  object-fit: cover;
+  object-position: 62% center;
   will-change: transform;
   pointer-events: none;
 }
@@ -3553,8 +3554,8 @@ body:has(.cat-planner-backdrop) {
   .service-cell:last-child { border-bottom: none; }
 
   .cta-band { height: auto; }
-  .cta-img { background-position: 66% center; }
-  .cta-copy { position: static; margin: 60px 18px; max-width: none; width: auto; }
+  .cta-img { object-position: 66% center; }
+  .cta-copy { position: relative; left: auto; top: auto; margin: 60px 18px; max-width: none; width: auto; }
   .cta-title { font-size: 34px; line-height: 38px; }
   .cta-buttons { flex-wrap: wrap; }
 
@@ -3584,7 +3585,7 @@ body:has(.cat-planner-backdrop) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cta-img { inset: 0; transform: none !important; }
+  .cta-img { inset: 0; height: 100%; transform: none !important; }
 }
 
 @media (max-width: 760px) {
