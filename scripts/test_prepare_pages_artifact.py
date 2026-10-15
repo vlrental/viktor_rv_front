@@ -305,6 +305,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
 
     def test_snapshot_brand_uses_hashed_lossless_derivative_without_changing_schema_logo(self) -> None:
         root = self.make_artifact()
+        (root / SNAPSHOT_BRAND_LOGO_FILE).write_bytes(b"Dioxus-mutated-WebP")
         prepare_artifact(root, "https://example.test", self.make_sales_snapshot())
         document = (root / "index.html").read_text(encoding="utf-8")
         header = document.split('<header class="seo-prerender-header">', 1)[1].split("</header>", 1)[0]
@@ -318,6 +319,11 @@ class PreparePagesArtifactTests(unittest.TestCase):
         )
         organization = next(node for node in schema["@graph"] if node["@type"] == "Organization")
         self.assertEqual(organization["logo"], "https://example.test/logo-512.png")
+        project = Path(__file__).resolve().parents[1]
+        self.assertEqual(
+            (root / SNAPSHOT_BRAND_LOGO_FILE).read_bytes(),
+            (project / "public" / SNAPSHOT_BRAND_LOGO_FILE).read_bytes(),
+        )
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:
         root = self.make_artifact()

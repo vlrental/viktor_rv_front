@@ -3,11 +3,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SNAPSHOT_LOGO_MANIFEST = json.loads(
+    (PROJECT_ROOT / "content" / "snapshot_brand_logo.json").read_text(encoding="utf-8")
+)
 
 
 class AssetCollector(HTMLParser):
@@ -112,8 +120,21 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
     return failures
 
 
+def verify_snapshot_brand_logo(root: Path) -> list[str]:
+    filename = str(SNAPSHOT_LOGO_MANIFEST["derivative"])
+    expected = str(SNAPSHOT_LOGO_MANIFEST["derivative_sha256"])
+    path = root / filename
+    if not path.is_file():
+        return [f"missing snapshot brand logo: {filename}"]
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    expected_name = f"logo-512-lossless-{actual[:16]}.webp"
+    if actual != expected or filename != expected_name:
+        return [f"snapshot brand logo hash mismatch: {filename}"]
+    return []
+
+
 def verify_artifact(root: Path) -> list[str]:
-    failures: list[str] = []
+    failures = verify_snapshot_brand_logo(root)
     html_paths = sorted(root.glob("**/index.html"))
     html_paths.append(root / "404.html")
     for path in html_paths:

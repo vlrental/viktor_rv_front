@@ -913,6 +913,19 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
     shell = bundle_route_stylesheets(index.read_text(encoding="utf-8"), root)
 
     source_root = Path(__file__).resolve().parents[1]
+    logo_manifest = json.loads(SNAPSHOT_BRAND_LOGO_PATH.read_text(encoding="utf-8"))
+    logo_name = str(logo_manifest["derivative"])
+    logo_source = source_root / "public" / logo_name
+    if not logo_source.is_file():
+        raise FileNotFoundError(f"missing snapshot brand logo: {logo_source}")
+    logo_bytes = logo_source.read_bytes()
+    logo_digest = hashlib.sha256(logo_bytes).hexdigest()
+    if logo_digest != logo_manifest["derivative_sha256"] or logo_name != f"logo-512-lossless-{logo_digest[:16]}.webp":
+        raise ValueError("snapshot brand logo does not match its content hash manifest")
+    # Dioxus re-encodes public WebP files on Linux. Restore the canonical
+    # committed bytes so the immutable filename remains content-addressed.
+    (root / logo_name).write_bytes(logo_bytes)
+
     base_path = urlparse(site_url).path.rstrip("/")
     hero_assets = (
         f"{base_path}/{HERO_SMALL_FILE}",

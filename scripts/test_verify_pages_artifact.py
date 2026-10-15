@@ -4,7 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.verify_pages_artifact import verify_artifact, verify_html
+from scripts.verify_pages_artifact import (
+    SNAPSHOT_LOGO_MANIFEST,
+    verify_artifact,
+    verify_html,
+    verify_snapshot_brand_logo,
+)
 
 
 HTML = """<!doctype html>
@@ -39,6 +44,15 @@ class VerifyPagesArtifactTests(unittest.TestCase):
     def test_valid_artifact_passes(self) -> None:
         root, html_path = self.make_artifact()
         self.assertEqual(verify_html(root, html_path), [])
+
+    def test_snapshot_brand_logo_rejects_dioxus_reencoded_bytes(self) -> None:
+        root, _ = self.make_artifact()
+        filename = str(SNAPSHOT_LOGO_MANIFEST["derivative"])
+        (root / filename).write_bytes(b"different-lossless-webp-bytes")
+        self.assertEqual(
+            verify_snapshot_brand_logo(root),
+            [f"snapshot brand logo hash mismatch: {filename}"],
+        )
 
     def test_missing_local_asset_fails(self) -> None:
         root, html_path = self.make_artifact()
