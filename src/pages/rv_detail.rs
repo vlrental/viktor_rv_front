@@ -138,12 +138,12 @@ pub fn RvDetail(slug: String) -> Element {
                             }
                         }
                     },
-                    Err(_) if fallback_listing.is_some() => rsx! { StaticRvFallback { listing: fallback_listing.unwrap() } },
+                    Err(_) if fallback_listing.is_some() => rsx! { StaticRvFallback { listing: fallback_listing.unwrap(), loading: false } },
                     Err(error) if is_missing_rental(error) => rsx! { h1 { class: "rvd-min-pill", "This RV could not be found or is no longer available." } a { class: "rvd-reserve", href: missing_rv_href, "Browse available RVs" } },
                     Err(_) => rsx! { h1 { class: "rvd-min-pill", "RV details are temporarily unavailable." } a { class: "rvd-reserve", href: missing_rv_href, "Browse RVs" } },
                 }
             } else if let Some(listing) = fallback_listing {
-                StaticRvFallback { listing }
+                StaticRvFallback { listing, loading: true }
             } else {
                 div { class: "rvd-min-pill", "Loading RV details…" }
             }
@@ -195,8 +195,16 @@ fn static_fallback_cover(slug: &str, existing_photo: Option<String>) -> Option<S
     }
 }
 
+fn static_fallback_status_copy(loading: bool) -> &'static str {
+    if loading {
+        "Loading live RV details and amenities…"
+    } else {
+        "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay."
+    }
+}
+
 #[component]
-fn StaticRvFallback(listing: Listing) -> Element {
+fn StaticRvFallback(listing: Listing, loading: bool) -> Element {
     let rentals_href = api::frontend_path("/#home-rentals");
     let photos = rv_gallery(listing.slug);
     let fallback_cover =
@@ -229,7 +237,7 @@ fn StaticRvFallback(listing: Listing) -> Element {
                     if let Some(note) = rv_sleep_layout_note(listing.slug) {
                         p { class: "rvd-p", "{note}" }
                     }
-                    p { class: "rvd-p", "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay." }
+                    p { class: "rvd-p", "{static_fallback_status_copy(loading)}" }
                     a { class: "rvd-reserve", href: "tel:{PHONE}", "Call us about this RV" }
                 }
                 CampsitePlanning { slug: listing.slug.to_string() }
@@ -1463,6 +1471,34 @@ fn InlineAvailabilityMonth(
 mod availability_tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn static_fallback_distinguishes_loading_from_a_failed_live_request() {
+        assert_eq!(
+            static_fallback_status_copy(true),
+            "Loading live RV details and amenities…"
+        );
+        assert_eq!(
+            static_fallback_status_copy(false),
+            "Live availability, current amenities, and a trip-specific quote are temporarily unavailable. Please try again shortly or contact us to plan your stay."
+        );
+        assert_ne!(
+            static_fallback_status_copy(true),
+            static_fallback_status_copy(false)
+        );
+    }
+
+    #[test]
+    fn rv_detail_routes_pending_and_failed_requests_to_distinct_fallback_states() {
+        let source = include_str!("rv_detail.rs");
+        let route_component = source
+            .split("fn static_rv_listing")
+            .next()
+            .expect("RV detail route component source");
+        assert!(route_component.contains("StaticRvFallback { listing, loading: true }"));
+        assert!(route_component
+            .contains("StaticRvFallback { listing: fallback_listing.unwrap(), loading: false }"));
+    }
 
     #[test]
     fn static_fallback_covers_every_known_rv_but_no_unknown_slug() {
