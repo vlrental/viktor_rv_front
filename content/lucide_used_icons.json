@@ -2,6 +2,8 @@
   "mapping_sha256": "5cf562899ef27ceda738019bd1b26de340a4b9399f6c75bb727436b058f67a68",
   "source_font": "lucide-1.24.0.woff2",
   "source_sha256": "ac8e910a948c000ad075c8ebc7c429f066f68b87a4fbf6bce2d911588102c403",
+  "subset_font": "lucide-1.24.0-used-0fd8c3f0ef74b4c9.woff2",
+  "subset_sha256": "0fd8c3f0ef74b4c98da864f2b4628ffab9998bc3bfc404e5be03f0c999bfac61",
   "used_codepoints": [
     "U+E041",
     "U+E048",

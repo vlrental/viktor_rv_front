@@ -224,9 +224,14 @@ class PreparePagesArtifactTests(unittest.TestCase):
         dioxus = (project / "Dioxus.toml").read_text(encoding="utf-8")
         shell = (project / "index.html").read_text(encoding="utf-8")
         main_css = (project / "assets" / "main.css").read_text(encoding="utf-8")
+        manifest = json.loads(
+            (project / "content" / "lucide_used_icons.json").read_text(encoding="utf-8")
+        )
 
         self.assertNotIn("unpkg.com/lucide-static", dioxus)
-        self.assertIn('src: url("/{base_path}/lucide-1.24.0-used.woff2") format("woff2")', shell)
+        self.assertIn(
+            f'src: url("/{{base_path}}/{manifest["subset_font"]}") format("woff2")', shell
+        )
         self.assertIn('src: url("/{base_path}/lucide-1.24.0.woff2") format("woff2")', shell)
         self.assertEqual(shell.count("font-display: swap"), 2)
         self.assertEqual(shell.count("unicode-range:"), 2)
@@ -235,6 +240,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertIn('.icon-phone::before { content: "\\e133"; }', main_css)
         self.assertTrue((project / "public" / "lucide-1.24.0.woff2").is_file())
         self.assertTrue((project / "public" / "lucide-1.24.0-used.woff2").is_file())
+        self.assertTrue((project / "public" / manifest["subset_font"]).is_file())
         self.assertTrue((project / "public" / "vendor" / "lucide" / "LICENSE-1.24.0.txt").is_file())
 
     def test_detail_preloads_are_route_specific_and_match_runtime_assets(self) -> None:

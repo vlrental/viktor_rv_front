@@ -5,11 +5,13 @@ import unittest
 from pathlib import Path
 
 from scripts.generate_lucide_subset import (
+    LEGACY_SUBSET_FONT,
     MANIFEST,
     TOKEN_RE,
     directly_used_codepoints,
     mappings,
     used_icon_names,
+    sha256,
 )
 
 
@@ -47,6 +49,21 @@ class LucideSubsetTests(unittest.TestCase):
         self.assertTrue((root / "public/lucide-1.24.0.woff2").is_file())
         self.assertTrue((root / "public/lucide-1.24.0-used.woff2").is_file())
         self.assertTrue((root / "public/vendor/lucide/LICENSE-1.24.0.txt").is_file())
+
+    def test_hashed_subset_filename_matches_bytes_manifest_and_css(self) -> None:
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        subset = MANIFEST.parents[1] / "public" / manifest["subset_font"]
+        digest = sha256(subset)
+        self.assertEqual(manifest["subset_sha256"], digest)
+        self.assertEqual(subset.name, f"lucide-1.24.0-used-{digest[:16]}.woff2")
+        shell = (MANIFEST.parents[1] / "index.html").read_text(encoding="utf-8")
+        self.assertIn(f'url("/{{base_path}}/{subset.name}")', shell)
+
+    def test_deployed_legacy_subset_remains_byte_identical(self) -> None:
+        self.assertEqual(
+            sha256(LEGACY_SUBSET_FONT),
+            "0fd8c3f0ef74b4c98da864f2b4628ffab9998bc3bfc404e5be03f0c999bfac61",
+        )
 
 
 if __name__ == "__main__":

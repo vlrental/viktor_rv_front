@@ -14,7 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CSS_PATH = ROOT / "assets" / "main.css"
 SOURCE_FONT = ROOT / "public" / "lucide-1.24.0.woff2"
-SUBSET_FONT = ROOT / "public" / "lucide-1.24.0-used.woff2"
+LEGACY_SUBSET_FONT = ROOT / "public" / "lucide-1.24.0-used.woff2"
+SUBSET_STEM = "lucide-1.24.0-used"
 MANIFEST = ROOT / "content" / "lucide_used_icons.json"
 SHELL = ROOT / "index.html"
 BLOCK_START = "            /* lucide-font-partition:start */"
@@ -84,13 +85,13 @@ def unicode_ranges(points: set[int]) -> str:
     )
 
 
-def render_block(used_points: set[int], fallback_points: set[int]) -> str:
+def render_block(used_points: set[int], fallback_points: set[int], subset_name: str) -> str:
     return "\n".join(
         [
             BLOCK_START,
             '            @font-face {',
             '                font-family: "lucide";',
-            '                src: url("/{base_path}/lucide-1.24.0-used.woff2") format("woff2");',
+            f'                src: url("/{{base_path}}/{subset_name}") format("woff2");',
             '                font-style: normal;',
             '                font-weight: 400;',
             '                font-display: swap;',
@@ -160,46 +161,57 @@ def build_subset(target: Path, used_points: set[int]) -> tuple[set[int], set[int
     return full_points, full_points - used_points
 
 
-def generated_outputs(directory: Path) -> tuple[Path, str, str]:
+def generated_outputs(directory: Path) -> tuple[Path, Path, str, str]:
     icon_map = mappings()
     names = used_icon_names(icon_map)
     used_points = {icon_map[name] for name in names} | directly_used_codepoints()
-    subset_path = directory / SUBSET_FONT.name
+    subset_path = directory / f"{SUBSET_STEM}.woff2"
     full_points, fallback_points = build_subset(subset_path, used_points)
     if used_points & fallback_points or used_points | fallback_points != full_points:
         raise ValueError("Lucide unicode partitions must be disjoint and complete")
     future_points = {point for point in icon_map.values() if point not in used_points}
     if not future_points <= fallback_points:
         raise ValueError("unused mapped icons must remain available from the full font")
+    subset_hash = sha256(subset_path)
+    subset_name = f"{SUBSET_STEM}-{subset_hash[:16]}.woff2"
+    hashed_subset_path = directory / subset_name
+    subset_path.rename(hashed_subset_path)
     manifest = json.dumps(
         {
             "version": 1,
             "source_font": SOURCE_FONT.name,
             "source_sha256": sha256(SOURCE_FONT),
             "mapping_sha256": sha256(CSS_PATH),
+            "subset_font": subset_name,
+            "subset_sha256": subset_hash,
             "used_names": names,
             "used_codepoints": [f"U+{point:04X}" for point in sorted(used_points)],
         },
         indent=2,
         sort_keys=True,
     ) + "\n"
-    return subset_path, manifest, render_block(used_points, fallback_points)
+    return hashed_subset_path, ROOT / "public" / subset_name, manifest, render_block(
+        used_points, fallback_points, subset_name
+    )
 
 
 def run(check: bool) -> None:
     with tempfile.TemporaryDirectory() as temporary:
-        subset_path, manifest, block = generated_outputs(Path(temporary))
+        subset_path, published_subset_path, manifest, block = generated_outputs(Path(temporary))
         shell = SHELL.read_text(encoding="utf-8")
         updated_shell = replace_block(shell, block)
         if check:
-            if not SUBSET_FONT.is_file() or SUBSET_FONT.read_bytes() != subset_path.read_bytes():
+            if (
+                not published_subset_path.is_file()
+                or published_subset_path.read_bytes() != subset_path.read_bytes()
+            ):
                 raise SystemExit("Lucide subset is stale; run scripts/generate_lucide_subset.py")
             if not MANIFEST.is_file() or MANIFEST.read_text(encoding="utf-8") != manifest:
                 raise SystemExit("Lucide used-icon manifest is stale; regenerate it")
             if updated_shell != shell:
                 raise SystemExit("Lucide @font-face partition is stale; regenerate it")
         else:
-            SUBSET_FONT.write_bytes(subset_path.read_bytes())
+            published_subset_path.write_bytes(subset_path.read_bytes())
             MANIFEST.write_text(manifest, encoding="utf-8")
             SHELL.write_text(updated_shell, encoding="utf-8")
     print(f"Verified {len(json.loads(manifest)['used_names'])} used Lucide icon names")
