@@ -1199,6 +1199,34 @@ mod catalog_search_tests {
             assert!(!rental_fallback_image(slug).is_empty(), "missing {slug}");
         }
     }
+
+    #[test]
+    fn listing_card_uses_the_resolved_image_as_a_native_lazy_image() {
+        let source = include_str!("catalog.rs");
+        let component = source
+            .split_once(concat!("pub(crate) fn ApiListing", "Card"))
+            .expect("listing card component")
+            .1
+            .split_once("pub(crate) fn rental_image")
+            .expect("rental image helper")
+            .0;
+
+        assert!(component.contains("class: \"lc-image-photo\""));
+        assert!(component.contains("src: image"));
+        assert!(component.contains("alt: \"\""));
+        assert!(component.contains("loading: \"lazy\""));
+        assert!(component.contains("decoding: \"async\""));
+        assert!(!component.contains("background-image"));
+    }
+
+    #[test]
+    fn listing_card_image_css_preserves_the_existing_frame_and_badge_layer() {
+        let css = include_str!("../../assets/main.css");
+        assert!(css.contains(".lc-image-photo {"));
+        assert!(css.contains("position: absolute; inset: 0; width: 100%; height: 100%;"));
+        assert!(css.contains("object-fit: cover; object-position: center;"));
+        assert!(css.contains(".lc-image > .lc-badge { position: relative; z-index: 1; }"));
+    }
 }
 
 #[component]
@@ -1218,7 +1246,14 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
     );
     rsx! {
         Link { class: "listing-card", to: Route::RvDetail { slug: detail_slug },
-            div { class: "lc-image", style: "background-image: url('{image}');",
+            div { class: "lc-image",
+                img {
+                    class: "lc-image-photo",
+                    src: image,
+                    alt: "",
+                    loading: "lazy",
+                    decoding: "async",
+                }
                 div { class: "lc-badge", "Sleeps {rental.capacity}" }
             }
             div { class: "lc-body",
