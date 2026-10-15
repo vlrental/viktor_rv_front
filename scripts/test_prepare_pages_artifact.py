@@ -638,7 +638,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn("booked-site hookups", document)
             self.assertIn("30-amp or 50-amp", document)
             self.assertIn("Source:", document)
-            self.assertIn("checked October 13, 2026", document)
+            self.assertIn("checked October 14, 2026", document)
             self.assertIn('href="https://bcparks.ca/', document)
         for slug in ("swiws", "shuswap-lake", "herald"):
             document = (root / "parks" / slug / "index.html").read_text(encoding="utf-8")
@@ -647,6 +647,18 @@ class PreparePagesArtifactTests(unittest.TestCase):
             self.assertIn("150 km", document)
         shuswap = (root / "parks/shuswap-lake/index.html").read_text(encoding="utf-8")
         self.assertIn("Copper Island is not an RV destination", shuswap)
+
+        falls = (root / "parks/okanagan-falls/index.html").read_text(encoding="utf-8")
+        self.assertIn(
+            "campsites are closed to the general public on the third weekend of September each year for the Salmon Feast",
+            falls,
+        )
+        self.assertIn("Check current park notices before planning your dates.", falls)
+        self.assertIn('href="https://bcparks.ca/sxwexwnitkw-park/"', falls)
+        swiws = (root / "parks/swiws/index.html").read_text(encoding="utf-8")
+        self.assertIn("limits camping at sẁiẁs to seven nights per calendar year", swiws)
+        self.assertIn("Check the current park rules before reserving.", swiws)
+        self.assertIn('href="https://bcparks.ca/swiws-park/"', swiws)
 
     def test_every_park_snapshot_has_the_approved_rv_comparison_links(self) -> None:
         root = self.make_artifact()

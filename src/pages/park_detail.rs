@@ -122,7 +122,7 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             official_url: "https://bcparks.ca/sxwexwnitkw-park/",
             planning_title: "A compact riverside campground in town",
             planning_copy: "The campground is on Green Lake Road, approximately 500 metres from Highway 97. It is managed by the Osoyoos Indian Band and is culturally significant; guests should review current notices and respect all posted rules and protected areas.",
-            access_note: "The Green Lake Road entrance is about 500 metres from Highway 97; BC Parks notes a narrow approach with a blind corner. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. We confirm safe access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
+            access_note: "BC Parks states that campsites are closed to the general public on the third weekend of September each year for the Salmon Feast. Check current park notices before planning your dates. The Green Lake Road entrance is about 500 metres from Highway 97; BC Parks notes a narrow approach with a blind corner. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. We confirm safe access and RV fit; air conditioning requires compatible 30-amp or 50-amp service.",
         }),
         "vaseux-lake" => Some(ParkGuide {
             name: "Vaseux Lake Provincial Park",
@@ -144,7 +144,7 @@ fn guide_for(slug: &str) -> Option<ParkGuide> {
             official_url: "https://bcparks.ca/swiws-park/",
             planning_title: "Water on both sides in Osoyoos",
             planning_copy: "sẁiẁs extends into Osoyoos Lake and is valued for waterfront camping, swimming and wetland habitat. It sits near the outer edge of VL Rental's service range, so actual driving distance and route conditions must be approved before the booking is finalized.",
-            access_note: "The park is about 2 km south of Osoyoos, reached from Highway 97 via 32nd Avenue. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed: we must confirm safe access, RV fit and an actual one-way road route within 150 km.",
+            access_note: "BC Parks limits camping at sẁiẁs to seven nights per calendar year. Check the current park rules before reserving. The park is about 2 km south of Osoyoos, reached from Highway 97 via 32nd Avenue. Reserve the campsite separately, then send its number, full bumper-to-bumper trailer allowance and listed hookups. Air conditioning requires compatible 30-amp or 50-amp service. Delivery is not guaranteed: we must confirm safe access, RV fit and an actual one-way road route within 150 km.",
         }),
         "shuswap-lake" => Some(ParkGuide {
             name: "Shuswap Lake Provincial Park",
@@ -232,7 +232,7 @@ pub fn ParkDetail(slug: String) -> Element {
                                 small {
                                     "Source: "
                                     a { href: park.official_url, target: "_blank", rel: "noopener noreferrer", "BC Parks" }
-                                    " · checked October 13, 2026"
+                                    " · checked October 14, 2026"
                                 }
                             }
                         }
@@ -352,5 +352,15 @@ mod tests {
             .expect("Shuswap guide")
             .planning_copy
             .contains("Copper Island is a landmark offshore, not an RV destination"));
+        let falls = guide_for("okanagan-falls").expect("Okanagan Falls guide");
+        assert!(falls.access_note.starts_with(
+            "BC Parks states that campsites are closed to the general public on the third weekend of September each year for the Salmon Feast."
+        ));
+        assert_eq!(falls.official_url, "https://bcparks.ca/sxwexwnitkw-park/");
+        let swiws = guide_for("swiws").expect("swiws guide");
+        assert!(swiws
+            .access_note
+            .starts_with("BC Parks limits camping at sẁiẁs to seven nights per calendar year."));
+        assert_eq!(swiws.official_url, "https://bcparks.ca/swiws-park/");
     }
 }
