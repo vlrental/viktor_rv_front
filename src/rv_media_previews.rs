@@ -7,6 +7,15 @@ use std::sync::OnceLock;
 use crate::data::canonical_rv_slug;
 
 const RV_COVER_PREVIEWS_JSON: &str = include_str!("../content/rv_cover_previews.json");
+const RV_CARD_PREVIEWS_JSON: &str = include_str!("../content/rv_card_previews.json");
+
+#[derive(serde::Deserialize)]
+struct CardPreviews {
+    small: String,
+    large: String,
+    fallback: String,
+    fallback_width: u32,
+}
 
 const THUMB_IDS: &[&str] = &[
     "0543922d-40a8-44ed-a6a4-e9c139d34ab6",
@@ -61,6 +70,14 @@ fn cover_previews() -> &'static HashMap<String, String> {
     })
 }
 
+fn card_previews() -> &'static HashMap<String, CardPreviews> {
+    static CARDS: OnceLock<HashMap<String, CardPreviews>> = OnceLock::new();
+    CARDS.get_or_init(|| {
+        serde_json::from_str(RV_CARD_PREVIEWS_JSON)
+            .expect("content/rv_card_previews.json must remain valid")
+    })
+}
+
 #[cfg(test)]
 fn cover_ids() -> Vec<String> {
     cover_previews()
@@ -84,6 +101,24 @@ fn preview_url(image_id: &str, kind: &str) -> String {
     preview_url_for_base(&crate::api::frontend_base_url(), image_id, kind)
 }
 
+fn preview_filename_url_for_base(base_url: &str, filename: &str) -> String {
+    format!("{}/rv-previews/{filename}", base_url.trim_end_matches('/'))
+}
+
+fn card_preview_srcset_for_base(
+    source_url: &str,
+    base_url: &str,
+) -> Option<(String, String, String, u32)> {
+    card_previews().get(source_url).map(|previews| {
+        (
+            preview_filename_url_for_base(base_url, &previews.small),
+            preview_filename_url_for_base(base_url, &previews.large),
+            preview_filename_url_for_base(base_url, &previews.fallback),
+            previews.fallback_width,
+        )
+    })
+}
+
 pub fn thumbnail_for(source_url: &str) -> Option<String> {
     let id = image_id(source_url)?;
     THUMB_IDS.contains(&id).then(|| preview_url(id, "thumb"))
@@ -95,6 +130,10 @@ pub fn cover_preview_for(source_url: &str) -> Option<String> {
         .values()
         .any(|filename| filename.strip_suffix("-preview.webp") == Some(id))
         .then(|| preview_url(id, "preview"))
+}
+
+pub fn card_preview_srcset_for(source_url: &str) -> Option<(String, String, String, u32)> {
+    card_preview_srcset_for_base(source_url, &crate::api::frontend_base_url())
 }
 
 fn cover_preview_for_slug_and_base(slug: &str, base_url: &str) -> Option<String> {
@@ -150,6 +189,43 @@ mod tests {
         assert!(covers.iter().all(|id| THUMB_IDS.contains(&id.as_str())));
         assert!(thumbnail_for("https://example.com/new-photo.jpg").is_none());
         assert!(cover_preview_for("https://example.com/new-photo.jpg").is_none());
+    }
+
+    #[test]
+    fn card_previews_require_the_exact_current_source_url() {
+        let (source_url, previews) = card_previews().iter().next().unwrap();
+        let base = "https://vlrental.github.io/viktor_rv_front/";
+        assert_eq!(
+            card_preview_srcset_for_base(source_url, base),
+            Some((
+                format!(
+                    "https://vlrental.github.io/viktor_rv_front/rv-previews/{}",
+                    previews.small
+                ),
+                format!(
+                    "https://vlrental.github.io/viktor_rv_front/rv-previews/{}",
+                    previews.large
+                ),
+                format!(
+                    "https://vlrental.github.io/viktor_rv_front/rv-previews/{}",
+                    previews.fallback
+                ),
+                previews.fallback_width,
+            ))
+        );
+
+        let image_name = source_url.rsplit('/').next().unwrap();
+        assert_eq!(
+            card_preview_srcset_for_base(
+                &format!("https://example.invalid/uploads/{image_name}"),
+                base
+            ),
+            None
+        );
+        assert_eq!(
+            card_preview_srcset_for_base("https://example.invalid/new-upload.webp", base),
+            None
+        );
     }
 
     #[test]

@@ -1,0 +1,38 @@
+{
+  "https://pwhlkpwlansarstmstge.supabase.co/storage/v1/object/public/rental-media/rentals/3a07bf17-91c8-4eea-87e7-e315a3466574/53a83e6e-681d-4307-9b7d-e136c65791f1.png": {
+    "fallback": "53a83e6e-681d-4307-9b7d-e136c65791f1-preview.webp",
+    "fallback_width": 1200,
+    "large": "53a83e6e-681d-4307-9b7d-e136c65791f1-card800.webp",
+    "small": "53a83e6e-681d-4307-9b7d-e136c65791f1-card480.webp"
+  },
+  "https://pwhlkpwlansarstmstge.supabase.co/storage/v1/object/public/rental-media/rentals/4475f6dc-d300-4ab5-8075-368dbd00ee57/0543922d-40a8-44ed-a6a4-e9c139d34ab6.webp": {
+    "fallback": "0543922d-40a8-44ed-a6a4-e9c139d34ab6-preview.webp",
+    "fallback_width": 960,
+    "large": "0543922d-40a8-44ed-a6a4-e9c139d34ab6-card800.webp",
+    "small": "0543922d-40a8-44ed-a6a4-e9c139d34ab6-card480.webp"
+  },
+  "https://pwhlkpwlansarstmstge.supabase.co/storage/v1/object/public/rental-media/rentals/5d0002f8-3ea4-44b5-bc30-78d3958515fc/c126b58c-46b8-421a-959d-3b4e3f652046.webp": {
+    "fallback": "c126b58c-46b8-421a-959d-3b4e3f652046-preview.webp",
+    "fallback_width": 960,
+    "large": "c126b58c-46b8-421a-959d-3b4e3f652046-card800.webp",
+    "small": "c126b58c-46b8-421a-959d-3b4e3f652046-card480.webp"
+  },
+  "https://pwhlkpwlansarstmstge.supabase.co/storage/v1/object/public/rental-media/rentals/67b10b06-984f-4386-a497-ae241dbf01ea/f69f3398-79d6-4674-8dd8-f5b25cad99b0.webp": {
+    "fallback": "f69f3398-79d6-4674-8dd8-f5b25cad99b0-preview.webp",
+    "fallback_width": 960,
+    "large": "f69f3398-79d6-4674-8dd8-f5b25cad99b0-card800.webp",
+    "small": "f69f3398-79d6-4674-8dd8-f5b25cad99b0-card480.webp"
+  },
+  "https://pwhlkpwlansarstmstge.supabase.co/storage/v1/object/public/rental-media/rentals/c3b04980-131b-4c46-8b5e-f425342fe8de/d147526c-bf9c-464a-8a21-71bd2d391e7b.webp": {
+    "fallback": "d147526c-bf9c-464a-8a21-71bd2d391e7b-preview.webp",
+    "fallback_width": 960,
+    "large": "d147526c-bf9c-464a-8a21-71bd2d391e7b-card800.webp",
+    "small": "d147526c-bf9c-464a-8a21-71bd2d391e7b-card480.webp"
+  },
+  "https://pwhlkpwlansarstmstge.supabase.co/storage/v1/object/public/rental-media/rentals/f7d6426c-ab8c-4e5c-b7e8-b5bc472fcb97/c01a25dc-c538-48a5-91f0-217e796ca118.jpg": {
+    "fallback": "c01a25dc-c538-48a5-91f0-217e796ca118-preview.webp",
+    "fallback_width": 1200,
+    "large": "c01a25dc-c538-48a5-91f0-217e796ca118-card800.webp",
+    "small": "c01a25dc-c538-48a5-91f0-217e796ca118-card480.webp"
+  }
+}

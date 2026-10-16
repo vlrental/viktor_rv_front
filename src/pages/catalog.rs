@@ -1213,6 +1213,10 @@ mod catalog_search_tests {
 
         assert!(component.contains("class: \"lc-image-photo\""));
         assert!(component.contains("src: image"));
+        assert!(component.contains("{fallback} {fallback_width}w"));
+        assert!(component.contains("max(315px, calc(100vw - 36px))"));
+        assert!(component.contains("srcset: card_srcset"));
+        assert!(component.contains("sizes: card_sizes"));
         assert!(component.contains("alt: \"\""));
         assert!(component.contains("loading: \"lazy\""));
         assert!(component.contains("decoding: \"async\""));
@@ -1232,6 +1236,18 @@ mod catalog_search_tests {
 #[component]
 pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
     let image = rental_image(&rental);
+    let card_srcset = rental
+        .hero_image_url
+        .as_deref()
+        .and_then(crate::rv_media_previews::card_preview_srcset_for)
+        .map(|(small, large, fallback, fallback_width)| {
+            format!("{small} 480w, {large} 800w, {fallback} {fallback_width}w")
+        });
+    // The 210 px fixed-height 3:2 image frame needs 315 CSS px of source
+    // width even when the responsive grid column itself is narrower.
+    let card_sizes = card_srcset.as_ref().map(|_| {
+        "(max-width: 860px) max(315px, calc(100vw - 36px)), (max-width: 1100px) max(315px, calc((100vw - 470px) / 2)), max(315px, calc((100vw - 492px) / 3))"
+    });
     let detail_slug = canonical_rv_slug(&rental.slug).to_string();
     let rating = rental
         .review_rating
@@ -1250,6 +1266,8 @@ pub(crate) fn ApiListingCard(rental: api::Rental) -> Element {
                 img {
                     class: "lc-image-photo",
                     src: image,
+                    srcset: card_srcset,
+                    sizes: card_sizes,
                     alt: "",
                     loading: "lazy",
                     decoding: "async",

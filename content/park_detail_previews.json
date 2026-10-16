@@ -1,0 +1,20 @@
+{
+  "bear-creek": {
+    "source": "assets/img/park-bear-creek.webp",
+    "source_height": 900,
+    "source_sha256": "93cbd2676e9369c4971c03bade4dbb7045fa806002d1c46ea76de8760df8f87a",
+    "source_width": 1600,
+    "variants": [
+      {
+        "filename": "park-bear-creek-800-9a21f3645d45295e.webp",
+        "sha256": "9a21f3645d45295e8406ee314b7bbcc7dd47556dd81cd0951ef14da4bdde248a",
+        "width": 800
+      },
+      {
+        "filename": "park-bear-creek-1161-86b723844c054826.webp",
+        "sha256": "86b723844c0548266431eb8485e46a341d911bcf527d1461005bbd08e3901724",
+        "width": 1161
+      }
+    ]
+  }
+}

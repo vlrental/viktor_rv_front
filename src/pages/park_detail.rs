@@ -1,6 +1,54 @@
 use dioxus::prelude::*;
+use std::{collections::HashMap, sync::OnceLock};
 
 use crate::{api, components::Icon, Route};
+
+const PARK_DETAIL_PREVIEWS_JSON: &str = include_str!("../../content/park_detail_previews.json");
+
+#[derive(serde::Deserialize)]
+struct ParkPreviewManifest {
+    source_width: u32,
+    variants: Vec<ParkPreviewVariant>,
+}
+
+#[derive(serde::Deserialize)]
+struct ParkPreviewVariant {
+    filename: String,
+    width: u32,
+}
+
+fn park_preview_manifest() -> &'static HashMap<String, ParkPreviewManifest> {
+    static PREVIEWS: OnceLock<HashMap<String, ParkPreviewManifest>> = OnceLock::new();
+    PREVIEWS.get_or_init(|| {
+        serde_json::from_str(PARK_DETAIL_PREVIEWS_JSON)
+            .expect("content/park_detail_previews.json must remain valid")
+    })
+}
+
+fn park_image_srcset_for_base(slug: &str, fallback: &str, base_url: &str) -> Option<String> {
+    let preview = park_preview_manifest().get(slug)?;
+    let mut candidates = preview
+        .variants
+        .iter()
+        .map(|variant| {
+            format!(
+                "{}/park-previews/{} {}w",
+                base_url.trim_end_matches('/'),
+                variant.filename,
+                variant.width
+            )
+        })
+        .collect::<Vec<_>>();
+    candidates.push(format!("{fallback} {}w", preview.source_width));
+    Some(candidates.join(", "))
+}
+
+fn park_image_srcset(slug: &str, fallback: &str) -> Option<String> {
+    park_image_srcset_for_base(slug, fallback, &api::frontend_base_url())
+}
+
+const PARK_IMAGE_SIZES: &str =
+    "(max-width: 860px) max(570px, 100vw), (max-width: 960px) max(676px, 100vw), 1600px";
 
 const IMG_BEAR_CREEK: Asset = asset!(
     "/assets/img/park-bear-creek.webp",
@@ -189,6 +237,8 @@ pub fn ParkDetail(slug: String) -> Element {
     };
 
     let rentals_href = api::frontend_path("/#home-rentals");
+    let park_image = park.image.to_string();
+    let park_image_srcset = park_image_srcset(slug.as_str(), &park_image);
     rsx! {
         article { class: "park-detail-page",
             header { class: "park-detail-hero",
@@ -215,7 +265,14 @@ pub fn ParkDetail(slug: String) -> Element {
                         }
                     }
                 }
-                img { src: park.image, alt: park.image_alt, decoding: "async", fetchpriority: "high" }
+                img {
+                    src: park_image,
+                    srcset: park_image_srcset.clone(),
+                    sizes: park_image_srcset.as_ref().map(|_| PARK_IMAGE_SIZES),
+                    alt: park.image_alt,
+                    decoding: "async",
+                    fetchpriority: "high"
+                }
             }
 
             section { class: "park-detail-content",
@@ -362,5 +419,29 @@ mod tests {
             .access_note
             .starts_with("BC Parks limits camping at sẁiẁs to seven nights per calendar year."));
         assert_eq!(swiws.official_url, "https://bcparks.ca/swiws-park/");
+    }
+
+    #[test]
+    fn only_bear_creek_uses_the_verified_responsive_hero_candidates() {
+        let srcset = park_image_srcset_for_base(
+            "bear-creek",
+            "/assets/park-bear-creek.jpg",
+            "https://vlrental.ca",
+        )
+        .expect("Bear Creek responsive hero");
+        assert!(srcset.contains("park-bear-creek-800-9a21f3645d45295e.webp 800w"));
+        assert!(srcset.contains("park-bear-creek-1161-86b723844c054826.webp 1161w"));
+        assert!(srcset.ends_with("/assets/park-bear-creek.jpg 1600w"));
+        assert_eq!(park_preview_manifest()["bear-creek"].source_width, 1600);
+        assert!(park_image_srcset_for_base(
+            "fintry",
+            "/assets/park-fintry.jpg",
+            "https://vlrental.ca"
+        )
+        .is_none());
+        assert_eq!(
+            PARK_IMAGE_SIZES,
+            "(max-width: 860px) max(570px, 100vw), (max-width: 960px) max(676px, 100vw), 1600px"
+        );
     }
 }

@@ -3,23 +3,31 @@ from __future__ import annotations
 import tempfile
 import unittest
 import html
+import hashlib
 import json
 import re
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image
 
 from scripts.prepare_pages_artifact import (
     EXPECTED_STYLES,
     LEGACY_REDIRECTS,
+    PARK_IMAGE_SIZES,
     PUBLIC_ROUTES,
     RV_DETAIL_PRELOADS,
     SNAPSHOT_BRAND_LOGO_FILE,
     bundle_route_stylesheets,
     load_terms_content,
     page_url,
+    park_responsive_image,
     prepare_artifact,
     schema_for,
 )
 from scripts.fetch_public_sales_snapshot import validate_snapshot
+from scripts.generate_rv_previews import encode_derivative
+from scripts.generate_park_previews import encode as encode_park_preview
 
 
 SHELL = """<!doctype html>
@@ -168,7 +176,7 @@ class PreparePagesArtifactTests(unittest.TestCase):
 
         source = Path(__file__).resolve().parents[1] / "public" / "rv-previews"
         previews = list(source.glob("*.webp"))
-        self.assertEqual(len(previews), 48)
+        self.assertEqual(len(previews), 60)
         for preview in previews:
             self.assertEqual((root / "rv-previews" / preview.name).read_bytes(), preview.read_bytes())
 
@@ -267,14 +275,42 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertEqual(jayco.count(jayco_preview), 2)
         bear = (root / "parks" / "bear-creek" / "index.html").read_text(encoding="utf-8")
         self.assertIn(
-            f'<link rel="preload" as="image" href="/assets/{bear_asset}" fetchpriority="high">',
+            f'<link rel="preload" as="image" href="/assets/{bear_asset}"',
             bear,
         )
         self.assertIn(
             f'<img class="seo-prerender-detail-poster" src="/assets/{bear_asset}"',
             bear,
         )
-        self.assertEqual(bear.count(f"/assets/{bear_asset}"), 2)
+        self.assertEqual(bear.count(f"/assets/{bear_asset}"), 4)
+        for filename, width in [
+            ("park-bear-creek-800-9a21f3645d45295e.webp", 800),
+            ("park-bear-creek-1161-86b723844c054826.webp", 1161),
+        ]:
+            candidate = f"https://example.test/park-previews/{filename} {width}w"
+            self.assertEqual(bear.count(candidate), 2)
+        bear_route = next(route for route in PUBLIC_ROUTES if route.path == "/parks/bear-creek")
+        pages_srcset, _ = park_responsive_image(
+            bear_route,
+            "https://vlrental.github.io/viktor_rv_front",
+            "/viktor_rv_front/assets/park-bear-creek.jpg",
+        )
+        self.assertIn(
+            "https://vlrental.github.io/viktor_rv_front/park-previews/"
+            "park-bear-creek-800-9a21f3645d45295e.webp 800w",
+            pages_srcset,
+        )
+        self.assertNotIn(".webp/ ", pages_srcset)
+        self.assertTrue(
+            pages_srcset.endswith(
+                "/viktor_rv_front/assets/park-bear-creek.jpg 1600w"
+            )
+        )
+        self.assertNotIn("/viktor_rv_front/viktor_rv_front/", pages_srcset)
+        self.assertEqual(bear.count(f'imagesizes="{PARK_IMAGE_SIZES}"'), 1)
+        self.assertEqual(bear.count(f' sizes="{PARK_IMAGE_SIZES}"'), 1)
+        self.assertIn(f'imagesizes="{PARK_IMAGE_SIZES}" fetchpriority="high"', bear)
+        self.assertIn(f'sizes="{PARK_IMAGE_SIZES}" width="1140"', bear)
         about = (root / "about" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('<link rel="preload" as="image"', about)
         self.assertNotIn('class="seo-prerender-detail-poster"', about)
@@ -292,6 +328,62 @@ class PreparePagesArtifactTests(unittest.TestCase):
         for filename in covers.values():
             self.assertRegex(filename, r"^[0-9a-f-]{36}-preview\.webp$")
             self.assertTrue((project / "public" / "rv-previews" / filename).is_file())
+
+    def test_card_preview_map_matches_exact_cover_sources_and_dimensions(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        sources = json.loads(
+            (project / "scripts" / "rv_preview_sources.json").read_text(encoding="utf-8")
+        )
+        covers = {entry["url"] for entry in sources if entry["kind"] == "cover"}
+        cards = json.loads(
+            (project / "content" / "rv_card_previews.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(set(cards), covers)
+        self.assertEqual(len(cards), 6)
+
+        preview_root = project / "public" / "rv-previews"
+        for source_url, variants in cards.items():
+            image_id = Path(source_url).stem
+            self.assertEqual(variants["small"], f"{image_id}-card480.webp")
+            self.assertEqual(variants["large"], f"{image_id}-card800.webp")
+            self.assertEqual(variants["fallback"], f"{image_id}-preview.webp")
+            with Image.open(preview_root / variants["small"]) as small:
+                self.assertEqual(small.width, 480)
+            with Image.open(preview_root / variants["large"]) as large:
+                self.assertEqual(large.width, 800)
+            with Image.open(preview_root / variants["fallback"]) as fallback:
+                self.assertEqual(fallback.width, variants["fallback_width"])
+                self.assertGreaterEqual(fallback.width, large.width)
+
+    def test_card_preview_webp_encoding_is_deterministic(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        source = next((project / "public" / "rv-previews").glob("*-preview.webp"))
+        with Image.open(source) as image:
+            rgb = image.convert("RGB")
+        first = encode_derivative(rgb, 480)
+        second = encode_derivative(rgb, 480)
+        self.assertEqual(first, second)
+        with Image.open(BytesIO(first)) as derivative:
+            self.assertEqual(derivative.width, 480)
+
+    def test_bear_creek_responsive_previews_are_content_addressed_and_exact(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        manifest = json.loads(
+            (project / "content" / "park_detail_previews.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(set(manifest), {"bear-creek"})
+        bear = manifest["bear-creek"]
+        self.assertEqual((bear["source_width"], bear["source_height"]), (1600, 900))
+        source = project / bear["source"]
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), bear["source_sha256"])
+        with Image.open(source) as image:
+            rgb = image.convert("RGB")
+        for variant in bear["variants"]:
+            target = project / "public" / "park-previews" / variant["filename"]
+            encoded = encode_park_preview(rgb, variant["width"])
+            self.assertEqual(target.read_bytes(), encoded)
+            self.assertEqual(hashlib.sha256(encoded).hexdigest(), variant["sha256"])
+            self.assertIn(variant["sha256"][:16], variant["filename"])
 
     def test_mobile_hero_is_a_smaller_webp_and_legacy_jpeg_is_preserved(self) -> None:
         project = Path(__file__).resolve().parents[1]

@@ -25,6 +25,14 @@ RV_DETAIL_PRELOADS = {
     f"/rv/{slug}": filename
     for slug, filename in json.loads(RV_COVER_PREVIEWS_PATH.read_text(encoding="utf-8")).items()
 }
+PARK_DETAIL_PREVIEWS_PATH = (
+    Path(__file__).resolve().parents[1] / "content" / "park_detail_previews.json"
+)
+PARK_DETAIL_PREVIEWS = json.loads(PARK_DETAIL_PREVIEWS_PATH.read_text(encoding="utf-8"))
+PARK_IMAGE_SIZES = (
+    "(max-width: 860px) max(570px, 100vw), "
+    "(max-width: 960px) max(676px, 100vw), 1600px"
+)
 NOINDEX_ROBOTS = "noindex,nofollow"
 LOCAL_STYLESHEET = re.compile(r'<link rel="stylesheet" href="([^"]*/assets/[^"/]+\.css)" type="text/css">')
 EXPECTED_STYLES = {
@@ -526,6 +534,21 @@ def render_terms_content() -> str:
     return '<div class="seo-prerender-terms">' + "".join(sections) + "</div>"
 
 
+def park_responsive_image(
+    route: SeoRoute, site_url: str, fallback: str
+) -> tuple[str, str] | None:
+    slug = route.path.removeprefix("/parks/").strip("/")
+    preview = PARK_DETAIL_PREVIEWS.get(slug)
+    if not preview:
+        return None
+    candidates = [
+        f'{absolute_url(site_url, "/park-previews/" + variant["filename"])} {variant["width"]}w'
+        for variant in preview["variants"]
+    ]
+    candidates.append(f'{fallback} {preview["source_width"]}w')
+    return ", ".join(candidates), PARK_IMAGE_SIZES
+
+
 def render_snapshot(
     route: SeoRoute,
     site_url: str,
@@ -662,9 +685,18 @@ def render_snapshot(
             'fetchpriority="high" decoding="async">'
         )
     elif detail_preload and (is_rv or is_park):
+        responsive = park_responsive_image(route, site_url, detail_preload)
+        responsive_attrs = ""
+        if responsive:
+            srcset, sizes = responsive
+            responsive_attrs = (
+                f' srcset="{html.escape(srcset, quote=True)}"'
+                f' sizes="{html.escape(sizes, quote=True)}" '
+            )
         detail_poster = (
             f'<img class="seo-prerender-detail-poster" '
             f'src="{html.escape(detail_preload, quote=True)}" '
+            f'{responsive_attrs}'
             f'width="1140" height="456" alt="{html.escape(route.heading, quote=True)} main photo" '
             'fetchpriority="high" decoding="async">'
         )
@@ -827,8 +859,17 @@ def render_route(
         )
         document = document.replace("</head>", preload + "</head>", 1)
     elif detail_preload:
+        responsive = park_responsive_image(route, site_url, detail_preload)
+        responsive_attrs = ""
+        if responsive:
+            srcset, sizes = responsive
+            responsive_attrs = (
+                f' imagesrcset="{html.escape(srcset, quote=True)}"'
+                f' imagesizes="{html.escape(sizes, quote=True)}" '
+            )
         preload = (
             f'<link rel="preload" as="image" href="{html.escape(detail_preload, quote=True)}" '
+            f'{responsive_attrs}'
             'fetchpriority="high">\n    '
         )
         document = document.replace("</head>", preload + "</head>", 1)
@@ -949,7 +990,7 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
     expected_previews = {
         f"{Path(entry['url']).stem}-{suffix}.webp"
         for entry in manifest
-        for suffix in (("thumb", "preview") if entry["kind"] == "cover" else ("thumb",))
+        for suffix in (("thumb", "card480", "card800", "preview") if entry["kind"] == "cover" else ("thumb",))
     }
     actual_previews = {source.name for source in preview_source.glob("*.webp")}
     if actual_previews != expected_previews:
@@ -957,6 +998,23 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
     preview_target.mkdir(parents=True, exist_ok=True)
     for name in expected_previews:
         shutil.copyfile(preview_source / name, preview_target / name)
+
+    park_preview_source = source_root / "public" / "park-previews"
+    park_preview_target = root / "park-previews"
+    expected_park_previews = {
+        variant["filename"]: variant["sha256"]
+        for preview in PARK_DETAIL_PREVIEWS.values()
+        for variant in preview["variants"]
+    }
+    actual_park_previews = {source.name for source in park_preview_source.glob("*.webp")}
+    if actual_park_previews != set(expected_park_previews):
+        raise ValueError("park preview files do not match the content manifest")
+    park_preview_target.mkdir(parents=True, exist_ok=True)
+    for name, digest in expected_park_previews.items():
+        source = park_preview_source / name
+        if hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"park preview hash mismatch: {name}")
+        shutil.copyfile(source, park_preview_target / name)
 
     for image in {route.image for route in PUBLIC_ROUTES if route.image.startswith("/assets/")}:
         relative = image.lstrip("/")
