@@ -8,6 +8,8 @@ use crate::data::canonical_rv_slug;
 
 const RV_COVER_PREVIEWS_JSON: &str = include_str!("../content/rv_cover_previews.json");
 const RV_CARD_PREVIEWS_JSON: &str = include_str!("../content/rv_card_previews.json");
+pub const RV_DETAIL_IMAGE_SIZES: &str =
+    "(max-width: 860px) max(585px, calc(100vw - 36px)), max(1092px, calc(66vw - 95px))";
 
 #[derive(serde::Deserialize)]
 struct CardPreviews {
@@ -136,6 +138,34 @@ pub fn card_preview_srcset_for(source_url: &str) -> Option<(String, String, Stri
     card_preview_srcset_for_base(source_url, &crate::api::frontend_base_url())
 }
 
+fn detail_preview_srcset_for_base(source_url: &str, base_url: &str) -> Option<String> {
+    card_preview_srcset_for_base(source_url, base_url)
+        .map(|(_, large, fallback, width)| format!("{large} 800w, {fallback} {width}w"))
+}
+
+pub fn detail_preview_srcset_for(source_url: &str) -> Option<String> {
+    detail_preview_srcset_for_base(source_url, &crate::api::frontend_base_url())
+}
+
+fn detail_preview_srcset_for_slug_and_base(slug: &str, base_url: &str) -> Option<String> {
+    let fallback = cover_previews().get(canonical_rv_slug(slug))?;
+    card_previews()
+        .values()
+        .find(|previews| &previews.fallback == fallback)
+        .map(|previews| {
+            format!(
+                "{} 800w, {} {}w",
+                preview_filename_url_for_base(base_url, &previews.large),
+                preview_filename_url_for_base(base_url, &previews.fallback),
+                previews.fallback_width,
+            )
+        })
+}
+
+pub fn detail_preview_srcset_for_slug(slug: &str) -> Option<String> {
+    detail_preview_srcset_for_slug_and_base(slug, &crate::api::frontend_base_url())
+}
+
 fn cover_preview_for_slug_and_base(slug: &str, base_url: &str) -> Option<String> {
     cover_previews()
         .get(canonical_rv_slug(slug))
@@ -226,6 +256,17 @@ mod tests {
             card_preview_srcset_for_base("https://example.invalid/new-upload.webp", base),
             None
         );
+        assert_eq!(
+            detail_preview_srcset_for_base(source_url, base),
+            Some(format!(
+                "https://vlrental.github.io/viktor_rv_front/rv-previews/{} 800w, https://vlrental.github.io/viktor_rv_front/rv-previews/{} {}w",
+                previews.large, previews.fallback, previews.fallback_width
+            ))
+        );
+        assert!(
+            detail_preview_srcset_for_base("https://example.invalid/new-upload.webp", base)
+                .is_none()
+        );
     }
 
     #[test]
@@ -253,6 +294,10 @@ mod tests {
             assert_eq!(
                 cover_preview_for_slug_and_base(canonical, "https://vlrental.ca"),
                 cover_preview_for_slug_and_base(api, "https://vlrental.ca")
+            );
+            assert_eq!(
+                detail_preview_srcset_for_slug_and_base(canonical, "https://vlrental.ca"),
+                detail_preview_srcset_for_slug_and_base(api, "https://vlrental.ca")
             );
             assert!(
                 cover_preview_for_slug_and_base(canonical, "https://vlrental.ca")

@@ -16,8 +16,10 @@ from scripts.prepare_pages_artifact import (
     LEGACY_REDIRECTS,
     PARK_IMAGE_SIZES,
     PUBLIC_ROUTES,
+    RV_DETAIL_IMAGE_SIZES,
     RV_DETAIL_PRELOADS,
     SNAPSHOT_BRAND_LOGO_FILE,
+    SNAPSHOT_BRAND_LOGOS,
     bundle_route_stylesheets,
     load_terms_content,
     page_url,
@@ -262,17 +264,30 @@ class PreparePagesArtifactTests(unittest.TestCase):
 
         jayco = (root / "rv" / "jayco26" / "index.html").read_text(encoding="utf-8")
         jayco_preview = "/rv-previews/d147526c-bf9c-464a-8a21-71bd2d391e7b-preview.webp"
-        self.assertIn(
-            f'<link rel="preload" as="image" href="{jayco_preview}" fetchpriority="high">',
-            jayco,
-        )
+        jayco_large = "https://example.test/rv-previews/d147526c-bf9c-464a-8a21-71bd2d391e7b-card800.webp"
+        self.assertIn(f'<link rel="preload" as="image" href="{jayco_preview}"', jayco)
+        self.assertIn(f'imagesrcset="{jayco_large} 800w, {jayco_preview} 960w"', jayco)
+        self.assertIn(f'imagesizes="{RV_DETAIL_IMAGE_SIZES}" fetchpriority="high"', jayco)
         self.assertIn(
             f'<img class="seo-prerender-detail-poster" src="{jayco_preview}"',
             jayco,
         )
+        self.assertIn(f'srcset="{jayco_large} 800w, {jayco_preview} 960w"', jayco)
+        self.assertIn(f'sizes="{RV_DETAIL_IMAGE_SIZES}" width="1140"', jayco)
         self.assertIn('width="1140" height="456"', jayco)
         self.assertIn('alt="Jayco 26′ Fifth Wheel Rental main photo"', jayco)
-        self.assertEqual(jayco.count(jayco_preview), 2)
+        self.assertEqual(jayco.count(jayco_preview), 4)
+        self.assertEqual(jayco.count(jayco_large), 2)
+
+        def detail_slot_width(viewport: int) -> float:
+            if viewport <= 860:
+                return max(585, viewport - 36)
+            return max(1092, 0.66 * viewport - 95)
+
+        self.assertEqual(detail_slot_width(860), 824)
+        self.assertEqual(detail_slot_width(861), 1092)
+        self.assertEqual(detail_slot_width(1440), 1092)
+        self.assertAlmostEqual(detail_slot_width(1920), 1172.2)
         bear = (root / "parks" / "bear-creek" / "index.html").read_text(encoding="utf-8")
         self.assertIn(
             f'<link rel="preload" as="image" href="/assets/{bear_asset}"',
@@ -402,10 +417,14 @@ class PreparePagesArtifactTests(unittest.TestCase):
         document = (root / "index.html").read_text(encoding="utf-8")
         header = document.split('<header class="seo-prerender-header">', 1)[1].split("</header>", 1)[0]
         self.assertRegex(SNAPSHOT_BRAND_LOGO_FILE, r"^logo-512-lossless-[0-9a-f]{16}\.webp$")
+        self.assertIn(f'<img src="https://example.test/{SNAPSHOT_BRAND_LOGO_FILE}"', header)
         self.assertIn(
-            f'<img src="/{SNAPSHOT_BRAND_LOGO_FILE}" width="36" height="36" alt="">VL Rental',
+            f'https://example.test/{SNAPSHOT_BRAND_LOGOS["72"]["derivative"]} 72w, '
+            f'https://example.test/{SNAPSHOT_BRAND_LOGOS["144"]["derivative"]} 144w, '
+            f'https://example.test/{SNAPSHOT_BRAND_LOGO_FILE} 512w',
             header,
         )
+        self.assertIn('sizes="36px" width="36" height="36" alt="">VL Rental', header)
         schema = json.loads(
             re.search(r'<script type="application/ld\+json">(.*?)</script>', document, re.DOTALL).group(1)
         )
@@ -415,6 +434,19 @@ class PreparePagesArtifactTests(unittest.TestCase):
         self.assertEqual(
             (root / SNAPSHOT_BRAND_LOGO_FILE).read_bytes(),
             (project / "public" / SNAPSHOT_BRAND_LOGO_FILE).read_bytes(),
+        )
+        for variant in SNAPSHOT_BRAND_LOGOS.values():
+            filename = variant["derivative"]
+            self.assertEqual((root / filename).read_bytes(), (project / "public" / filename).read_bytes())
+
+        gh_root = self.make_artifact()
+        prepare_artifact(gh_root, "https://example.test/viktor_rv_front", self.make_sales_snapshot())
+        gh_header = (gh_root / "index.html").read_text(encoding="utf-8").split(
+            '<header class="seo-prerender-header">', 1
+        )[1].split("</header>", 1)[0]
+        self.assertIn(
+            f'https://example.test/viktor_rv_front/{SNAPSHOT_BRAND_LOGOS["72"]["derivative"]} 72w',
+            gh_header,
         )
 
     def test_private_and_not_found_documents_are_noindex(self) -> None:

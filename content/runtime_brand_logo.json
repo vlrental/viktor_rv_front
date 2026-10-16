@@ -1,0 +1,11 @@
+{
+  "derivative": "logo-runtime-120-lossless-9645ee6f7dc53dc2.webp",
+  "derivative_sha256": "9645ee6f7dc53dc2394314c862cf652d5cd0f6cfb3baf07c4bba1f7990354e12",
+  "height": 120,
+  "mode": "RGBA",
+  "original_source": "assets/img/logo.png",
+  "original_source_sha256": "7a70fdf98a6a47cc492b124aca8ff38703c5922ddbac9879b7e44e0e7ae61a44",
+  "reference": "scripts/assets/logo-runtime-120-source-6705cd58b49210b8b.png",
+  "reference_sha256": "6705cd58b49210b8bdb73a89aaa6286358eca7083c6b8e290452b249927cd4ec",
+  "width": 120
+}

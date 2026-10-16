@@ -7,13 +7,7 @@ use crate::{
     booking_launch_requires_home, push_notifications, AuthSession, BookingLaunchRequest, Route,
 };
 
-const LOGO: Asset = asset!(
-    "/assets/img/logo.png",
-    AssetOptions::image().with_size(ImageSize::Manual {
-        width: 120,
-        height: 120,
-    })
-);
+const RUNTIME_LOGO_FILE: &str = "/logo-runtime-120-lossless-9645ee6f7dc53dc2.webp";
 
 fn focus_mobile_menu_toggle() {
     document::eval(
@@ -28,6 +22,7 @@ fn focus_mobile_menu_toggle() {
 /// Шапка сайта. На Home — прозрачный overlay поверх hero, на остальных — белая с волосяной линией.
 #[component]
 pub fn Header() -> Element {
+    let logo = api::frontend_path(RUNTIME_LOGO_FILE);
     let route = use_route::<Route>();
     let navigator = use_navigator();
     let mut booking_launch_request = use_context::<BookingLaunchRequest>();
@@ -170,7 +165,7 @@ pub fn Header() -> Element {
                 }
             },
             Link { class: "brand", to: Route::Home {},
-                img { class: "brand-mark", src: LOGO, alt: "" }
+                img { class: "brand-mark", src: logo, alt: "" }
                 span { class: "brand-word", "VL Rental" }
             }
             button {

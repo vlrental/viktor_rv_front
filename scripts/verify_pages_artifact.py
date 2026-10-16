@@ -16,6 +16,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_LOGO_MANIFEST = json.loads(
     (PROJECT_ROOT / "content" / "snapshot_brand_logo.json").read_text(encoding="utf-8")
 )
+RUNTIME_LOGO_MANIFEST = json.loads(
+    (PROJECT_ROOT / "content" / "runtime_brand_logo.json").read_text(encoding="utf-8")
+)
 
 
 class AssetCollector(HTMLParser):
@@ -121,15 +124,31 @@ def verify_html(root: Path, html_path: Path) -> list[str]:
 
 
 def verify_snapshot_brand_logo(root: Path) -> list[str]:
-    filename = str(SNAPSHOT_LOGO_MANIFEST["derivative"])
-    expected = str(SNAPSHOT_LOGO_MANIFEST["derivative_sha256"])
+    failures: list[str] = []
+    for width, variant in SNAPSHOT_LOGO_MANIFEST["variants"].items():
+        filename = str(variant["derivative"])
+        expected = str(variant["derivative_sha256"])
+        path = root / filename
+        if not path.is_file():
+            failures.append(f"missing snapshot brand logo: {filename}")
+            continue
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        expected_name = f"logo-{width}-lossless-{actual[:16]}.webp"
+        if actual != expected or filename != expected_name:
+            failures.append(f"snapshot brand logo hash mismatch: {filename}")
+    return failures
+
+
+def verify_runtime_brand_logo(root: Path) -> list[str]:
+    filename = str(RUNTIME_LOGO_MANIFEST["derivative"])
     path = root / filename
     if not path.is_file():
-        return [f"missing snapshot brand logo: {filename}"]
+        return [f"missing runtime brand logo: {filename}"]
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
-    expected_name = f"logo-512-lossless-{actual[:16]}.webp"
+    expected = str(RUNTIME_LOGO_MANIFEST["derivative_sha256"])
+    expected_name = f"logo-runtime-120-lossless-{actual[:16]}.webp"
     if actual != expected or filename != expected_name:
-        return [f"snapshot brand logo hash mismatch: {filename}"]
+        return [f"runtime brand logo hash mismatch: {filename}"]
     return []
 
 
@@ -171,6 +190,7 @@ def verify_bundle_split(root: Path, html_paths: list[Path]) -> list[str]:
 
 def verify_artifact(root: Path) -> list[str]:
     failures = verify_snapshot_brand_logo(root)
+    failures.extend(verify_runtime_brand_logo(root))
     html_paths = sorted(root.glob("**/index.html"))
     html_paths.append(root / "404.html")
     for path in html_paths:

@@ -1,9 +1,25 @@
 {
-  "derivative": "logo-512-lossless-81d8d05a4bbc1ae7.webp",
-  "derivative_sha256": "81d8d05a4bbc1ae7556f42ddf6d2a6a6ace5986a14d1bed9fbd706d5a4e96f96",
-  "height": 512,
   "mode": "RGB",
   "source": "logo-512.png",
   "source_sha256": "fd0dafe0ddc771a89c69d0a9e2f19e2918c3b3c1987c8ab8bccb7375cdbe0617",
-  "width": 512
+  "variants": {
+    "144": {
+      "derivative": "logo-144-lossless-b761983f7c66a1d4.webp",
+      "derivative_sha256": "b761983f7c66a1d4395b206715479898316ef14b0968bd5e1f723a7cdb8e21ac",
+      "height": 144,
+      "width": 144
+    },
+    "512": {
+      "derivative": "logo-512-lossless-81d8d05a4bbc1ae7.webp",
+      "derivative_sha256": "81d8d05a4bbc1ae7556f42ddf6d2a6a6ace5986a14d1bed9fbd706d5a4e96f96",
+      "height": 512,
+      "width": 512
+    },
+    "72": {
+      "derivative": "logo-72-lossless-1a7fc5b63510d9f6.webp",
+      "derivative_sha256": "1a7fc5b63510d9f6f52e714e49dd1faf719757fc07fbeed0bee0a940aba769dc",
+      "height": 72,
+      "width": 72
+    }
+  }
 }

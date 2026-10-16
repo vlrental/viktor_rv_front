@@ -25,6 +25,12 @@ RV_DETAIL_PRELOADS = {
     f"/rv/{slug}": filename
     for slug, filename in json.loads(RV_COVER_PREVIEWS_PATH.read_text(encoding="utf-8")).items()
 }
+RV_CARD_PREVIEWS_PATH = Path(__file__).resolve().parents[1] / "content" / "rv_card_previews.json"
+RV_CARD_PREVIEWS = json.loads(RV_CARD_PREVIEWS_PATH.read_text(encoding="utf-8"))
+RV_DETAIL_IMAGE_SIZES = (
+    "(max-width: 860px) max(585px, calc(100vw - 36px)), "
+    "max(1092px, calc(66vw - 95px))"
+)
 PARK_DETAIL_PREVIEWS_PATH = (
     Path(__file__).resolve().parents[1] / "content" / "park_detail_previews.json"
 )
@@ -44,9 +50,13 @@ TERMS_CONTENT_PATH = Path(__file__).resolve().parents[1] / "content" / "terms.js
 SNAPSHOT_BRAND_LOGO_PATH = (
     Path(__file__).resolve().parents[1] / "content" / "snapshot_brand_logo.json"
 )
-SNAPSHOT_BRAND_LOGO_FILE = json.loads(
+SNAPSHOT_BRAND_LOGOS = json.loads(
     SNAPSHOT_BRAND_LOGO_PATH.read_text(encoding="utf-8")
-)["derivative"]
+)["variants"]
+SNAPSHOT_BRAND_LOGO_FILE = SNAPSHOT_BRAND_LOGOS["512"]["derivative"]
+RUNTIME_BRAND_LOGO_PATH = (
+    Path(__file__).resolve().parents[1] / "content" / "runtime_brand_logo.json"
+)
 HERO_SMALL_FILE = "hero-bullet-overlook-768.webp"
 HERO_LARGE_FILE = "hero-bullet-overlook.webp"
 
@@ -549,6 +559,33 @@ def park_responsive_image(
     return ", ".join(candidates), PARK_IMAGE_SIZES
 
 
+def rv_responsive_image(route: SeoRoute, site_url: str, fallback: str) -> tuple[str, str] | None:
+    preview_name = RV_DETAIL_PRELOADS.get(route.path)
+    if not preview_name:
+        return None
+    preview = next(
+        (item for item in RV_CARD_PREVIEWS.values() if item["fallback"] == preview_name),
+        None,
+    )
+    if not preview:
+        return None
+    large = absolute_url(site_url, "/rv-previews/" + preview["large"])
+    return (
+        f'{large} 800w, {fallback} {preview["fallback_width"]}w',
+        RV_DETAIL_IMAGE_SIZES,
+    )
+
+
+def responsive_detail_image(
+    route: SeoRoute, site_url: str, fallback: str
+) -> tuple[str, str] | None:
+    if route.path.startswith("/parks/"):
+        return park_responsive_image(route, site_url, fallback)
+    if route.path.startswith("/rv/"):
+        return rv_responsive_image(route, site_url, fallback)
+    return None
+
+
 def render_snapshot(
     route: SeoRoute,
     site_url: str,
@@ -685,7 +722,7 @@ def render_snapshot(
             'fetchpriority="high" decoding="async">'
         )
     elif detail_preload and (is_rv or is_park):
-        responsive = park_responsive_image(route, site_url, detail_preload)
+        responsive = responsive_detail_image(route, site_url, detail_preload)
         responsive_attrs = ""
         if responsive:
             srcset, sizes = responsive
@@ -701,11 +738,23 @@ def render_snapshot(
             'fetchpriority="high" decoding="async">'
         )
 
+    logo_72_url = html.escape(
+        absolute_url(site_url, f'/{SNAPSHOT_BRAND_LOGOS["72"]["derivative"]}'),
+        quote=True,
+    )
+    logo_144_url = html.escape(
+        absolute_url(site_url, f'/{SNAPSHOT_BRAND_LOGOS["144"]["derivative"]}'),
+        quote=True,
+    )
+    logo_512_url = html.escape(
+        absolute_url(site_url, f"/{SNAPSHOT_BRAND_LOGO_FILE}"), quote=True
+    )
     return (
         f'<div class="seo-prerender" data-seo-route="{html.escape(route.path, quote=True)}">'
         '<header class="seo-prerender-header">'
         f'<a class="seo-prerender-brand" href="{html.escape(page_url(site_url, "/"), quote=True)}">'
-        f'<img src="/{html.escape(SNAPSHOT_BRAND_LOGO_FILE, quote=True)}" '
+        f'<img src="{logo_512_url}" '
+        f'srcset="{logo_72_url} 72w, {logo_144_url} 144w, {logo_512_url} 512w" sizes="36px" '
         'width="36" height="36" alt="">VL Rental</a>'
         f'<nav aria-label="Main navigation">{nav}</nav></header>'
         '<main class="seo-prerender-main">'
@@ -859,7 +908,7 @@ def render_route(
         )
         document = document.replace("</head>", preload + "</head>", 1)
     elif detail_preload:
-        responsive = park_responsive_image(route, site_url, detail_preload)
+        responsive = responsive_detail_image(route, site_url, detail_preload)
         responsive_attrs = ""
         if responsive:
             srcset, sizes = responsive
@@ -955,17 +1004,32 @@ def prepare_artifact(root: Path, site_url: str, sales_snapshot: Path | None = No
 
     source_root = Path(__file__).resolve().parents[1]
     logo_manifest = json.loads(SNAPSHOT_BRAND_LOGO_PATH.read_text(encoding="utf-8"))
-    logo_name = str(logo_manifest["derivative"])
-    logo_source = source_root / "public" / logo_name
-    if not logo_source.is_file():
-        raise FileNotFoundError(f"missing snapshot brand logo: {logo_source}")
-    logo_bytes = logo_source.read_bytes()
-    logo_digest = hashlib.sha256(logo_bytes).hexdigest()
-    if logo_digest != logo_manifest["derivative_sha256"] or logo_name != f"logo-512-lossless-{logo_digest[:16]}.webp":
-        raise ValueError("snapshot brand logo does not match its content hash manifest")
-    # Dioxus re-encodes public WebP files on Linux. Restore the canonical
-    # committed bytes so the immutable filename remains content-addressed.
-    (root / logo_name).write_bytes(logo_bytes)
+    for width, variant in logo_manifest["variants"].items():
+        logo_name = str(variant["derivative"])
+        logo_source = source_root / "public" / logo_name
+        if not logo_source.is_file():
+            raise FileNotFoundError(f"missing snapshot brand logo: {logo_source}")
+        logo_bytes = logo_source.read_bytes()
+        logo_digest = hashlib.sha256(logo_bytes).hexdigest()
+        expected_name = f"logo-{width}-lossless-{logo_digest[:16]}.webp"
+        if logo_digest != variant["derivative_sha256"] or logo_name != expected_name:
+            raise ValueError("snapshot brand logo does not match its content hash manifest")
+        # Dioxus re-encodes public WebP files on Linux. Restore the canonical
+        # committed bytes so immutable filenames remain content-addressed.
+        (root / logo_name).write_bytes(logo_bytes)
+
+    runtime_logo_manifest = json.loads(RUNTIME_BRAND_LOGO_PATH.read_text(encoding="utf-8"))
+    runtime_logo_name = str(runtime_logo_manifest["derivative"])
+    runtime_logo_source = source_root / "public" / runtime_logo_name
+    runtime_logo_bytes = runtime_logo_source.read_bytes()
+    runtime_logo_digest = hashlib.sha256(runtime_logo_bytes).hexdigest()
+    if (
+        runtime_logo_digest != runtime_logo_manifest["derivative_sha256"]
+        or runtime_logo_name
+        != f"logo-runtime-120-lossless-{runtime_logo_digest[:16]}.webp"
+    ):
+        raise ValueError("runtime brand logo does not match its content hash manifest")
+    (root / runtime_logo_name).write_bytes(runtime_logo_bytes)
 
     base_path = urlparse(site_url).path.rstrip("/")
     hero_assets = (

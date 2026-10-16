@@ -7,16 +7,11 @@ use crate::{
     components::{CookieConsent, CookieConsentContext, Icon},
 };
 
-const LOGO: Asset = asset!(
-    "/assets/img/logo.png",
-    AssetOptions::image().with_size(ImageSize::Manual {
-        width: 120,
-        height: 120,
-    })
-);
+const RUNTIME_LOGO_FILE: &str = "/logo-runtime-120-lossless-9645ee6f7dc53dc2.webp";
 
 #[component]
 pub fn Footer() -> Element {
+    let logo = api::frontend_path(RUNTIME_LOGO_FILE);
     let rentals_href = api::frontend_path("/#home-rentals");
     let mut cookie_consent = use_context::<CookieConsentContext>();
     rsx! {
@@ -24,7 +19,7 @@ pub fn Footer() -> Element {
             div { class: "footer-top",
                 div { class: "f-brand",
                     Link { class: "brand", to: Route::Home {},
-                        img { class: "brand-mark", src: LOGO, alt: "" }
+                        img { class: "brand-mark", src: logo, alt: "" }
                         span { class: "brand-word", style: "color: var(--vl-white);", "VL Rental" }
                     }
                     p { class: "f-tagline",

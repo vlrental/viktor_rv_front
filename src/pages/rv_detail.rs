@@ -209,6 +209,7 @@ fn StaticRvFallback(listing: Listing, loading: bool) -> Element {
     let photos = rv_gallery(listing.slug);
     let fallback_cover =
         static_fallback_cover(listing.slug, photos.first().map(ToString::to_string));
+    let fallback_srcset = crate::rv_media_previews::detail_preview_srcset_for_slug(listing.slug);
     rsx! {
         div { class: "rvd-crumb",
             a { href: rentals_href, "RV Rentals" }
@@ -223,7 +224,14 @@ fn StaticRvFallback(listing: Listing, loading: bool) -> Element {
         }
         if let Some(photo) = fallback_cover {
             div { class: "rvd-gallery rvd-fallback-gallery",
-                img { src: "{photo}", alt: "{listing.title} RV rental", fetchpriority: "high", decoding: "async" }
+                img {
+                    src: "{photo}",
+                    srcset: fallback_srcset.clone(),
+                    sizes: fallback_srcset.as_ref().map(|_| crate::rv_media_previews::RV_DETAIL_IMAGE_SIZES),
+                    alt: "{listing.title} RV rental",
+                    fetchpriority: "high",
+                    decoding: "async"
+                }
             }
         }
         div { class: "rvd-content",
@@ -472,8 +480,9 @@ fn DynamicGallery(rental: api::Rental, media: Vec<api::RentalMedia>) -> Element 
     }
     let main_preview = crate::rv_media_previews::cover_preview_for(&images[0].0)
         .unwrap_or_else(|| images[0].0.clone());
+    let main_srcset = crate::rv_media_previews::detail_preview_srcset_for(&images[0].0);
     rsx! {
-        div { class: "rvd-gallery", button { class: "rvd-gallery-main", r#type: "button", aria_label: "Open photo 1 of {count}", onclick: move |_|selected.set(Some(0)), img { src: "{main_preview}", alt: "{images[0].1}", fetchpriority: "high", draggable: "false" } }
+        div { class: "rvd-gallery", button { class: "rvd-gallery-main", r#type: "button", aria_label: "Open photo 1 of {count}", onclick: move |_|selected.set(Some(0)), img { src: "{main_preview}", srcset: main_srcset.clone(), sizes: main_srcset.as_ref().map(|_| crate::rv_media_previews::RV_DETAIL_IMAGE_SIZES), alt: "{images[0].1}", fetchpriority: "high", draggable: "false" } }
             div { class: "rvd-gallery-grid", for (index,image) in images.iter().enumerate().skip(1).take(6) { button { key: "gallery-{index}", class: "rvd-gallery-tile", r#type: "button", aria_label: "Open photo {index+1} of {count}", onclick: move |_|selected.set(Some(index)), img { src: crate::rv_media_previews::thumbnail_for(&image.0).unwrap_or_else(|| image.0.clone()), alt: "{image.1}", loading: "lazy", draggable: "false" } if index==6 && count>7 { span { class:"rvd-gallery-more", "Show all {count} photos" } } } } }
         }
         if let Some(index)=selected() { div { id:"rvd-lightbox", class:"rvd-lightbox", role:"dialog", aria_modal:"true", aria_label:"{rental.name} photo gallery", tabindex:"-1", autofocus:true, onkeydown:move|event|if event.key()==Key::Escape{event.stop_propagation();selected.set(None)}, onclick:move |_|selected.set(None), div { class:"rvd-lightbox-content", onclick:move|event|event.stop_propagation(), img { class:"rvd-lightbox-image", src:"{images[index].0}", alt:"{images[index].1}", draggable:"false" } button { id:"rvd-lightbox-close", class:"rvd-lightbox-close", r#type:"button", aria_label:"Close gallery", onclick:move |_|selected.set(None), Icon{name:"x",size:24,color:"var(--vl-white)"} } if count > 1 { button { id:"rvd-lightbox-prev", class:"rvd-lightbox-nav prev", r#type:"button", aria_label:"Previous photo", onclick:move |_|selected.set(Some((index+count-1)%count)), Icon{name:"chevron-left",size:30,color:"var(--vl-white)"} } button { id:"rvd-lightbox-next", class:"rvd-lightbox-nav next", r#type:"button", aria_label:"Next photo", onclick:move |_|selected.set(Some((index+1)%count)), Icon{name:"chevron-right",size:30,color:"var(--vl-white)"} } } div { class:"rvd-lightbox-count", "{index+1} / {count}" } } } }

@@ -54,7 +54,7 @@ class RvOnlyContentTests(unittest.TestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             brand = source[source.index('class: "brand"'):]
             brand = brand[:brand.index("}", brand.index('class: "brand-word"'))]
-            self.assertIn('class: "brand-mark", src: LOGO, alt: ""', brand, relative)
+            self.assertIn('class: "brand-mark", src: logo, alt: ""', brand, relative)
             self.assertIn('class: "brand-word"', brand, relative)
             self.assertIn('"VL Rental"', brand, relative)
             self.assertNotIn('alt: "VL Rental"', brand, relative)

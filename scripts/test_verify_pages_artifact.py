@@ -5,10 +5,12 @@ import unittest
 from pathlib import Path
 
 from scripts.verify_pages_artifact import (
+    RUNTIME_LOGO_MANIFEST,
     SNAPSHOT_LOGO_MANIFEST,
     verify_artifact,
     verify_html,
     verify_snapshot_brand_logo,
+    verify_runtime_brand_logo,
 )
 
 
@@ -47,11 +49,27 @@ class VerifyPagesArtifactTests(unittest.TestCase):
 
     def test_snapshot_brand_logo_rejects_dioxus_reencoded_bytes(self) -> None:
         root, _ = self.make_artifact()
-        filename = str(SNAPSHOT_LOGO_MANIFEST["derivative"])
+        project = Path(__file__).resolve().parents[1]
+        for variant in SNAPSHOT_LOGO_MANIFEST["variants"].values():
+            filename = str(variant["derivative"])
+            (root / filename).write_bytes((project / "public" / filename).read_bytes())
+        filename = str(SNAPSHOT_LOGO_MANIFEST["variants"]["72"]["derivative"])
         (root / filename).write_bytes(b"different-lossless-webp-bytes")
         self.assertEqual(
             verify_snapshot_brand_logo(root),
             [f"snapshot brand logo hash mismatch: {filename}"],
+        )
+
+    def test_runtime_brand_logo_rejects_changed_bytes(self) -> None:
+        root, _ = self.make_artifact()
+        project = Path(__file__).resolve().parents[1]
+        filename = str(RUNTIME_LOGO_MANIFEST["derivative"])
+        (root / filename).write_bytes((project / "public" / filename).read_bytes())
+        self.assertEqual(verify_runtime_brand_logo(root), [])
+        (root / filename).write_bytes(b"changed-runtime-logo")
+        self.assertEqual(
+            verify_runtime_brand_logo(root),
+            [f"runtime brand logo hash mismatch: {filename}"],
         )
 
     def test_missing_local_asset_fails(self) -> None:
